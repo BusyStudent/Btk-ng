@@ -1,0 +1,18 @@
+# Build
+.xmake
+/build
+
+# Vscode
+
+/.vscode/compile_commands.json
+
+# Common CPP files
+*.o
+*.a
+*.lib
+*.obj
+*.exe
+*.so
+*.dylib
+*.dll
+a.out
