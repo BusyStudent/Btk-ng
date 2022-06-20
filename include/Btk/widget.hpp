@@ -30,10 +30,14 @@ enum class WindowFlags : uint32_t {
     OpenGL     = 1 << 6,
     Vulkan     = 1 << 7,
 };
+// Enum for widget.
 
 BTK_FLAGS_OPERATOR(WindowFlags, uint32_t);
 
 class WidgetImpl;
+
+// Event filter, return true to discard event
+using EventFilter = bool (*)(Widget *, Event &, void *);
 
 /**
  * @brief Widget base class
@@ -91,6 +95,10 @@ class BTKAPI Widget : public Object {
 
         // Child widgets
         Widget    *child_at(int x, int y) const;
+
+        // EventFilter
+        void add_event_filter(EventFilter filter, pointer_t data);
+        void del_event_filter(EventFilter filter, pointer_t data);
     private:
 
         WidgetImpl *priv = nullptr;
@@ -134,6 +142,10 @@ class BTKAPI Button : public Widget {
         ~Button();
 
         void set_text(const char *text);
+        void set_flat(bool flat) {
+            _flat = flat;
+            repaint();
+        }
 
 
         // Event handlers
@@ -152,6 +164,7 @@ class BTKAPI Button : public Widget {
         u8string _text;
         bool     _pressed = false;
         bool     _entered = false;
+        bool     _flat    = false;
 
         Signal<void()> _howered;
         Signal<void()> _clicked;

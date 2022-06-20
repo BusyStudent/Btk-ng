@@ -59,6 +59,7 @@ class GraphicsDriver : public Any {
         // 
         // virtual gcontext_t   gc_create(int from,...) = 0;
         // virtual vgcontext_t vgc_create(int from,...) = 0;
+        // virtual g3context_t gc3_create(int from,...) = 0;
 
         // virtual void       gc_draw_line(gcontext_t gc, float x1, float y1, float x2, float y2) = 0;
         // virtual void       gc_draw_rect(gcontext_t gc, float x, float y, float width, float height) = 0;
@@ -69,7 +70,9 @@ class GraphicsDriver : public Any {
         // Event collect
 
         // Font
-        // virtual font_t   font_create(const char_t * name) = 0;
+        // virtual font_t     font_create(const char_t * name) = 0;
+        // virtual Stringlist font_list() = 0;
+
 
         // Timer
         virtual timerid_t  timer_add(Object *object, uint32_t ms) = 0;
@@ -93,12 +96,13 @@ class Graphics3DContext : public Any {
 class GraphicsContext : public Any {
     public:
         enum Feature : int {
-            AntiAliasing,
-            Blending,
-            TextureLimit,
-            Scissor,
-            Viewport,
-            VectorShading,
+            AntiAliasing,  //< Support anti-aliasing
+            Blending,      //< Support atleast alpha blending
+            TextureLimit,  //< Texture size limit
+            Scissor,       //< Scissor support
+            Viewport,      //< Viewport support
+            VectorShading, //< Can be cast to vgcontext_t
+            StrokeWidth    //< Width support
         };
 
         // virtual void    draw_vertex(texture_t t,const Vertex *v, int v_count, int *idx, int idx_n) = 0;
@@ -114,7 +118,7 @@ class GraphicsContext : public Any {
         // virtual void       draw_ellipse(float x, float y, float width, float height) = 0;
 
         // Basic text
-        // virtual void       draw_text(font_t font, u8string_view, float x, float y) = 0;
+        virtual void       draw_text(font_t font, align_t, u8string_view, float x, float y) = 0;
         
         // Set Pen drawing color
         virtual void       set_color(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255) = 0;
@@ -137,7 +141,7 @@ class GraphicsContext : public Any {
         // Feature support / Information
         virtual bool       has_feature(int f) const = 0;
         virtual bool       set_feature(int f, ...) = 0;
-        // virtual bool       get_info(int info, ...) = 0;
+        virtual bool       get_info(int f, ...) = 0;
 };
 
 /**
@@ -160,6 +164,8 @@ class AbstractWindow : public Any {
 
         virtual Size       size() const = 0;
         virtual Point      position() const = 0;
+        virtual void       raise() = 0;
+        // virtual void       grab() = 0;
         virtual void       show(bool show_flag) = 0;
         virtual void       move  (int x, int y) = 0;
         virtual void       resize(int width, int height) = 0;
@@ -182,8 +188,8 @@ class AbstractFont : public Any {
         virtual u8string_view name() const = 0;
         virtual int           size() const = 0;
 
-        virtual Size      measure(u8string_view txt) const = 0;
-        virtual PixBuffer rasterize(u8string_view txt) const = 0;
+        // virtual Size      measure(u8string_view txt) const = 0;
+        // virtual PixBuffer rasterize(u8string_view txt) const = 0;
         virtual bool      set_size(int size) = 0;
         // virtual void      set_bold(bool bold) = 0;
         // virtual void      set_italic(bool italic) = 0;
@@ -323,6 +329,8 @@ class BTKAPI UIContext : public Trackable {
         UIContext(const UIContext &) = delete;
         ~UIContext();
 
+        // Expose Event
+
         template <typename T>
         void send_event(const T &event) {
             queue.push(new T(event));
@@ -332,9 +340,23 @@ class BTKAPI UIContext : public Trackable {
             queue.walk(std::forward<T>(callback));
         }
 
+        //Expose Loop
+
         bool run();
+
+        //Expose Driver
+
         GraphicsDriver *graphics_driver() {
             return driver;
+        }
+        EventQueue     &event_queue() {
+            return queue;
+        }
+        timerid_t timer_add(Object *obj, uint32_t ms) {
+            return driver->timer_add(obj, ms);
+        }
+        bool      timer_del(Object *obj,timerid_t id) {
+            return driver->timer_del(obj, id);
         }
     private:
         GraphicsDriver *driver = nullptr;

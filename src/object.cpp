@@ -18,6 +18,7 @@ struct ObjectImpl {
     UserData *chain = nullptr;
     UIContext *ctxt = nullptr;
 
+    std::set<timerid_t> timers;
     
     ~ObjectImpl() {
         UserData *cur = chain;
@@ -57,6 +58,13 @@ struct ObjectImpl {
 };
 
 Object::~Object() {
+    //Delete timer if needed
+    if (priv) {
+        for (auto timerid : priv->timers) {
+            priv->ctxt->timer_del(this, timerid);
+        }
+    }
+
     delete priv;
 }
 void Object::set_userdata(const char_t *key, Any *value) {
@@ -79,6 +87,20 @@ ObjectImpl *Object::implment() const {
 }
 UIContext  *Object::ui_context() const {
     return implment()->ctxt;
+}
+
+timerid_t  Object::add_timer(uint32_t ms) {
+    auto timerid = implment()->ctxt->timer_add(this, ms);
+    if (timerid != 0) {
+        implment()->timers.insert(timerid);
+    }
+    return timerid;
+}
+bool       Object::del_timer(timerid_t timerid) {
+    if (implment()->timers.erase(timerid) > 0) {
+        return implment()->ctxt->timer_del(this, timerid);
+    }
+    return false;
 }
 
 BTK_NS_END

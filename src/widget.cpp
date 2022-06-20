@@ -5,10 +5,16 @@
 
 BTK_NS_BEGIN
 
+struct EventFilterNode {
+    EventFilter filter;
+    void *userdata;
+    EventFilterNode *next;
+};
+
 struct WidgetImpl {
     ~WidgetImpl();
-
-    UIContext  *context;//< Pointer to UIContext
+    EventFilterNode *filters = nullptr;//< Event filter list
+    UIContext  *context    = nullptr;//< Pointer to UIContext
     Widget     *parent     = nullptr;//< Parent widget
     Style      *style      = nullptr;//< Pointer to style
     WindowFlags flags      = WindowFlags::Resizable;//< Window flags
@@ -28,6 +34,13 @@ struct WidgetImpl {
 };
 
 WidgetImpl::~WidgetImpl() {
+    // Remove all filters
+    while (filters) {
+        EventFilterNode *next = filters->next;
+        delete filters;
+        filters = next;
+    }
+
     delete gc;
     delete win;
 }
@@ -40,8 +53,14 @@ Widget::Widget() {
     BTK_ASSERT(priv->context);
 }
 Widget::~Widget() {
+
+    // Auto detach from parent
     if(priv->in_child_iter != std::list<Widget *>::iterator{}){
         priv->parent->priv->children.erase(priv->in_child_iter);
+
+        // Notify parent
+        Event event(Event::ChildRemoved);
+        priv->parent->handle(event);
     }
     // Clear children
     for(auto w : priv->children) {
@@ -105,6 +124,19 @@ void Widget::resize(int w, int h) {
 }
 bool Widget::handle(Event &event) {
     // printf("Widget::handle(%d)\n", event.type());
+    // Do event filters
+    EventFilterNode *node = priv->filters;
+    while (node) {
+        if (node->filter(this, event, node->userdata)) {
+            // discard event
+            return true;
+        }
+        node = node->next;
+    }
+
+    // Default unhandled
+    bool ret = false;
+
     switch (event.type()) {
         case Event::Paint : {
             if (priv->win) {
@@ -114,7 +146,11 @@ bool Widget::handle(Event &event) {
                 priv->gc->begin();
                 priv->gc->clear();
             }
-            // Paint children first
+
+            // Paint current widget first (background)
+            ret = paint_event(static_cast<PaintEvent &>(event));
+
+            // Paint children second (foreground)
             for(auto w : priv->children) {
                 if (!w->priv->visible) {
                     continue;
@@ -122,8 +158,6 @@ bool Widget::handle(Event &event) {
                 w->handle(event);
             }
 
-            //Let children handle it
-            paint_event(static_cast<PaintEvent &>(event));
             if (priv->win) {
                 priv->gc->end();
             }
@@ -165,8 +199,8 @@ bool Widget::handle(Event &event) {
             break;
         }
     }
-    // Unhandled
-    return false;
+
+    return ret;
 }
 void Widget::repaint() {
     // TODO Check is GUI Thread
@@ -230,13 +264,40 @@ gcontext_t Widget::gc() const {
 }
 
 // Child widgets
-Widget *Widget::child_at(int x,int y) const {
+Widget *Widget::child_at(int x, int y) const {
     for(auto w : priv->children) {
         if (w->rect().contains(x, y)) {
             return w;
         }
     }
     return nullptr;
+}
+
+// EventFilter
+void   Widget::add_event_filter(EventFilter filter, pointer_t user) {
+    EventFilterNode *node = new EventFilterNode;
+    node->filter = filter;
+    node->userdata = user;
+    node->next = priv->filters;
+    priv->filters = node;
+}
+void   Widget::del_event_filter(EventFilter filter, pointer_t user) {
+    EventFilterNode *node = priv->filters;
+    EventFilterNode *prev = nullptr;
+    while (node) {
+        if (node->filter == filter && node->userdata == user) {
+            if (prev == nullptr) {
+                priv->filters = node->next;
+            }
+            else {
+                prev->next = node->next;
+            }
+            delete node;
+            return;
+        }
+        prev = node;
+        node = node->next;
+    }
 }
 
 // Common useful widgets
@@ -279,8 +340,29 @@ bool Button::paint_event(PaintEvent &event) {
     // }
 
     // Border
-    gc->set_color(c.r, c.g, c.b, c.a);
-    gc->draw_rects(&boarder,1);
+    if (!(_flat && !_pressed && !_entered)) {
+        // We didnot draw border on _flat mode
+        gc->set_color(c.r, c.g, c.b, c.a);
+        gc->draw_rects(&boarder,1);
+    }
+
+    // Text
+    if (!_text.empty()) {
+        if (_pressed) {
+            c = style->highlight_text;
+        }
+        else{
+            c = style->text;
+        }
+        gc->set_color(c.r, c.g, c.b, c.a);
+        gc->draw_text(
+            nullptr, 
+            Alignment::Center | Alignment::Middle,
+            _text,
+            boarder.x + boarder.w / 2 - 2,
+            boarder.y + boarder.h / 2 - 2
+        );
+    }
     
     return true;
 }

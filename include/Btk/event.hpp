@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Btk/detail/keyboard.hpp>
+#include <Btk/string.hpp>
 #include <Btk/defs.hpp>
 
 BTK_NS_BEGIN
@@ -13,10 +14,12 @@ class Event {
 
             // Widget events
             WidgetEvent = 2,
-            Moved   = WidgetEvent + 1,
-            Resized = WidgetEvent + 2,
-            Show    = WidgetEvent + 3,
-            Hide    = WidgetEvent + 4,
+            WidgetBegin = WidgetEvent,
+
+            Moved       = WidgetEvent + 1,
+            Resized     = WidgetEvent + 2,
+            Show        = WidgetEvent + 3,
+            Hide        = WidgetEvent + 4,
             FocusGained = WidgetEvent + 5,
             FocusLost   = WidgetEvent + 6,
             MouseEnter  = WidgetEvent + 7,
@@ -26,13 +29,19 @@ class Event {
             MouseRelease= WidgetEvent + 11,
             MouseWheel  = WidgetEvent + 12,
             KeyPress    = WidgetEvent + 13,
-            KeyRelease  = WidgetEvent + 14,
-            TextInput   = WidgetEvent + 15,
-            Close       = WidgetEvent + 16, //< User close widget
-            Paint       = WidgetEvent + 17, //< Paint widget right now
+            KeyRelease  = WidgetEvent + 14, //< Key release
+            TextInput   = WidgetEvent + 15, //< Keyboard text input
+            TextEdit    = WidgetEvent + 16, //< Keyboard text edit
+            Close       = WidgetEvent + 17, //< User close widget
+            Paint       = WidgetEvent + 18, //< Paint widget right now
+            ChildAdded  = WidgetEvent + 19, //< Child added to parent
+            ChildRemoved= WidgetEvent + 20, //< Child removed from parent
+            Reparent    = WidgetEvent + 21, //< Parent changed
+            
+            WidgetEnd ,
 
             Call      , //< EventLoop will call it
-            Timeout   , //< The timer timeout
+            Timer     , //< The timer timeout
 
         };
 
@@ -205,9 +214,19 @@ class KeyEvent : public WidgetEvent {
         Key      _key;
         Modifier _modifiers;
 };
+class TextInputEvent : public WidgetEvent {
+    private:
+        u8string _text;
+};
+class ReparentEvent : public WidgetEvent {
+    private:
+        Widget *_old;
+        Widget *_new;
+};
+
 class TimerEvent : public Event {
     public:
-        TimerEvent(Object *obj, uint32_t id) : Event(Timeout), _object(obj), _timerid(id) {}
+        TimerEvent(Object *obj, uint32_t id) : Event(Timer), _object(obj), _timerid(id) {}
         TimerEvent(const TimerEvent &e) = default;
 
         Object  *object() const {
@@ -221,9 +240,14 @@ class TimerEvent : public Event {
         timerid_t _timerid;
 };
 
+
 // Another Event
 
 class CallEvent : public Event {
+    public:
+        void call() {
+            _func(_user);
+        }
     private:
         void (*_func)(void *user);
         void  *_user;

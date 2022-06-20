@@ -13,6 +13,7 @@ class Style {
         Color selection;
         Color highlight;
         Color border;
+        Color highlight_text;
         // Button
         Color button;
         int   button_width; //< Default button width

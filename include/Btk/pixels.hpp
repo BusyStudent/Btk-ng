@@ -94,11 +94,19 @@ class BTKAPI PixBuffer {
             return _width == 0 || _height == 0;
         }
 
+        // Configure attributes
+        void set_managed(bool managed) noexcept {
+            _owned = managed;
+        }
+
         uint32_t pixel_at(int x,int y) const;
         Color    color_at(int x,int y) const;
         void     set_color(int x,int y,Color c);
 
         PixBuffer clone() const;
+
+        static PixBuffer FromFile(const char *filename);
+        static PixBuffer FromStream(IOStream *stream);
     private:
         pointer_t _pixels = nullptr;
         int       _width = 0;
@@ -128,7 +136,7 @@ inline GLColor::operator Color() const noexcept {
         uint8_t(r * 255.0f),
         uint8_t(g * 255.0f),
         uint8_t(b * 255.0f),
-        uint8_t(a * 255.0f)        
+        uint8_t(a * 255.0f)
     };
 }
 

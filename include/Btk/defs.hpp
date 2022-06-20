@@ -40,6 +40,25 @@ class AnyRef {
         virtual void unref() = 0;
 };
 
+// Basic enumerations
+enum class Alignment : uint8_t {
+    Left     = 1 << 0,
+    Right    = 1 << 1,
+    Center   = 1 << 2,
+    Top      = 1 << 3,
+    Bottom   = 1 << 4,
+    Middle   = 1 << 5,
+
+    Baseline = 1 << 6, //< Only for text
+    
+};
+enum class Orientation : uint8_t {
+    Horizontal = 0,
+    Vertical   = 1,
+};
+
+BTK_FLAGS_OPERATOR(Alignment, uint8_t);
+
 // Forward declarations
 class EventQueue;
 class EventLoop;
@@ -69,6 +88,8 @@ class Texture;
 // String 
 class u8string;
 class u8string_view;
+class StringList;
+class StringRefList;
 // Keyboard
 enum class Key      : uint32_t;
 enum class Modifier : uint16_t;
@@ -82,6 +103,8 @@ using  window_t   = AbstractWindow *;
 using  texture_t  = AbstractTexture *;
 using  gcontext_t = GraphicsContext *;
 using vgcontext_t = VGraphicsContext *;
+
+using  align_t    = Alignment;
 
 // Function
 

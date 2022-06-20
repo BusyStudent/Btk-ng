@@ -39,13 +39,18 @@ class Canvas : public Widget {
 };
 
 int main () {
+    for(uchar_t ch : u8string_view("HelloWorld, 你好世界")) {
+        printf("%d\n", ch);
+    }
+
     auto device = SDLDriverInfo.create();
     UIContext context(device);
 
-    // Button w;
-    // w.show();
-    Canvas c;
-    c.show();
+    Button w;
+    w.show();
+    w.set_flat(true);
+    // Canvas c;
+    // c.show();
 
 
     context.run();

@@ -9,6 +9,11 @@ enum class SeekOrigin : int {
     Current = SEEK_CUR,
     End = SEEK_END
 };
+enum class IOAccess : int {
+    ReadOnly = 1 << 0,
+    WriteOnly = 1 << 1,
+    ReadWrite = ReadOnly | WriteOnly,
+};
 
 class IOStream : public Any {
     public:

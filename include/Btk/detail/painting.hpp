@@ -50,4 +50,18 @@ class BTKAPI Texture {
         texture_t tex = nullptr;
 };
 
+class BTKAPI Font {
+    public:
+        Font();
+        Font(u8string_view name, int size);
+        Font(const Font &);
+        Font(Font &&);
+        ~Font();
+
+        void set_size();
+        int  size();
+    private:
+        font_t ft;
+};
+
 BTK_NS_END

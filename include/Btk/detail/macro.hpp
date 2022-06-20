@@ -42,6 +42,7 @@
 #define BTK_STRINGIFY(x) #x
 #define BTK_STRINGIFY_EXPAND(x) BTK_STRINGIFY(x)
 #define BTK_NOEXCEPT_IF(x) noexcept(noexcept(x))
+#define BTK_ARRAYSIZE(x) (sizeof(x) / sizeof(x[0]))
 
 // Exception macros
 #if defined(BTK_NO_EXCEPTIONS)

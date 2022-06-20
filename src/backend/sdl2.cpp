@@ -8,6 +8,27 @@
 
 #include "sdl2_trkey.hpp"
 
+// Using lilim as font abstraction
+#if !__has_include(<ft2build.h>)
+#define LILIM_STBTRUETYPE
+#endif
+
+#define LILIM_STATIC
+#define FONS_MACRO_WRAPPER
+#define FONS_SDL_RENDERER
+#define FONS_STATIC
+#include "libs/lilim.hpp"
+#include "libs/lilim.cpp"
+#include "libs/fontstash.cpp"
+#include "libs/fons_backend.hpp"
+
+
+#if defined(__gnu_linux__)
+#include "common/fc_x11.hpp"
+#else
+#error "Unsupported platform"
+#endif
+
 
 BTK_NS_BEGIN2()
 
@@ -28,7 +49,7 @@ static_assert(offsetof(SDL_Rect, y) == offsetof(Rect, y));
 static_assert(offsetof(SDL_Rect, w) == offsetof(Rect, w));
 static_assert(offsetof(SDL_Rect, h) == offsetof(Rect, h));
 
-// Capability of SDL_Keyboard
+// Capability of SDL_Renderer
 
 #if SDL_GC_FLOAT
 static_assert(offsetof(SDL_FPoint, x) == offsetof(FPoint, x));
@@ -42,6 +63,7 @@ static_assert(offsetof(SDL_FRect, h) == offsetof(FRect, h));
 
 
 class SDLDriver ;
+class SDLFont   ;
 class SDLWindow : public AbstractWindow {
     public:
         SDLWindow(SDL_Window *w, SDLDriver *dr) : win(w), driver(dr) {}
@@ -50,6 +72,7 @@ class SDLWindow : public AbstractWindow {
         // Overrides from WindowContext
         Size       size() const override;
         Point      position() const override;
+        void       raise() override;
         void       resize(int w, int h) override;
         void       show(bool v) override;
         void       move(int x, int y) override;
@@ -59,60 +82,12 @@ class SDLWindow : public AbstractWindow {
         widget_t   bind_widget(widget_t widget) override;
         gcontext_t gc_create() override;
 
-        uint32_t id() const;
+        uint32_t   id() const;
     private:
         SDL_Window *win = nullptr;
         SDLDriver  *driver = nullptr;
         Widget     *widget = nullptr;
     friend class SDLDriver;
-};
-
-class SDLTexture : public AbstractTexture {
-    public:
-        SDLTexture(SDL_Texture *t, any_t ctxt) : tex(t), ctxt(ctxt) {};
-        ~SDLTexture();
-
-        // Overrides from AbstractTexture
-        void  update(cpointer_t pix, int x, int y, int w, int h, int stride) override;
-        Size  size() const override;
-        any_t context() const override;
-    private:
-        SDL_Texture *tex = nullptr;
-        any_t        ctxt;
-    friend class SDLGraphicsContext;
-};
-
-class SDLGraphicsContext : public GraphicsContext {
-    public:
-        SDLGraphicsContext(SDL_Window *w, SDL_Renderer *r) : window(w), renderer(r) {}
-        ~SDLGraphicsContext();
-
-        // Overrides from GraphicsContext
-        void draw_image(const FRect &rect, texture_t t, const Rect &src) override;
-        void draw_lines(const FPoint *points, int count) override;
-        void draw_points(const FPoint *points, int count) override;
-        void draw_rects(const FRect *rects, int count) override;
-        void fill_rects(const FRect *rects, int count) override;
-
-        void set_color(uint8_t r, uint8_t g, uint8_t b, uint8_t a) override;
-
-        void clear() override;
-        void begin() override;
-        void end() override;
-
-        texture_t texture_create(int w, int h, PixFormat fmt) override;
-        bool      set_antialias(bool v) override;
-
-        // Features
-        bool      has_feature(int f) const override;
-        bool      set_feature(int f, ...) override;
-
-        // AA func
-        void aa_draw_lines(const FPoint *points, int count);
-    private:
-        SDL_Window   *window = nullptr;
-        SDL_Renderer *renderer = nullptr;
-        bool          antialias = true;
 };
 
 class SDLDriver : public GraphicsDriver {
@@ -135,13 +110,106 @@ class SDLDriver : public GraphicsDriver {
 
         timerid_t timer_add(Object *obj, uint32_t ms) override;
         bool      timer_del(Object *obj,timerid_t id) override;
+
+        int       font();
     private:
+        Lilim::Manager ft_manager = {}; //< Manage font
+        Fons::Fontstash ft_stash  = {ft_manager};
+
         timestamp_t init_time;
         UIContext  *context;
         EventQueue *event_queue;
+        FcContext   fc_context;
+
+        int   def_font = -1; //< Default font id
+        float xdpi;
+        float ydpi;
         
         // Map ID -> AbstractWindow
         std::unordered_map<uint32_t, SDLWindow *> windows;
+    friend class SDLGraphicsContext;
+};
+
+class SDLTexture : public AbstractTexture {
+    public:
+        SDLTexture(SDL_Texture *t, any_t ctxt) : tex(t), ctxt(ctxt) {};
+        ~SDLTexture();
+
+        // Overrides from AbstractTexture
+        void  update(cpointer_t pix, int x, int y, int w, int h, int stride) override;
+        Size  size() const override;
+        any_t context() const override;
+    private:
+        SDL_Texture *tex = nullptr;
+        any_t        ctxt;
+    friend class SDLGraphicsContext;
+};
+
+class SDLGraphicsContext : public GraphicsContext {
+    public:
+        SDLGraphicsContext(SDLDriver *drv, SDL_Window *w, SDL_Renderer *r) : 
+            txt_render(r, drv->ft_stash), 
+            driver(drv), window(w), renderer(r) {}
+        ~SDLGraphicsContext();
+
+        // Overrides from GraphicsContext
+        void draw_image(const FRect &rect, texture_t t, const Rect &src) override;
+        void draw_lines(const FPoint *points, int count) override;
+        void draw_points(const FPoint *points, int count) override;
+        void draw_rects(const FRect *rects, int count) override;
+        void fill_rects(const FRect *rects, int count) override;
+
+        void set_color(uint8_t r, uint8_t g, uint8_t b, uint8_t a) override;
+
+        void draw_text(font_t f, align_t align, u8string_view txt, float x, float y) override;
+
+        void clear() override;
+        void begin() override;
+        void end() override;
+
+        texture_t texture_create(int w, int h, PixFormat fmt) override;
+        bool      set_antialias(bool v) override;
+
+        // Features
+        bool      has_feature(int f) const override;
+        bool      set_feature(int f, ...) override;
+        bool      get_info(int f,...) override;
+
+        // AA func
+        void aa_draw_lines(const FPoint *points, int count);
+
+    private:
+        Fons::SDLTextRenderer txt_render;
+        SDLDriver    *driver = nullptr;
+        SDL_Window   *window = nullptr;
+        SDL_Renderer *renderer = nullptr;
+        bool          antialias = true;
+        float         x_scale;
+        float         y_scale;
+
+        uint8_t      *text_bitmap = nullptr;
+        int           bitmap_size = 0;
+};
+
+class SDLFont   : public AbstractFont {
+    public:
+        SDLFont(int ft);
+        ~SDLFont();
+
+        u8string_view  name() const override;
+        int            size() const override;
+
+        // Size           measure(u8string_view txt) const override;
+        bool           set_size(int sz) override;
+
+        // Internal use
+        // Size           measure(float xs, float ys, u8string_view txt) const;
+
+        SDLFont       *clone() const;
+    public:
+        u8string       fname;
+        int            font;
+        int            fsize;
 };
 
 // Driver
@@ -151,6 +219,11 @@ SDLDriver::SDLDriver() {
 
     SDL_Init(SDL_INIT_VIDEO);
     init_time = GetTicks();
+
+    // Query DPI
+    SDL_GetDisplayDPI(0, nullptr, &xdpi, &ydpi);
+
+    printf(" xdpi : %f, ydpi : %f\n", xdpi, ydpi);
 }
 SDLDriver::~SDLDriver() {
     SDL_Quit();
@@ -291,7 +364,7 @@ void SDLDriver::pump_events(UIContext *ctxt) {
 
 window_t SDLDriver::window_create(const char_t * title, int width, int height,WindowFlags flags){
     // Translate flags to SDL flags
-    uint32_t sdl_flags = 0;
+    uint32_t sdl_flags = SDL_WINDOW_ALLOW_HIGHDPI;
     if ((flags & WindowFlags::Resizable) == WindowFlags::Resizable) {
         sdl_flags |= SDL_WINDOW_RESIZABLE;
     }
@@ -313,6 +386,8 @@ void    SDLDriver::window_add(SDLWindow *win) {
 }
 void    SDLDriver::window_del(SDLWindow *win) {
     windows.erase(win->id());
+
+    // Maybe we should walk through the event queue and remove all events for this window?
 }
 u8string SDLDriver::clipboard_get() {
     char *str = SDL_GetClipboardText();
@@ -334,7 +409,7 @@ bool SDLDriver::timer_del(Object *obj, timerid_t id) {
 
     // Walk queue, drop timer if it's in there
     ctxt->walk_event([&](Event &ev){
-        if (ev.type() == Event::Timeout) {
+        if (ev.type() == Event::Timer) {
             auto tev = static_cast<TimerEvent&>(ev);
             if (tev.timerid() == id) {
                 return EventWalk::Drop;
@@ -382,6 +457,18 @@ timerid_t SDLDriver::timer_add(Object *obj, uint32_t ms) {
     data->id = id;
     return id;
 }
+int SDLDriver::font() {
+    if (def_font == -1) {
+        auto finfo = fc_context.match("");
+        auto face  = ft_manager.new_face(finfo.file.c_str(), finfo.index);
+
+        if (!face.empty()) {
+            face->set_dpi(xdpi, ydpi);
+            def_font = ft_stash.add_font(face);
+        }
+    }
+    return def_font;
+}
 
 // Window
 
@@ -414,6 +501,9 @@ void SDLWindow::show(bool v) {
     else {
         SDL_HideWindow(win);
     }
+}
+void SDLWindow::raise() {
+    SDL_RaiseWindow(win);
 }
 void SDLWindow::set_title(const char_t *title) {
     SDL_SetWindowTitle(win, title);
@@ -449,7 +539,7 @@ gcontext_t SDLWindow::gc_create() {
         printf("  %d: %s\n", i, SDL_GetPixelFormatName(info.texture_formats[i]));
     }
 #endif
-    return new SDLGraphicsContext(win,renderer);
+    return new SDLGraphicsContext(driver,win,renderer);
 }
 uint32_t SDLWindow::id() const {
     return SDL_GetWindowID(win);
@@ -645,6 +735,9 @@ texture_t SDLGraphicsContext::texture_create(int w, int h, PixFormat fmt) {
         w,
         h
     );
+    if (tex == nullptr) {
+        return nullptr;
+    }
     return new SDLTexture(tex, this);
 }
 void SDLGraphicsContext::set_color(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
@@ -655,10 +748,14 @@ void SDLGraphicsContext::begin() {
     int w, h;
     SDL_GetWindowSize(window, &w, &h);
     SDL_GetRendererOutputSize(renderer ,&rw, &rh);
+
+    x_scale = float(rw) / w;
+    y_scale = float(rh) / h;
+
     SDL_RenderSetScale(
         renderer,
-        float(rw) / w,
-        float(rh) / h
+        x_scale,
+        y_scale
     );
 
     // Clear state
@@ -730,6 +827,94 @@ bool SDLGraphicsContext::set_feature(int f, ...) {
 
     return ret;
 }
+bool SDLGraphicsContext::get_info(int f, ...) {
+    bool ret;
+    va_list varg;
+    va_start(varg, f);
+
+    switch (f) {
+        case TextureLimit : {
+            Size *psize = va_arg(varg, Size*);
+            SDL_RendererInfo info;
+            ret = SDL_GetRendererInfo(renderer, &info) == 0;
+            if (ret) {
+                psize->w = info.max_texture_width;
+                psize->h = info.max_texture_height;
+            }
+
+            break;
+        }
+        default : {
+            ret = false;
+            break;
+        }
+    }
+
+    va_end(varg);
+    return ret;
+}
+// Draw text
+void SDLGraphicsContext::draw_text(font_t f, align_t align, u8string_view txt, float x, float y) {
+    float size;
+    int id = -1;
+    if (f) {
+        id   = static_cast<SDLFont*>(f)->font;
+        size = static_cast<SDLFont*>(f)->fsize;
+    }
+    else {
+        id   = driver->font();
+        size = 12; 
+    }
+    int talign = 0;
+
+    // Translate align to fons align
+    if ((align & Alignment::Bottom) == Alignment::Bottom) {
+        talign |= FONS_ALIGN_BOTTOM;
+    }
+    if ((align & Alignment::Top) == Alignment::Top) {
+        talign |= FONS_ALIGN_TOP;
+    }
+    if ((align & Alignment::Baseline) == Alignment::Baseline) {
+        talign |= FONS_ALIGN_BASELINE;
+    }
+    if ((align & Alignment::Right) == Alignment::Right) {
+        talign |= FONS_ALIGN_RIGHT;
+    }
+    if ((align & Alignment::Left) == Alignment::Left) {
+        talign |= FONS_ALIGN_LEFT;
+    }
+    if ((align & Alignment::Middle) == Alignment::Middle) {
+        talign |= FONS_ALIGN_MIDDLE;
+    }
+    if ((align & Alignment::Center) == Alignment::Center) {
+        talign |= FONS_ALIGN_CENTER;
+    }
+
+    uint8_t r, g, b, a;
+    SDL_BlendMode mode;
+    SDL_GetRenderDrawColor(renderer, &r, &g, &b, &a);
+    SDL_GetRenderDrawBlendMode(renderer, &mode);
+
+    // To RRGGBBAA uint32
+    uint32_t pixel = 0;
+    pixel |= r << 24;
+    pixel |= g << 16;
+    pixel |= b << 8;
+    pixel |= a;
+
+    txt_render.set_align(talign);
+    txt_render.set_color(pixel);
+    txt_render.set_size(size);
+    txt_render.set_font(id);
+    txt_render.draw_text(x, y, txt.data(), txt.data() + txt.size());
+    txt_render.flush();
+
+    SDL_SetRenderDrawColor(renderer, r, g, b, a);
+    SDL_SetRenderDrawBlendMode(renderer, mode);
+}
+
+
+// Texture
 
 SDLTexture::~SDLTexture() {
     SDL_DestroyTexture(tex);
@@ -745,6 +930,30 @@ void SDLTexture::update(cpointer_t pix, int x, int y, int w, int h, int stride) 
 }
 any_t SDLTexture::context() const {
     return ctxt;
+}
+
+// Font
+SDLFont::SDLFont(int f) : font(f) {
+    fsize = 12;
+}
+SDLFont::~SDLFont() {
+
+}
+
+u8string_view SDLFont::name() const {
+    return {};
+}
+int SDLFont::size() const {
+    return fsize;
+}
+bool SDLFont::set_size(int size) {
+    fsize = size;
+    return true;
+}
+SDLFont *SDLFont::clone() const  {
+    auto f = new SDLFont(font);
+    f->fsize = fsize;
+    return f;
 }
 
 #undef SDL_CAST

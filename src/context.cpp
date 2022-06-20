@@ -91,7 +91,7 @@ void EventLoop::dispatch(Event *event) {
             running = false;
             break;
         }
-        case Event::WidgetEvent ... Event::Paint : {
+        case Event::WidgetBegin ... Event::WidgetEnd : {
             auto w = static_cast<WidgetEvent*>(event)->widget();
             if (w == nullptr) {
                 printf("EventLoop::dispatch: widget is null\n");
@@ -104,6 +104,16 @@ void EventLoop::dispatch(Event *event) {
             // }
 
             w->handle(*event);
+            break;
+        }
+        case Event::Timer : {
+            auto t = static_cast<TimerEvent*>(event);
+            t->object()->handle(*event);
+            break;
+        }
+        case Event::Call : {
+            auto c = static_cast<CallEvent*>(event);
+            c->call();
             break;
         }
         default : {
@@ -127,7 +137,8 @@ void StyleBreeze(Style *style) {
     style->highlight  = Color(61 , 174, 233);
     style->selection  = Color(61 , 174, 233);
 
-    style->text       = Color(0, 0, 0);
+    style->text           = Color(0, 0, 0);
+    style->highlight_text = Color(255, 255, 255);
 
     // Button default size
     style->button_width = 88;
