@@ -11,12 +11,28 @@ class GLColor;
 
 class Color {
     public:
+        // Color enums packed as RRGGBBAA in 32-bit unsigned integer
+        enum Enum : uint32_t {
+            Red     = 0xFF0000FF,
+            Green   = 0x00FF00FF,
+            Blue    = 0x0000FFFF,
+            Black   = 0x000000FF,
+            White   = 0xFFFFFFFF,
+            Purple  = 0xFF00FFFF,
+            Yellow  = 0xFFFF00FF,
+            Cyan    = 0x00FFFFFF,
+            Magenta = 0xFF00FFFF,
+            Gray    = 0x808080FF,
+            Transparent = 0x00000000,
+        };
+    public:
         uint8_t r; //< Red
         uint8_t g; //< Green
         uint8_t b; //< Blue
         uint8_t a; //< Alpha
 
         Color() : r(0), g(0), b(0), a(0) {}
+        Color(Enum e) : r(e >> 24), g(e >> 16), b(e >> 8), a(e & 0xFF) {}
         Color(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255) : r(r), g(g), b(b), a(a) {}
         Color(const Color &) = default;
 
@@ -31,6 +47,7 @@ class GLColor {
 
         GLColor() : r(0.0f), g(0.0f), b(0.0f), a(0.0f) {}
         GLColor(float r, float g, float b, float a = 1.0f) : r(r), g(g), b(b), a(a) {}
+        GLColor(Color::Enum e) : GLColor(Color(e)) {}
         GLColor(const GLColor &) = default;
 
         operator Color() const noexcept;
@@ -59,8 +76,22 @@ class BTKAPI PixBuffer {
          * @param h 
          */
         PixBuffer(int w, int h);
+        /**
+         * @brief Construct a new Pix Buffer object (just reference to another buffer)
+         * 
+         */
+        PixBuffer(const PixBuffer &);
+        /**
+         * @brief Construct a new Pix Buffer object (move from another buffer)
+         * 
+         */
         PixBuffer(PixBuffer &&);
         ~PixBuffer();
+        /**
+         * @brief Release contained memory
+         * 
+         */
+        void clear();
 
         pointer_t  pixels() noexcept {
             return _pixels;
@@ -93,6 +124,9 @@ class BTKAPI PixBuffer {
         bool empty() const noexcept {
             return _width == 0 || _height == 0;
         }
+        PixFormat format() const noexcept {
+            return bpp() == 32 ? PixFormat::RGBA32 : PixFormat::RGB24;
+        }
 
         // Configure attributes
         void set_managed(bool managed) noexcept {
@@ -104,6 +138,14 @@ class BTKAPI PixBuffer {
         void     set_color(int x,int y,Color c);
 
         PixBuffer clone() const;
+        PixBuffer ref()   const;
+
+        // Write to file / memory / iostream
+        void      write_to(const char_t *path) const;
+
+        // Assignment
+        PixBuffer &operator=(const PixBuffer &);
+        PixBuffer &operator=(PixBuffer &&);
 
         static PixBuffer FromFile(const char *filename);
         static PixBuffer FromStream(IOStream *stream);
@@ -120,7 +162,9 @@ class BTKAPI PixBuffer {
         uint32_t _gmask = 0;
         uint32_t _bmask = 0;
         uint32_t _amask = 0;
-        
+
+        // Refcounting for COW
+        int      *_refcount = nullptr;
 };
 
 inline Color::operator GLColor() const noexcept {
@@ -138,6 +182,10 @@ inline GLColor::operator Color() const noexcept {
         uint8_t(b * 255.0f),
         uint8_t(a * 255.0f)
     };
+}
+
+inline PixBuffer PixBuffer::ref() const {
+    return *this;
 }
 
 BTK_NS_END

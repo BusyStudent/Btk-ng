@@ -7,6 +7,7 @@
 BTK_NS_BEGIN
 
 class ObjectImpl;
+class TimerEvent;
 
 template <typename T>
 class ValueHolder : public Any {
@@ -53,10 +54,17 @@ class BTKAPI Object : public Any, public Trackable {
         bool      del_timer(timerid_t timerid);
         // Deferred call
         void      defer_delete();
+
+        // Timer Event
+        virtual bool timer_event(TimerEvent &) { return false; }
     private:
         ObjectImpl *implment() const;
 
         mutable ObjectImpl *priv = nullptr;
+};
+
+class Timer : public Object {
+    
 };
 
 BTK_NS_END

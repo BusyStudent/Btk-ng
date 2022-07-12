@@ -5,15 +5,17 @@
 BTK_NS_BEGIN
 
 enum class SeekOrigin : int {
-    Begin = SEEK_SET,
+    Begin   = SEEK_SET,
     Current = SEEK_CUR,
-    End = SEEK_END
+    End     = SEEK_END
 };
 enum class IOAccess : int {
-    ReadOnly = 1 << 0,
+    ReadOnly  = 1 << 0,
     WriteOnly = 1 << 1,
     ReadWrite = ReadOnly | WriteOnly,
 };
+
+BTK_FLAGS_OPERATOR(IOAccess, int);
 
 class IOStream : public Any {
     public:

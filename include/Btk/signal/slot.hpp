@@ -6,6 +6,13 @@
 #include <tuple>
 #include <list>
 
+#include "call.hpp"
+
+#if defined(_MSC_VER)
+#define not !
+
+#endif
+
 
 BTK_NS_BEGIN
 
@@ -249,14 +256,17 @@ struct _FunctorLocation{
  */
 class BTKAPI Connection{
     public:
-        Connection(){};
+        Connection(){}
         Connection(const Connection &) = default;
+        ~Connection(){}
 
 
         SignalBase *signal() const noexcept{
             return sig.current;
         }
         void disconnect(bool from_object = false);
+
+        Connection &operator =(const Connection &) = default;
     protected:
         typedef std::list<_SlotBase*>::iterator Iterator;
         union{
@@ -780,7 +790,16 @@ class Signal<RetT(Args...)>:public SignalBase{
             // lock_guard<const SignalBase> locker(*this);
             //why it has complie error on msvc
             //std::is_same<void,RetT>()
+            if (empty()) {
+                return RetT();
+            }
+
             if constexpr(std::is_same<void,RetT>::value){
+#if             1
+                // FIXME : It may be slow, but it as safe when user disconnect the signal in the callback
+                auto slots = this->slots;
+#endif
+
                 for(auto slot:slots){
                     static_cast<_Slot<RetT,Args...>*>(slot)->invoke(
                         std::forward<Args>(args)...
@@ -788,6 +807,10 @@ class Signal<RetT(Args...)>:public SignalBase{
                 }
             }
             else{
+#if             1
+                // FIXME : It may be slow, but it as safe when user disconnect the signal in the callback
+                auto slots = this->slots;
+#endif
                 RetT ret{};
                 for(auto slot:slots){
                     ret = static_cast<_Slot<RetT,Args...>*>(slot)->invoke(

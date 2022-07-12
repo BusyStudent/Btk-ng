@@ -56,6 +56,20 @@ enum class Orientation : uint8_t {
     Horizontal = 0,
     Vertical   = 1,
 };
+enum class Direction : uint8_t {
+    LeftToRight = 0,
+    RightToLeft = 1,
+    TopToBottom = 2,
+    BottomToTop = 3,
+};
+
+constexpr inline auto Horizontal = Orientation::Horizontal;
+constexpr inline auto Vertical   = Orientation::Vertical;
+
+constexpr inline auto LeftToRight = Direction::LeftToRight;
+constexpr inline auto RightToLeft = Direction::RightToLeft;
+constexpr inline auto TopToBottom = Direction::TopToBottom;
+constexpr inline auto BottomToTop = Direction::BottomToTop;
 
 BTK_FLAGS_OPERATOR(Alignment, uint8_t);
 
@@ -70,6 +84,7 @@ class Object;
 class Event;
 class Widget;
 class Style;
+class Font;
 
 class IOStream;
 class IODevice;
@@ -100,12 +115,14 @@ using  widget_t   = Widget *;
 using  context_t  = UIContext *;
 using  font_t     = AbstractFont *;
 using  window_t   = AbstractWindow *;
+using  driver_t   = GraphicsDriver *;
 using  texture_t  = AbstractTexture *;
 using  gcontext_t = GraphicsContext *;
 using vgcontext_t = VGraphicsContext *;
 
-using  align_t    = Alignment;
-
+using  align_t       = Alignment;
+using  direction_t   = Direction;
+using  orientation_t = Orientation;
 // Function
 
 BTKAPI timestamp_t GetTicks();

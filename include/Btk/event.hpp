@@ -37,7 +37,14 @@ class Event {
             ChildAdded  = WidgetEvent + 19, //< Child added to parent
             ChildRemoved= WidgetEvent + 20, //< Child removed from parent
             Reparent    = WidgetEvent + 21, //< Parent changed
-            
+            DragBegin   = WidgetEvent + 22, //< Drag begin
+            DragMotion  = WidgetEvent + 23, //< Dragging
+            DragEnd     = WidgetEvent + 24, //< Drag end
+            DropBegin   = WidgetEvent + 25, //< Drop begin
+            DropText    = WidgetEvent + 26, //< Drop
+            DropFile    = WidgetEvent + 27, //< Drop file
+            DropEnd     = WidgetEvent + 28, //< Drop end
+
             WidgetEnd ,
 
             Call      , //< EventLoop will call it
@@ -72,7 +79,7 @@ class Event {
             return !_accepted;
         }
         bool is_widget_event() const noexcept {
-            return _type >= WidgetEvent && _type < Close;
+            return _type > WidgetBegin && _type < WidgetEnd;
         }
 
         Type        type() const noexcept {
@@ -80,6 +87,16 @@ class Event {
         }
         timestamp_t timestamp() const noexcept {
             return _timestamp;
+        }
+
+        // Cast to another event type
+        template <typename T>
+        T &as() noexcept {
+            return *static_cast<T*>(this);
+        }
+        template <typename T>
+        const T &as() const noexcept {
+            return *static_cast<const T*>(this);
         }
     private:
         Type        _type      = None;
@@ -168,6 +185,10 @@ class MotionEvent : public WidgetEvent {
             return _yrel;
         }
 
+        Point position() const {
+            return Point(_x, _y);
+        }
+
         void set_rel(int x, int y) {
             _xrel = x;
             _yrel = y;
@@ -223,16 +244,47 @@ class ReparentEvent : public WidgetEvent {
         Widget *_old;
         Widget *_new;
 };
+class DropEvent : public WidgetEvent {
+    public:
+        DropEvent() = default;
+        DropEvent(Event::Type t) : WidgetEvent(t) {}
+
+        // Set the drop data
+        void set_text(u8string_view us) {
+            _text = us;
+        }
+        void set_position(int x, int y) {
+            _x = x;
+            _y = y;
+        }
+
+        int           x() const {
+            return _x;
+        }
+        int           y() const {
+            return _y;
+        }
+        Point         position() const {
+            return Point(_x, _y);
+        }
+        u8string_view text() const {
+            return _text;
+        }
+    private:
+        u8string _text;
+        int _x;
+        int _y;
+};
 
 class TimerEvent : public Event {
     public:
-        TimerEvent(Object *obj, uint32_t id) : Event(Timer), _object(obj), _timerid(id) {}
+        TimerEvent(Object *obj, timerid_t id) : Event(Timer), _object(obj), _timerid(id) {}
         TimerEvent(const TimerEvent &e) = default;
 
-        Object  *object() const {
+        Object   *object() const {
             return _object;
         }
-        uint32_t timerid() const {
+        timerid_t timerid() const {
             return _timerid;
         }
     private:
@@ -245,12 +297,21 @@ class TimerEvent : public Event {
 
 class CallEvent : public Event {
     public:
+        CallEvent() : Event(Call) {}
+
         void call() {
             _func(_user);
         }
+
+        void set_func(void (*fn)(void *)) {
+            _func = fn;
+        }
+        void set_user(void *user) {
+            _user = user;
+        }
     private:
-        void (*_func)(void *user);
-        void  *_user;
+        void (*_func)(void *user) = nullptr;
+        void  *_user              = nullptr;
 };
 
 

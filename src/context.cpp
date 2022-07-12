@@ -1,13 +1,18 @@
 #include "build.hpp"
 
 #include <Btk/context.hpp>
+#include <Btk/painter.hpp>
 #include <Btk/style.hpp>
 #include <thread> //< For std::this_thread::yield()
 #include <chrono>
 
+#if defined(_WIN32)
+#include <windows.h>
+#endif
+
 BTK_NS_BEGIN
 
-static thread_local UIContext *ui_context = nullptr;
+static UIContext *ui_context = nullptr;
 
 void SetUIContext(UIContext *context) {
     ui_context = context;
@@ -91,21 +96,6 @@ void EventLoop::dispatch(Event *event) {
             running = false;
             break;
         }
-        case Event::WidgetBegin ... Event::WidgetEnd : {
-            auto w = static_cast<WidgetEvent*>(event)->widget();
-            if (w == nullptr) {
-                printf("EventLoop::dispatch: widget is null\n");
-                break;
-            }
-            // auto iter = ctxt->widgets.find(w);
-            // if (iter == ctxt->widgets.end()) {
-            //     printf("EventLoop::dispatch: widget not found\n");
-            //     break;
-            // }
-
-            w->handle(*event);
-            break;
-        }
         case Event::Timer : {
             auto t = static_cast<TimerEvent*>(event);
             t->object()->handle(*event);
@@ -117,6 +107,23 @@ void EventLoop::dispatch(Event *event) {
             break;
         }
         default : {
+            // Widget event
+            if (event->is_widget_event()) {
+                auto w = static_cast<WidgetEvent*>(event)->widget();
+                if (w == nullptr) {
+                    printf("EventLoop::dispatch: widget is null\n");
+                    break;
+                }
+                // auto iter = ctxt->widgets.find(w);
+                // if (iter == ctxt->widgets.end()) {
+                //     printf("EventLoop::dispatch: widget not found\n");
+                //     break;
+                // }
+
+                w->handle(*event);
+                break;
+            }
+
             printf("EventLoop::dispatch: unknown event type\n");
             break;
         }
@@ -132,7 +139,7 @@ timestamp_t GetTicks() {
 void StyleBreeze(Style *style) {
     style->background = Color(252, 252, 252);
     style->window     = Color(239, 240, 241);
-    style->button     = Color(238, 240, 241);
+    // style->button     = Color(238, 240, 241);
     style->border     = Color(188, 190, 191);
     style->highlight  = Color(61 , 174, 233);
     style->selection  = Color(61 , 174, 233);
@@ -143,6 +150,25 @@ void StyleBreeze(Style *style) {
     // Button default size
     style->button_width = 88;
     style->button_height = 32;
+    // Buffer radius
+    style->button_radius = 0;
+
+    style->progressbar_width = 100;
+    style->progressbar_height = 20;
+
+    // Set font family and size
+// #if defined(_WIN32)
+#if 0
+    // Query current system font
+    LOGFONTW lf;
+    GetObjectW(GetStockObject(DEFAULT_GUI_FONT), sizeof(LOGFONTW), &lf);
+    auto nameu8 = u8string::from(lf.lfFaceName);
+
+    style->font = Font(nameu8, std::abs(lf.lfHeight));
+#else
+    style->font = Font("", 12);
+#endif
+
 }
 
 BTK_NS_END

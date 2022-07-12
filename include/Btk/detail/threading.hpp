@@ -61,9 +61,7 @@ class SpinLock {
 // Fallback spinlock by std::atomic
 class SpinLock {
     public:
-        SpinLock() noexcept {
-            _lock = false;
-        }
+        SpinLock() noexcept = default;
         SpinLock(const SpinLock &) = delete;
         ~SpinLock() = default;
 

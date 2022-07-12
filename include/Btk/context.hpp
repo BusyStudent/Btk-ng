@@ -81,12 +81,26 @@ class GraphicsDriver : public Any {
         virtual void       pump_events(UIContext *) = 0;
 };
 
+// Provide more details of desktop
+class DesktopDriver : public GraphicsDriver {
+    public:
+        // TODO : 
+        virtual pointer_t menu_create() = 0;
+
+        // Extend of clipboard
+        virtual void      clipboard_set_image(const PixBuffer &) = 0;
+        virtual PixBuffer clipboard_get_image() = 0;
+};
+
 /**
  * @brief 3D Context like OpenGL
  * 
  */
 class Graphics3DContext : public Any {
     public:
+        virtual void      begin() = 0;
+        virtual void      end() = 0;
+        virtual void      swap_buffers() = 0;
 };
 
 /**
@@ -158,23 +172,51 @@ class VGraphicsContext : public GraphicsContext {
         virtual void stroke() = 0;
         virtual void fill() = 0;
 };
+class GLContext : public Graphics3DContext {
+    public:
+        virtual bool      set_sync(bool v) = 0;
+        virtual bool      set_viewport(const Rect &rect) = 0;
+        virtual Size      get_drawable_size() = 0;
+        virtual pointer_t get_proc_address(const char_t *name) = 0;
+};
+class FrameBuffer : public Any {
+
+};
 
 class AbstractWindow : public Any {
     public:
+        enum Query : int {
+            NativeHandle,
+            Hwnd,
+            Hdc,
+            XDisplay,
+            XWindow,
+        };
+        enum Attr : int {
+            AcceptDrop,
+            Fullscreen,
+            Maximized,
+            Minimized,
+            Resizable,
+        };
 
         virtual Size       size() const = 0;
         virtual Point      position() const = 0;
         virtual void       raise() = 0;
         // virtual void       grab() = 0;
+        virtual void       repaint() = 0;
         virtual void       show(bool show_flag) = 0;
         virtual void       move  (int x, int y) = 0;
         virtual void       resize(int width, int height) = 0;
         virtual void       set_title(const char_t * title) = 0;
         virtual void       set_icon(const PixBuffer &buffer) = 0;
+        virtual void       capture_mouse(bool capture) = 0;
+        // virtual bool       set_attribute(int attr, ...) = 0;
 
         // virtual pointer_t native_handle() = 0;
         virtual widget_t   bind_widget(widget_t widget) = 0;
-        virtual gcontext_t gc_create() = 0;
+        // virtual gcontext_t gc_create() = 0;
+        virtual Painter    painter_create() = 0;
 };
 class AbstractTexture : public Any {
     public:
@@ -200,6 +242,7 @@ class AbstractFont : public Any {
 
 #if 1
 
+extern GraphicsDriverInfo Win32DriverInfo;
 extern GraphicsDriverInfo SDLDriverInfo;
 
 #endif
@@ -308,6 +351,7 @@ class BTKAPI EventQueue {
 
 class BTKAPI EventLoop : public Trackable {
     public:
+        EventLoop();
         EventLoop(UIContext *ctxt) : ctxt(ctxt) {}
         ~EventLoop() = default;
 
@@ -359,6 +403,7 @@ class BTKAPI UIContext : public Trackable {
             return driver->timer_del(obj, id);
         }
     private:
+        PainterInitializer painter_init;
         GraphicsDriver *driver = nullptr;
         EventQueue queue;//< For collecting events
         std::unordered_set<Widget *> widgets;
@@ -370,5 +415,7 @@ class BTKAPI UIContext : public Trackable {
 
 BTKAPI UIContext *GetUIContext();
 BTKAPI void       SetUIContext(UIContext *context);
+
+inline EventLoop::EventLoop() : EventLoop(GetUIContext()) {}
 
 BTK_NS_END

@@ -33,8 +33,10 @@
 // Source check
 #if     defined(_BTK_SOURCE) && !defined(_BTK_STATIC)
 #define BTKAPI BTK_ATTRIBUTE(BTK_DLLEXPORT)
-#else
+#elif  !defined(_BTK_SHARED)
 #define BTKAPI BTK_ATTRIBUTE(BTK_DLLIMPORT)
+#else
+#define BTKAPI
 #endif
 
 // Macro utilities
@@ -54,16 +56,18 @@
 #endif
 
 // Bultin functions for speed optimization
-#if defined(__has_builtin)
+#if defined(__has_builtin) && !defined(_MSC_VER)
 #define Btk_memmove(dst, src, n)   __builtin_memmove(dst, src, n)
 #define Btk_memcpy(dst, src, size) __builtin_memcpy(dst, src, size)
 #define Btk_memset(dst, val, size) __builtin_memset(dst, val, size)
 #define Btk_memcmp(a, b, size)     __builtin_memcmp(a, b, size)
+#define Btk_memzero(dst, size)     __builtin_memset(dst, 0, size)
 #else
 #define Btk_memmove(dst, src, n)   memmove(dst, src, n)
 #define Btk_memcpy(dst, src, size) memcpy(dst, src, size)
 #define Btk_memset(dst, val, size) memset(dst, val, size)
 #define Btk_memcmp(a, b, size)     memcmp(a, b, size)
+#define Btk_memzero(dst, size)     memset(dst, 0, size)
 #endif
 
 // Assert / Debug macros
@@ -94,6 +98,12 @@
             static_cast<base>(a1) op static_cast<base>(a2)\
         );\
     }
+#define BTK_ENUM_OPERATOR1(en, base, op) \
+    inline en operator op(en a) noexcept { \
+        return static_cast<en>( \
+            op static_cast<base>(a) \
+        ); \
+    }
 #define BTK_ENUM_OPERATOR2(en, base, op) \
     inline en operator op##=(en &a1,en a2) noexcept{\
         a1 = static_cast<en>(\
@@ -115,5 +125,6 @@
     BTK_ENUM_OPERATOR2(en, base, &);\
     BTK_ENUM_OPERATOR2(en, base, |);\
     BTK_ENUM_OPERATOR2(en, base, ^);\
-    BTK_ENUM_ALIAS(en, +, |);\
+    BTK_ENUM_OPERATOR1(en, base, ~);\
+    BTK_ENUM_ALIAS(en, +,  |);\
     BTK_ENUM_ALIAS(en, +=, |=);

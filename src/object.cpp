@@ -74,6 +74,9 @@ Any *Object::userdata(const char_t *key) const {
     return implment()->userdata(key);
 }
 bool Object::handle(Event &event) {
+    if (event.type() == Event::Timer) {
+        return timer_event(event.as<TimerEvent>());
+    }
     return false;
 }
 
@@ -101,6 +104,15 @@ bool       Object::del_timer(timerid_t timerid) {
         return implment()->ctxt->timer_del(this, timerid);
     }
     return false;
+}
+void       Object::defer_delete() {
+    auto ctxt = ui_context();
+    CallEvent event;
+    event.set_func([](void *obj){
+        delete static_cast<Object *>(obj);
+    });
+    event.set_user(this);
+    ctxt->send_event(event);
 }
 
 BTK_NS_END

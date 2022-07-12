@@ -4,6 +4,11 @@
 #include <string_view>
 #include <string>
 #include <vector>
+#include <iosfwd>
+
+// TODO List
+// 0 - Add support for replace , insert, erase, etc.
+
 
 BTK_NS_BEGIN
 
@@ -18,10 +23,10 @@ BTKAPI bool    Utf8IsValid(const char_t *p, size_t size) BTK_NOEXCEPT;
 
 BTKAPI size_t  Utf8Encode(char_t buf[4], uchar_t c)      BTK_NOEXCEPT;
 
-// Locate a codepoint in a string. return position.
-BTKAPI size_t  Utf8Locate(const char *str, const char_t *p) BTK_NOEXCEPT;
+// Locate a codepoint in a string. return position (in logical).
+BTKAPI size_t  Utf8Locate(const char_t *str, const char_t *p) BTK_NOEXCEPT;
 // Seek to
-BTKAPI void    Utf8Seek(const char *str, size_t size, const char *&cur, int64_t dis) BTK_NOEXCEPT;
+BTKAPI void    Utf8Seek(const char_t *str, size_t size, const char_t *&cur, int64_t dis) BTK_NOEXCEPT;
 
 
 // Move to next character in string.
@@ -77,11 +82,11 @@ class _Utf8FastIteratorBase {
         }
 
         // Method for string
-        size_t range_start() const {
+        size_t range_begin() const {
             return where - container->data();
         }
         size_t range_end() const {
-            return range_start() + codepoint_size();
+            return range_begin() + codepoint_size();
         }
         size_t range_len() const {
             return codepoint_size();
@@ -147,11 +152,11 @@ class _Utf8StableIteratorBase {
         }
 
         // Method for u8string
-        size_t range_start() const {
+        size_t range_begin() const {
             return address() - container->data();
         }
         size_t range_end() const {
-            return range_start() + codepoint_size();
+            return range_begin() + codepoint_size();
         }
         size_t range_len() const {
             return codepoint_size();
@@ -243,6 +248,7 @@ class BTKAPI u8string {
         u8string(u8string &&str) : _str(std::move(str._str)) {}
         ~u8string() = default;
 
+        static constexpr auto npos = stdu8string::npos;
 
         using const_iterator  = _Utf8Iterator<const u8string>;
         using iterator        = _Utf8Iterator<u8string>;
@@ -278,6 +284,12 @@ class BTKAPI u8string {
         }
         void shrink_to_fit() noexcept {
             _str.shrink_to_fit();
+        }
+        void reserve(size_t n) {
+            _str.reserve(n);
+        }
+        void resize(size_t n) {
+            _str.resize(n);
         }
 
         // Compare / Assign
@@ -325,6 +337,19 @@ class BTKAPI u8string {
             return *this;
         }
 
+        // Replace
+        void     replace(iterator start, iterator end, stdu8string_view str) {
+            size_t beg = start.range_begin();
+            size_t len = end.range_end() - beg;
+            _str.replace(beg, len, str);
+        }
+        void     replace(iterator where, stdu8string_view str) {
+            size_t beg = where.range_begin();
+            size_t len = where.range_len();
+            _str.replace(beg, len, str);
+        }
+        void     replace(u8string_view from, u8string_view to, size_t limit = size_t(-1));
+
         // Push back
         void     push_back(char_t ch) {
             _str.push_back(ch);
@@ -337,6 +362,9 @@ class BTKAPI u8string {
 
         // Utils
         StringList split(u8string_view what);
+
+        // Make a view of the string
+        u8string_view view() const;
 
         // Implmentations
         stdu8string & str() noexcept {
@@ -357,6 +385,10 @@ class BTKAPI u8string {
         }
         u8string & operator =(const char_t *str) noexcept {
             _str = str;
+            return *this;
+        }
+        u8string & operator =(stdu8string_view s) {
+            _str = s;
             return *this;
         }
         bool       operator ==(const u8string &str) const noexcept {
@@ -380,6 +412,9 @@ class BTKAPI u8string {
         operator const stdu8string &() const noexcept {
             return _str;
         }
+
+        // Format
+        static u8string format(const char_t *fmt, ...);
 
         // From another types
         static u8string from(const void *data, size_t size);
@@ -407,6 +442,8 @@ class BTKAPI u8string_view {
         u8string_view(const char_t *str, size_t len) : _str(str, len) {}
         u8string_view(const stdu8string &str) : _str(str) {}
         u8string_view(const u8string    &str) : _str(str.str()) {}
+
+        static constexpr auto npos = stdu8string_view::npos;
 
         using const_iterator = _Utf8Iterator<const u8string_view>;
         using iterator       = _Utf8Iterator<const u8string_view>;
@@ -460,15 +497,29 @@ inline u8string u8string::from(std::wstring_view   str) {
     return u8string::from(reinterpret_cast<const wchar*>(str.data()), str.size());
 }
 
+inline u8string_view u8string::view() const {
+    return u8string_view(_str.data(), _str.size());
+}
+
+// Stream operator for u8string
+
+BTKAPI std::ostream & operator <<(std::ostream &os, const u8string &str);
+BTKAPI std::ostream & operator <<(std::ostream &os, u8string_view   str);
 
 BTK_NS_END
 
 // Provide Hash function for u8string
 namespace std {
     template <>
-    struct hash<Btk::u8string> {
+    struct hash<BTK_NAMESPACE::u8string> {
         size_t operator()(const BTK_NAMESPACE::u8string &str) const noexcept {
             return hash<BTK_NAMESPACE::stdu8string>()(str.str());
+        }
+    };
+    template <>
+    struct hash<BTK_NAMESPACE::u8string_view> {
+        size_t operator()(const BTK_NAMESPACE::u8string_view &str) const noexcept {
+            return hash<BTK_NAMESPACE::stdu8string_view>()(str);
         }
     };
 }

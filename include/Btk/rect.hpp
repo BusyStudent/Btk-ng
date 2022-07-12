@@ -46,6 +46,9 @@ class SizeImpl {
         SizeImpl(T w, T h) : w(w), h(h) {}
         SizeImpl(const SizeImpl &s) : w(s.w), h(s.h) {}
 
+        bool is_valid() const {
+            return w > 0 && h > 0;
+        }
         bool compare(const SizeImpl &s) const {
             return w == s.w && h == s.h;
         }
@@ -148,10 +151,10 @@ using FRect = RectImpl<float>;
 using Size  = SizeImpl<int>;
 using FSize = SizeImpl<float>;
 
-using Point = PointImpl<int>;
+using Point  = PointImpl<int>;
 using FPoint = PointImpl<float>;
 
-using Margin = MarginImpl<int>;
+using Margin  = MarginImpl<int>;
 using FMargin = MarginImpl<float>;
 
 BTK_NS_END
