@@ -37,6 +37,8 @@ namespace {
     static IDWriteFactory *dwrite_factory = nullptr;
     static ID2D1Factory   *d2d_factory = nullptr;
 
+    using namespace BTK_NAMESPACE;
+
     auto bounds_from_circle(float x, float y, float r) -> D2D1_RECT_F {
         return D2D1::RectF(
             x - r,
@@ -73,6 +75,37 @@ namespace {
         }
     }
 
+    auto layout_translate_by_align(IDWriteTextLayout *layout, Btk::Alignment align, float *x, float *y) {
+        // Translate by align to left/top
+        HRESULT hr;
+        DWRITE_TEXT_METRICS metrics;
+        hr = layout->GetMetrics(&metrics);
+        assert(SUCCEEDED(hr));
+
+        if ((align & Alignment::Right) == Alignment::Right) {
+            *x -= metrics.width;
+        }
+        if ((align & Alignment::Bottom) == Alignment::Bottom) {
+            *y -= metrics.height;
+        }
+        if ((align & Alignment::Center) == Alignment::Center) {
+            *x -= metrics.width / 2;
+        }
+        if ((align & Alignment::Middle) == Alignment::Middle) {
+            *y -= metrics.height / 2;
+        }
+        if ((align & Alignment::Baseline) == Alignment::Baseline) {
+            // Get layout baseline
+            DWRITE_LINE_METRICS line_metrics;
+            UINT line_count = 0;
+            hr = layout->GetLineMetrics(&line_metrics, 1, &line_count);
+            assert(SUCCEEDED(hr));
+
+            *y -= line_metrics.baseline;
+        }
+
+        return D2D1::RectF(*x, *y, *x + metrics.width, *y + metrics.height);
+    }
 }
 
 BTK_NS_BEGIN
@@ -173,6 +206,7 @@ class PainterImpl {
         void draw_ellipse(float x, float y, float xr, float yr);
         void draw_rounded_rect(float x, float y, float w, float h, float r);
 
+        void draw_image(TextureImpl *t,  const FRect *dst, const FRect *src);
         void draw_lines(const FPoint *fp, size_t n);
         void draw_text(u8string_view txt, float x, float y);
         void draw_text(IDWriteTextLayout *lay, float x, float y);
@@ -847,21 +881,62 @@ void PainterImpl::draw_rounded_rect(float x, float y, float w, float h, float r)
     auto brush = get_brush(rect);
     target->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x, y, x + w, y + h), r, r), brush, state.stroke_width);
 }
+void PainterImpl::draw_image(TextureImpl *tex,  const FRect *_dst, const FRect *_src) {
+    ID2D1Bitmap *bitmap = tex->bitmap.Get();
+    FRect src;
+    FRect dst;
+
+    assert(bitmap);
+
+    if (_dst) {
+        dst = *_dst;
+    }
+    else {
+        auto [w, h] = target->GetSize();
+        dst = FRect(0, 0, w, h);
+    }
+
+    if (_src) {
+        src = *_src;
+    }
+    else {
+        auto [w, h] = bitmap->GetSize();
+        src = FRect(0, 0, w, h);
+    }
+
+    // Zoom the image let it display at the right size
+    auto [tex_w, tex_h] = bitmap->GetSize();
+    
+    float w_ratio = float(tex_w) / float(src.w);
+    float h_ratio = float(tex_h) / float(src.h);
+
+    // Transform the image to fit it
+    FRect tgt;
+
+    tgt.w = dst.w * w_ratio;
+    tgt.h = dst.h * h_ratio;
+
+    tgt.x = dst.x - (src.x / src.w) * dst.w;
+    tgt.y = dst.y - (src.y / src.h) * dst.h;
+
+    auto brush = brushs.bitmap.Get();
+
+    brush->SetBitmap(bitmap);
+    brush->SetTransform(
+        D2D1::Matrix3x2F::Scale(tgt.w / tex_w, tgt.h / tex_h) *
+        D2D1::Matrix3x2F::Translation(tgt.x, tgt.y)
+    );
+    // Draw actual area
+    target->FillRectangle(
+        D2D1::RectF(dst.x, dst.y, dst.x + dst.w, dst.y + dst.h),
+        brush
+    );
+
+    // Reset bitmap
+    brush->SetBitmap(nullptr);
+}
 void PainterImpl::draw_lines(const FPoint *fp, size_t n) {
-    // ComPtr<ID2D1PathGeometry> path;
-    // d2d_factory->CreatePathGeometry(path.GetAddressOf());
-
-    // ComPtr<ID2D1GeometrySink> sink;
-    // path->Open(sink.GetAddressOf());
-
-    // static_assert(offsetof(FPoint, x) == offsetof(D2D1_POINT_2F, x));
-    // static_assert(offsetof(FPoint, y) == offsetof(D2D1_POINT_2F, y));
-
-    // sink->AddLines(reinterpret_cast<const D2D1_POINT_2F*>(fp), n);
-    // sink->Close();
-
-    // // Draw it
-    // target->DrawGeometry(path.Get(), brushs.solid.Get(), state.stroke_width);
+    // TODO : Optimize this
     for (size_t i = 0; i < n - 1; i++) {
         draw_line(fp[i].x, fp[i].y, fp[i + 1].x, fp[i + 1].y);
     }
@@ -890,35 +965,36 @@ void PainterImpl::draw_text(u8string_view txt, float x, float y) {
 }
 void PainterImpl::draw_text(IDWriteTextLayout *layout, float x, float y) {
     // Get layout size
-    DWRITE_TEXT_METRICS metrics;
-    layout->GetMetrics(&metrics);
+    // DWRITE_TEXT_METRICS metrics;
+    // layout->GetMetrics(&metrics);
 
     align_t align = state.text_align;
-    HRESULT hr;
+    // HRESULT hr;
 
-    // Translate by align to left/top
-    if ((align & Alignment::Right) == Alignment::Right) {
-        x -= metrics.width;
-    }
-    if ((align & Alignment::Bottom) == Alignment::Bottom) {
-        y -= metrics.height;
-    }
-    if ((align & Alignment::Center) == Alignment::Center) {
-        x -= metrics.width / 2;
-    }
-    if ((align & Alignment::Middle) == Alignment::Middle) {
-        y -= metrics.height / 2;
-    }
-    if ((align & Alignment::Baseline) == Alignment::Baseline) {
-        // Get layout baseline
-        DWRITE_LINE_METRICS line_metrics;
-        UINT line_count = 0;
-        hr = layout->GetLineMetrics(&line_metrics, 1, &line_count);
+    // // Translate by align to left/top
+    // if ((align & Alignment::Right) == Alignment::Right) {
+    //     x -= metrics.width;
+    // }
+    // if ((align & Alignment::Bottom) == Alignment::Bottom) {
+    //     y -= metrics.height;
+    // }
+    // if ((align & Alignment::Center) == Alignment::Center) {
+    //     x -= metrics.width / 2;
+    // }
+    // if ((align & Alignment::Middle) == Alignment::Middle) {
+    //     y -= metrics.height / 2;
+    // }
+    // if ((align & Alignment::Baseline) == Alignment::Baseline) {
+    //     // Get layout baseline
+    //     DWRITE_LINE_METRICS line_metrics;
+    //     UINT line_count = 0;
+    //     hr = layout->GetLineMetrics(&line_metrics, 1, &line_count);
 
-        y -= line_metrics.baseline;
-    }
+    //     y -= line_metrics.baseline;
+    // }
 
-    auto rect = D2D1::RectF(x, y, x + metrics.width, y + metrics.height);
+    // auto rect = D2D1::RectF(x, y, x + metrics.width, y + metrics.height);
+    auto rect = layout_translate_by_align(layout, align, &x, &y);
     auto brush = get_brush(rect);
 
     // Draw it
@@ -1175,6 +1251,12 @@ void Painter::draw_lines(const FPoint *fp, size_t n) {
 void Painter::draw_rounded_rect(float x, float y, float w, float h, float r) {
     priv->draw_rounded_rect(x, y, w, h, r);
 }
+void Painter::draw_image(const Texture &tex, const FRect *dst, const FRect *src) {
+    if (tex.empty()) {
+        return;
+    }
+    priv->draw_image(tex.priv, dst, src);
+}
 void Painter::draw_text(u8string_view txt, float x, float y) {
     priv->draw_text(txt, x, y);
 }
@@ -1230,6 +1312,15 @@ void Painter::reset_transform() {
 auto Painter::create_texture(PixFormat fmt, int w, int h) -> Texture {
     Texture t;
     t.priv = priv->create_texture(fmt, w, h);
+    return t;
+}
+auto Painter::create_texture(const PixBuffer &buf) -> Texture {
+    Texture t = create_texture(buf.format(), buf.width(), buf.height());
+    t.update(
+        nullptr,
+        buf.pixels(),
+        buf.pitch()
+    );
     return t;
 }
 
@@ -1357,7 +1448,14 @@ void  Font::set_bold(bool bold) {
         priv->weight = DWRITE_FONT_WEIGHT_BOLD;
     }
 }
-bool Font::empty() const {
+void  Font::set_family(u8string_view family) {
+    begin_mut();
+    priv->format.Reset();
+    // Clear done
+
+    priv->name = family;
+}
+bool  Font::empty() const {
     return priv == nullptr;
 }
 
@@ -1387,6 +1485,34 @@ Size TextLayout::size() const {
         }
     }
     return Size(-1, -1);
+}
+bool TextLayout::hit_test(float x, float y, TextHitResult *res) const {
+    if (priv) {
+        auto layout = priv->lazy_eval();
+        if (layout) {
+            BOOL inside;
+            BOOL is_trailing_hit;
+            DWRITE_HIT_TEST_METRICS m;
+            if (FAILED(layout->HitTestPoint(x, y, &is_trailing_hit, &inside, &m))) {
+                return false;
+            }
+            if (res) {
+                res->text = m.textPosition;
+                res->length = m.length;
+
+                res->box.x = m.left;
+                res->box.y = m.top;
+                res->box.w = m.width;
+                res->box.h = m.height;
+
+                res->trailing = is_trailing_hit;
+                res->inside = inside;
+            }
+
+            return inside;
+        }
+    }
+    return false;
 }
 
 // Brush

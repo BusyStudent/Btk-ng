@@ -111,7 +111,7 @@ void EventLoop::dispatch(Event *event) {
             if (event->is_widget_event()) {
                 auto w = static_cast<WidgetEvent*>(event)->widget();
                 if (w == nullptr) {
-                    printf("EventLoop::dispatch: widget is null\n");
+                    BTK_LOG("EventLoop::dispatch: widget is null\n");
                     break;
                 }
                 // auto iter = ctxt->widgets.find(w);
@@ -124,15 +124,26 @@ void EventLoop::dispatch(Event *event) {
                 break;
             }
 
-            printf("EventLoop::dispatch: unknown event type\n");
+            BTK_LOG("EventLoop::dispatch: unknown event type\n");
             break;
         }
     }
 }
 
 timestamp_t GetTicks() {
+#if   defined(_WIN32)
+    // Native here
+    if constexpr (sizeof(timestamp_t) >= sizeof(ULONGLONG)) {
+        return GetTickCount64();
+    }
+    else {
+        return GetTickCount();
+    }
+#else
+    // Use fallback
     using namespace std::chrono;
     return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
+#endif
 }
 
 // Style

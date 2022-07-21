@@ -7,6 +7,9 @@ using namespace Btk;
 class Canvas : public Widget {
     public:
         Canvas() : Widget() {
+            // Make sure the painter is initialized
+            show();
+
             add_timer(100);
             progress.resize(64 , 20);
             progress.set_text_visible(true);
@@ -153,7 +156,10 @@ int main () {
     Widget widget;
     Button w(&widget);
     Button v(&widget);
+    Button u(&widget);
     ProgressBar p(&widget);
+    ProgressBar q(&widget);
+    Timer            timer;
     w.set_text("Increment😀");
 
     widget.show();
@@ -166,6 +172,10 @@ int main () {
     p.set_value(50);
     p.move(100, 100);
     p.resize(200, 20);
+
+    q.set_value(0);
+    q.move(100, 120);
+    q.resize(200, 20);
     
     // Connect signal
     w.signal_clicked().connect([&]() {
@@ -180,9 +190,43 @@ int main () {
     v.signal_clicked().connect([&, vis = true]() mutable {
         std::cout << "Button clicked" << std::endl;
         p.set_text_visible(vis);
+        q.set_text_visible(vis);
         vis = !vis;
     });
 
+    u.move(100, 140);
+    u.set_text("Start timer");
+    u.signal_clicked().connect([&, started = false]() mutable {
+        if (started) {
+            timer.stop();
+            started = false;
+            u.set_text("Start timer");
+        }
+        else {
+            timer.start();
+            started = true;
+            u.set_text("Stop timer");
+        }
+    });
+
+    timer.signal_timeout().connect([&]() {
+        if (q.value() == 100) {
+            widget.close();
+            timer.stop();
+        }
+        else{
+            q.set_value(q.value() + 1);
+        }
+    });
+
+    timer.set_interval(10);
+    timer.set_repeat(true);
+
+    Label lab(&widget," Timer Progress: ");
+    lab.move(100 - lab.width(), 120);
+
+    Label lab2(&widget," ProgressBar: ");
+    lab2.move(100 - lab.width(), 100);
 
     Canvas c;
     c.show();

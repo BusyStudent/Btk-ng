@@ -197,16 +197,21 @@ class MotionEvent : public WidgetEvent {
         int _x = -1;
         int _y = -1;
 
-        int _xrel = -1;
-        int _yrel = -1;
+        // Which value shouble be used for invalid rel values
+        int _xrel = 0;
+        int _yrel = 0;
 };
 class MouseEvent : public WidgetEvent {
     public:
         MouseEvent(Type t, int x, int y, uint8_t clicks) : 
             WidgetEvent(t), _x(x), _y(y), _clicks(clicks) {}
         
-        int x() const;
-        int y() const;
+        int x() const {
+            return _x;
+        }
+        int y() const {
+            return _y;
+        }
         int button() const;
     private:
         int _x; //< Mouse x position
@@ -222,6 +227,33 @@ class CloseEvent : public WidgetEvent {
     public:
         CloseEvent() : WidgetEvent(Close) {}
 };
+class DragEvent  : public WidgetEvent {
+    public:
+        DragEvent(Type t, int x, int y) : WidgetEvent(t), _x(x), _y(y) {}
+
+        int x() const {
+            return _x;
+        }
+        int y() const {
+            return _y;
+        }
+        int xrel() const {
+            return _xrel;
+        }
+        int yrel() const {
+            return _yrel;
+        }
+
+        void set_rel(int x, int y) {
+            _xrel = x;
+            _yrel = y;
+        }
+    private:
+        int _x = -1;
+        int _y = -1;
+        int _xrel = 0;
+        int _yrel = 0;
+};
 class KeyEvent : public WidgetEvent {
     public:
         KeyEvent(Type t, Key key, Modifier modifiers) : WidgetEvent(t), _key(key), _modifiers(modifiers) {}
@@ -236,6 +268,12 @@ class KeyEvent : public WidgetEvent {
         Modifier _modifiers;
 };
 class TextInputEvent : public WidgetEvent {
+    public:
+        TextInputEvent(u8string_view t) : WidgetEvent(TextInput), _text(t) {}
+
+        u8string_view text() const {
+            return _text;
+        }
     private:
         u8string _text;
 };
@@ -294,6 +332,10 @@ class TimerEvent : public Event {
 
 
 // Another Event
+class QuitEvent : public Event {
+    public:
+        QuitEvent() : Event(Quit) {}
+};
 
 class CallEvent : public Event {
     public:
@@ -322,6 +364,7 @@ union EventCollections {
     ResizeEvent resize;
     MouseEvent mouse;
     CallEvent call;
+    QuitEvent quit;
     KeyEvent key;
 };
 

@@ -14,7 +14,9 @@ Widget::Widget() {
     BTK_ASSERT(_context);
 }
 Widget::Widget(Widget *parent) : Widget() {
-    parent->add_child(this);
+    if (parent != nullptr) {
+        parent->add_child(this);
+    }
 }
 Widget::~Widget() {
 
@@ -33,12 +35,6 @@ Widget::~Widget() {
         delete w;
     }
 
-    // Remove all filters
-    while (_filters) {
-        EventFilterNode *next = _filters->next;
-        delete _filters;
-        _filters = next;
-    }
 
     // Release painter
     _painter = {};
@@ -82,6 +78,23 @@ void Widget::show() {
 void Widget::hide() {
     set_visible(false);
 }
+void Widget::close() {
+    if (is_window()) {
+        _win->close();
+        return;
+    }
+    // Try generate close event
+    WidgetEvent event(Event::Close);
+    event.set_timestamp(GetTicks());
+    event.set_widget(this);
+    event.accept();
+
+    handle(event);
+
+    if (event.is_accepted()) {
+        set_visible(false);
+    }
+}
 void Widget::resize(int w, int h) {
     int old_w = _rect.w;
     int old_h = _rect.h;
@@ -107,13 +120,9 @@ void Widget::move(int x, int y) {
 bool Widget::handle(Event &event) {
     // printf("Widget::handle(%d)\n", event.type());
     // Do event filters
-    EventFilterNode *node = _filters;
-    while (node) {
-        if (node->filter(this, event, node->userdata)) {
-            // discard event
-            return true;
-        }
-        node = node->next;
+    if (run_event_filter(event)) {
+        // Filtered
+        return true;
     }
 
     // Default unhandled
@@ -136,7 +145,7 @@ bool Widget::handle(Event &event) {
             // From bottom to top
             for(auto iter = _children.rbegin(); iter != _children.rend(); ++iter) {
                 auto w = *iter;
-                if (!w->_visible) {
+                if (!w->_visible || w->_rect.empty()) {
                     continue;
                 }
                 w->handle(event);
@@ -187,6 +196,7 @@ bool Widget::handle(Event &event) {
             return key_release(event.as<KeyEvent>());
         }
         case Event::MousePress : {
+            _pressed = true;
             if (mouse_current_widget) {
                 if (mouse_current_widget->handle(event)) {
                     return true;
@@ -196,6 +206,21 @@ bool Widget::handle(Event &event) {
             return mouse_press(event.as<MouseEvent>());
         }
         case Event::MouseRelease : {
+            // Reset pressed flag and drag flag
+            _drag_reject = false;
+            _pressed = false;
+            if (dragging_widget && is_root()) {
+                BTK_LOG("Widget::handle(MouseRelease) - Top level, Generate DragEnd\n");
+                BTK_LOG("Widget::handle(MouseRelease) - Dragging widget %p\n", dragging_widget);
+                // Only root widget can generate drag event
+                // Send this event to drag widget
+                auto mouse = event.as<MouseEvent>();
+                DragEvent event(Event::DragEnd, mouse.x(), mouse.y());
+                dragging_widget->handle(event);
+                dragging_widget = nullptr;
+                // Uncapture mouse
+                capture_mouse(false);
+            }
             if (mouse_current_widget) {
                 if (mouse_current_widget->handle(event)) {
                     return true;
@@ -221,6 +246,37 @@ bool Widget::handle(Event &event) {
         case Event::MouseMotion : {
             // Get current mouse widget
             auto &motion = event.as<MotionEvent>();
+
+            // TODO : generate Drag here
+            if (_pressed && is_root() && !_drag_reject) {
+                if (!_drag_reject && !dragging_widget) {
+                    // Try start it
+                    DragEvent event(Event::DragBegin, motion.x(), motion.y());
+                    bool v = handle(event);
+                    // Check widget has founded or self accept it
+                    if (!dragging_widget && !v) {
+                        BTK_LOG("Widget::handle(MouseMotion) - No widget under mouse\n");
+                        BTK_LOG("Widget::handle(MouseMotion) - Drag rejected\n");
+                        // No widget under mouse
+                        // Reject drag
+                        _drag_reject = true;
+                    }
+                    else {
+                        BTK_LOG("Widget::handle(MouseMotion) - Drag begin\n");
+                        BTK_LOG("Widget::handle(MouseMotion) - Dragging widget '%s'\n", Btk_typename(dragging_widget));
+                        BTK_LOG("Widget::handle(MouseMotion) - Capture mouse\n");
+                        capture_mouse(true);
+                    }
+                }
+                DragEvent event(DragEvent::DragMotion, motion.x(), motion.y());
+                if (dragging_widget) {
+                    dragging_widget->handle(event);
+                }
+                else if(!_drag_reject) {
+                    // Top level self accept drag
+                    handle(event);
+                }
+            }
 
             if (mouse_current_widget == nullptr) {
                 // Try get one
@@ -267,13 +323,35 @@ bool Widget::handle(Event &event) {
         }
         // TODO : Support drag and drop
         case Event::DragBegin : {
-            
+            auto drag = event.as<DragEvent>();
+            auto child = child_at(drag.x(), drag.y());
+            if (child) {
+                // Got a child, notify it
+                dragging_widget = child;
+                if (child->handle(event)) {
+                    return true;
+                }
+            }
+            // Unhandled or no child under mouse
+            return drag_begin(drag);
         }
         case Event::DragEnd : {
-            
+            auto drag = event.as<DragEvent>();
+            if (dragging_widget) {
+                // Notify drag end
+                dragging_widget->handle(event);
+                dragging_widget = nullptr;
+            }
+            return drag_end(drag);
         }
         case Event::DragMotion : {
-            break;
+            if (dragging_widget) {
+                if (dragging_widget->handle(event)) {
+                    return true;
+                }
+            }
+            // Unhandled or no widget under mouse
+            return drag_motion(event.as<DragEvent>());
         }
         default: {
             break;
@@ -313,6 +391,9 @@ bool Widget::visible() const {
 }
 bool Widget::is_window() const {
     return _win != nullptr;
+}
+bool Widget::is_root() const {
+    return _parent == nullptr;
 }
 Widget *Widget::parent() const {
     return _parent;
@@ -354,7 +435,7 @@ Painter &Widget::painter() const {
 // Child widgets
 Widget *Widget::child_at(int x, int y) const {
     for(auto w : _children) {
-        if (w->rect().contains(x, y)) {
+        if (w->_visible && w->rect().contains(x, y)) {
             return w;
         }
     }
@@ -418,32 +499,6 @@ Widget *Widget::window() const {
     return p;
 }
 
-// EventFilter
-void   Widget::add_event_filter(EventFilter filter, pointer_t user) {
-    EventFilterNode *node = new EventFilterNode;
-    node->filter = filter;
-    node->userdata = user;
-    node->next = _filters;
-    _filters = node;
-}
-void   Widget::del_event_filter(EventFilter filter, pointer_t user) {
-    EventFilterNode *node = _filters;
-    EventFilterNode *prev = nullptr;
-    while (node) {
-        if (node->filter == filter && node->userdata == user) {
-            if (prev == nullptr) {
-                _filters = node->next;
-            }
-            else {
-                prev->next = node->next;
-            }
-            delete node;
-            return;
-        }
-        prev = node;
-        node = node->next;
-    }
-}
 // Window configure
 void Widget::set_window_title(u8string_view title) {
     if (is_window()) {
@@ -458,6 +513,11 @@ void Widget::set_window_size(int w, int h) {
 void Widget::set_window_position(int x, int y) {
     if (is_window()) {
         _win->move(x, y);
+    }
+}
+void Widget::set_window_icon(const PixBuffer &icon) {
+    if (is_window()) {
+        _win->set_icon(icon);
     }
 }
 void Widget::capture_mouse(bool capture) {
@@ -543,13 +603,14 @@ bool Button::paint_event(PaintEvent &event) {
 }
 bool Button::mouse_press(MouseEvent &event) {
     _pressed = true;
-    _clicked.emit();
 
     repaint();
     return true;
 }
 bool Button::mouse_release(MouseEvent &event) {
     _pressed = false;
+    _clicked.emit();
+
     repaint();
     return true;
 }
@@ -561,6 +622,7 @@ bool Button::mouse_enter(MotionEvent &event) {
 }
 bool Button::mouse_leave(MotionEvent &event) {
     _entered = false;
+    _pressed = false;
     repaint();
     return true;
 }
@@ -569,6 +631,51 @@ Size Button::size_hint() const {
     auto style = this->style();
     return Size(style->button_width, style->button_height);
 }
+
+// Label
+Label::Label(Widget *wi, u8string_view txt) : Widget(wi) {
+    _layout.set_font(font());
+    _layout.set_text(txt);
+
+    // Try measure text
+    auto size = size_hint();
+    if (size.is_valid()) {
+        resize(size.w, size.h);
+    }
+}
+Label::~Label() {}
+
+void Label::set_text(u8string_view txt) {
+    _layout.set_text(txt);
+}
+bool Label::paint_event(PaintEvent &) {
+    auto border = this->rect().cast<float>();
+    auto style = this->style();
+    auto &painter = this->painter();
+
+    painter.set_font(font());
+    painter.set_text_align(_align);
+    painter.set_color(style->text);
+
+    painter.set_scissor(border);
+    painter.draw_text(
+        _layout,
+        border.x,
+        border.y + border.h / 2
+    );
+    painter.reset_scissor();
+
+    return true;
+}
+Size Label::size_hint() const {
+    auto size = _layout.size();
+    if (size.is_valid()) {
+        // Add margin
+        return Size(size.w + 2, size.h + 2);
+    }
+    return size;
+}
+
 
 // ProgressBar
 ProgressBar::ProgressBar(Widget *parent) {

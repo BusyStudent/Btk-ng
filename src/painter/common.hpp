@@ -8,8 +8,9 @@
     void type::begin_mut() { \
         if (!priv) {\
             priv = new type##Impl();\
+            priv->set_refcount(1);\
         }\
-        if (priv->refcount() != 1) { \
+        else if (priv->refcount() != 1) { \
             auto n = new type##Impl(*priv);\
             priv->unref();\
             priv = n;\
@@ -84,9 +85,8 @@
     }
 
 // Generate COW impl
-#define COW_IMPL(type) \
+#define COW_BASIC_IMPL(type) \
     static_assert(std::is_base_of<Refable<type##Impl>, type##Impl>::value, "type must be Refable"); \
-    COW_MUT_IMPL(type) \
     COW_COPY_IMPL(type) \
     COW_MOVE_IMPL(type) \
     COW_RELEASE_IMPL(type) \
@@ -94,6 +94,10 @@
     COW_MOVE_ASSIGN_IMPL(type) \
     COW_NULLPTR_ASSIGN_IMPL(type) \
     COW_SWAP_IMPL(type) \
+
+#define COW_IMPL(type) \
+    COW_BASIC_IMPL(type) \
+    COW_MUT_IMPL(type) \
 
 // COM Helper
 #define COM_RELEASE(ptr) \

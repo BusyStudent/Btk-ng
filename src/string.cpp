@@ -14,13 +14,15 @@
 #endif
 
 namespace {
-    // Helper 
-    std::u16string btkus_to_utf16(const Btk::char_t *s, size_t n) {
+    // Helper
+    using namespace BTK_NAMESPACE;
+
+    std::u16string btkus_to_utf16(const char_t *s, size_t n) {
         std::u16string ret;
         utf8::unchecked::utf8to16(s, s + n, std::back_inserter(ret));
         return ret;
     }
-    std::u32string btkus_to_utf32(const Btk::char_t *s, size_t n) {
+    std::u32string btkus_to_utf32(const char_t *s, size_t n) {
         std::u32string ret;
         utf8::unchecked::utf8to32(s, s + n, std::back_inserter(ret));
         return ret;
@@ -48,6 +50,26 @@ namespace {
             return *this;
         }
     };
+
+    template <typename Ret>
+    Ret btkus_split(stdu8string_view str, stdu8string_view delim, size_t limit) {
+        Ret ret;
+
+        size_t pos = 0;
+        while (pos != stdu8string_view::npos) {
+            if (ret.size() == limit) {
+                break;
+            }
+            size_t next = str.find(delim, pos);
+            if (next == stdu8string_view::npos) {
+                ret.push_back(str.substr(pos));
+                break;
+            }
+            ret.push_back(str.substr(pos, next - pos));
+            pos = next + delim.size();
+        }
+        return ret;
+    }
 }
 
 
@@ -152,6 +174,15 @@ std::u32string u8string::to_utf32() const {
     return btkus_to_utf32(c_str(), size());
 }
 
+// Split
+StringList u8string::split(u8string_view delim, size_t limit) const {
+    return btkus_split<StringList>(_str, delim, limit);
+}
+StringRefList u8string::split_ref(u8string_view delim, size_t limit) const {
+    return btkus_split<StringRefList>(_str, delim, limit);
+}
+
+// Convert from
 u8string u8string::from(const char16_t *data, size_t size) {
     u8string us;
     utf8::unchecked::utf16to8(data, data + size, std::back_inserter(us._str));
@@ -170,9 +201,9 @@ u8string u8string::format(const char_t *fmt, ...) {
     
     va_start(varg, fmt);
 #ifdef _WIN32
-    s = _vscprintf(fmt,varg);
+    s = _vscprintf(fmt, varg);
 #else
-    s = vsnprintf(nullptr,0,fmt,varg);
+    s = vsnprintf(nullptr, 0, fmt, varg);
 #endif
     va_end(varg);
 
@@ -180,7 +211,7 @@ u8string u8string::format(const char_t *fmt, ...) {
     str.resize(s);
 
     va_start(varg, fmt);
-    vsprintf(str.data(),fmt,varg);
+    vsprintf(str.data(), fmt, varg);
     va_end(varg);
 
     return str;
@@ -194,6 +225,14 @@ std::u16string u8string_view::to_utf16() const {
 }
 std::u32string u8string_view::to_utf32() const {
     return btkus_to_utf32(data(), size());
+}
+
+// u8string_view::split
+StringList u8string_view::split(u8string_view delim, size_t limit) const {
+    return btkus_split<StringList>(*this, delim, limit);
+}
+StringRefList u8string_view::split_ref(u8string_view delim, size_t limit) const {
+    return btkus_split<StringRefList>(*this, delim, limit);
 }
 
 // Stream output operator

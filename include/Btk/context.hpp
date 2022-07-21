@@ -27,8 +27,6 @@ BTK_NS_BEGIN
 class EventQueue;
 class GraphicsDriver;
 class GraphicsDriverInfo;
-class GraphicsContext;
-class AbstractTexture;
 class AbstractWindow;
 class AbstractFont;
 
@@ -75,7 +73,7 @@ class GraphicsDriver : public Any {
 
 
         // Timer
-        virtual timerid_t  timer_add(Object *object, uint32_t ms) = 0;
+        virtual timerid_t  timer_add(Object *object, timertype_t type, uint32_t ms) = 0;
         virtual bool       timer_del(Object *object, timerid_t id) = 0;
 
         virtual void       pump_events(UIContext *) = 0;
@@ -103,84 +101,31 @@ class Graphics3DContext : public Any {
         virtual void      swap_buffers() = 0;
 };
 
-/**
- * @brief Basic graphics context.
- * 
- */
-class GraphicsContext : public Any {
+class GLFormat {
     public:
-        enum Feature : int {
-            AntiAliasing,  //< Support anti-aliasing
-            Blending,      //< Support atleast alpha blending
-            TextureLimit,  //< Texture size limit
-            Scissor,       //< Scissor support
-            Viewport,      //< Viewport support
-            VectorShading, //< Can be cast to vgcontext_t
-            StrokeWidth    //< Width support
-        };
-
-        // virtual void    draw_vertex(texture_t t,const Vertex *v, int v_count, int *idx, int idx_n) = 0;
-
-        // Basic drawing
-        virtual void       draw_image(const FRect &dst, texture_t t, const Rect &src) = 0;
-        virtual void       draw_points(const FPoint *points, int count) = 0;
-        virtual void       draw_lines(const FPoint *points, int count) = 0;
-        virtual void       draw_rects(const FRect *rects, int count) = 0;
-        virtual void       fill_rects(const FRect *rects, int count) = 0;
-
-        // Basic Primitives
-        // virtual void       draw_ellipse(float x, float y, float width, float height) = 0;
-
-        // Basic text
-        virtual void       draw_text(font_t font, align_t, u8string_view, float x, float y) = 0;
-        
-        // Set Pen drawing color
-        virtual void       set_color(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255) = 0;
-
-        virtual void       clear() = 0;
-        virtual void       begin() = 0;
-        virtual void       end() = 0;
-
-        // Scissor to limit drawing
-        // virtual void       intersect_scissor(const FRect &rect) = 0;
-        // virtual void       set_scissor(const FRect &rect) = 0;
-        // virtual void       reset_scissor() = 0;
-
-        // Basic texture
-
-        virtual texture_t  texture_create(int w,int h,PixFormat fmt) = 0;
-
-        // Anti-aliasing
-        virtual bool       set_antialias(bool v) = 0;
-        // Feature support / Information
-        virtual bool       has_feature(int f) const = 0;
-        virtual bool       set_feature(int f, ...) = 0;
-        virtual bool       get_info(int f, ...) = 0;
+        uint8_t red_size     = 8;
+        uint8_t green_size   = 8;
+        uint8_t blue_size    = 8;
+        uint8_t alpha_size   = 8;
+        uint8_t depth_size   = 24;
+        uint8_t stencil_size = 8;
+        uint8_t buffer_count = 1; //< Double buffer or etc.
+        //< MSAA Fields
+        uint8_t samples = 1;
+        uint8_t sample_buffers = 0;
 };
 
 /**
- * @brief Vector graphics context.
+ * @brief OpenGL graphics context.
  * 
  */
-class VGraphicsContext : public GraphicsContext {
-    public:
-        virtual void move_to(float x, float y) = 0;
-        virtual void line_to(float x, float y) = 0;
-        virtual void begin_path() = 0;
-        virtual void close_path() = 0;
-        
-        virtual void stroke() = 0;
-        virtual void fill() = 0;
-};
 class GLContext : public Graphics3DContext {
     public:
+        virtual bool      initialize(const GLFormat &) = 0;
         virtual bool      set_sync(bool v) = 0;
         virtual bool      set_viewport(const Rect &rect) = 0;
         virtual Size      get_drawable_size() = 0;
         virtual pointer_t get_proc_address(const char_t *name) = 0;
-};
-class FrameBuffer : public Any {
-
 };
 
 class AbstractWindow : public Any {
@@ -204,6 +149,7 @@ class AbstractWindow : public Any {
         virtual Point      position() const = 0;
         virtual void       raise() = 0;
         // virtual void       grab() = 0;
+        virtual void       close() = 0; //< Send close event to window
         virtual void       repaint() = 0;
         virtual void       show(bool show_flag) = 0;
         virtual void       move  (int x, int y) = 0;
@@ -218,27 +164,7 @@ class AbstractWindow : public Any {
         // virtual gcontext_t gc_create() = 0;
         virtual Painter    painter_create() = 0;
 };
-class AbstractTexture : public Any {
-    public:
-        virtual void      update(cpointer_t pix, int x, int y, int w, int h, int stride) = 0;
-        virtual Size      size()    const = 0;
-        virtual any_t     context() const = 0; //< Return context of this texture
-};
 
-class AbstractFont : public Any {
-    public:
-        virtual u8string_view name() const = 0;
-        virtual int           size() const = 0;
-
-        // virtual Size      measure(u8string_view txt) const = 0;
-        // virtual PixBuffer rasterize(u8string_view txt) const = 0;
-        virtual bool      set_size(int size) = 0;
-        // virtual void      set_bold(bool bold) = 0;
-        // virtual void      set_italic(bool italic) = 0;
-        // virtual void      set_underline(bool underline) = 0;
-        // virtual void      set_strikeout(bool strikeout) = 0;
-
-};
 
 #if 1
 
@@ -396,8 +322,11 @@ class BTKAPI UIContext : public Trackable {
         EventQueue     &event_queue() {
             return queue;
         }
+        timerid_t timer_add(Object *obj, timertype_t t, uint32_t ms) {
+            return driver->timer_add(obj, t, ms);
+        }
         timerid_t timer_add(Object *obj, uint32_t ms) {
-            return driver->timer_add(obj, ms);
+            return driver->timer_add(obj, TimerType::Precise, ms);
         }
         bool      timer_del(Object *obj,timerid_t id) {
             return driver->timer_del(obj, id);

@@ -255,6 +255,9 @@ class BTKAPI u8string {
         using const_reference = _Utf8Codepoint<const u8string>; 
         using reference       = _Utf8Codepoint<u8string>; 
 
+        using List            = StringList;
+        using RefList         = StringRefList;
+
         // Misc
 
         size_t size() const noexcept {
@@ -361,7 +364,9 @@ class BTKAPI u8string {
         }
 
         // Utils
-        StringList split(u8string_view what);
+        List       split    (u8string_view what, size_t max = size_t(-1)) const;
+        RefList    split_ref(u8string_view what, size_t max = size_t(-1)) const;
+        bool       contains (u8string_view what)                          const;
 
         // Make a view of the string
         u8string_view view() const;
@@ -442,11 +447,15 @@ class BTKAPI u8string_view {
         u8string_view(const char_t *str, size_t len) : _str(str, len) {}
         u8string_view(const stdu8string &str) : _str(str) {}
         u8string_view(const u8string    &str) : _str(str.str()) {}
+        u8string_view(stdu8string_view str)   : _str(str) {}
 
         static constexpr auto npos = stdu8string_view::npos;
 
         using const_iterator = _Utf8Iterator<const u8string_view>;
         using iterator       = _Utf8Iterator<const u8string_view>;
+
+        using List           = StringList;
+        using RefList        = StringRefList;
 
         size_t size() const noexcept {
             return _str.size();
@@ -466,6 +475,11 @@ class BTKAPI u8string_view {
             return const_iterator(this, _str.data() + _str.size());
         }
 
+        // Utils
+        List       split    (u8string_view what, size_t max = size_t(-1)) const;
+        RefList    split_ref(u8string_view what, size_t max = size_t(-1)) const;
+        bool       contains (u8string_view what)                          const;
+
         // Cast
         std::u16string to_utf16() const;
         std::u32string to_utf32() const;
@@ -478,9 +492,13 @@ class BTKAPI u8string_view {
         stdu8string_view _str;//< String data
 };
 
-class StringList : public std::vector<u8string> {
+class StringList    : public std::vector<u8string> {
     public:
         using std::vector<u8string>::vector;
+};
+class StringRefList : public std::vector<u8string_view> {
+    public:
+        using std::vector<u8string_view>::vector;
 };
 
 // Implementation for some method in u8string
@@ -497,8 +515,20 @@ inline u8string u8string::from(std::wstring_view   str) {
     return u8string::from(reinterpret_cast<const wchar*>(str.data()), str.size());
 }
 
+// Implmementation for some utils in u8string
+
+inline bool u8string::contains(u8string_view what) const {
+    return _str.find(what) != stdu8string::npos;
+}
+
 inline u8string_view u8string::view() const {
     return u8string_view(_str.data(), _str.size());
+}
+
+// Implmentations for some utils in u8string_view
+
+inline bool u8string_view::contains(u8string_view what) const {
+    return _str.find(what) != stdu8string_view::npos;
 }
 
 // Stream operator for u8string

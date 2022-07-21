@@ -29,11 +29,71 @@ class PointImpl {
         PointImpl(T x, T y) : x(x), y(y) {}
         PointImpl(const PointImpl &p) : x(p.x), y(p.y) {}
 
+        // Check if two points are equal.
         bool compare(const PointImpl &p) const {
             return x == p.x && y == p.y;
         }
         bool operator ==(const PointImpl &p) const {
             return compare(p);
+        }
+
+        // Vector operations
+        PointImpl operator +(const PointImpl &p) const {
+            return PointImpl(x + p.x, y + p.y);
+        }
+        PointImpl operator -(const PointImpl &p) const {
+            return PointImpl(x - p.x, y - p.y);
+        }
+        PointImpl operator *(T s) const {
+            return PointImpl(x * s, y * s);
+        }
+        PointImpl operator /(T s) const {
+            return PointImpl(x / s, y / s);
+        }
+        PointImpl operator -() const {
+            return PointImpl(-x, -y);
+        }
+        PointImpl &operator +=(const PointImpl &p) {
+            x += p.x;
+            y += p.y;
+            return *this;
+        }
+        PointImpl &operator -=(const PointImpl &p) {
+            x -= p.x;
+            y -= p.y;
+            return *this;
+        }
+        PointImpl &operator *=(T s) {
+            x *= s;
+            y *= s;
+            return *this;
+        }
+        PointImpl &operator /=(T s) {
+            x /= s;
+            y /= s;
+            return *this;
+        }
+
+        PointImpl  normalized() const {
+            T len = length();
+            return PointImpl(x / len, y / len);
+        }
+
+        T          operator *(const PointImpl &p) const {
+            return x * p.x + y * p.y;
+        }
+        T          operator ^(const PointImpl &p) const {
+            return x * p.y - y * p.x;
+        }
+
+        T          length() const { return std::sqrt(x * x + y * y); }
+        T          length2() const { return x * x + y * y; }
+
+        // Cast
+
+        template <typename Elem>
+        PointImpl<Elem> cast() const {
+            return PointImpl<Elem>(static_cast<Elem>(x), static_cast<Elem>(y));
         }
 };
 
@@ -87,6 +147,9 @@ class RectImpl {
         bool     is_intersected(const RectImpl &r) const noexcept {
             return !(x >= r.x + r.w || r.x >= x + w || y >= r.y + r.h || r.y >= y + h);
         }
+        bool     empty() const noexcept {
+            return w <= 0 || h <= 0;
+        }
 
         // Cast
 
@@ -116,17 +179,53 @@ class RectImpl {
             return RectImpl<Elem>(
                 x + margin.left,
                 y + margin.top,
-                w - margin.left + margin.right,
-                h - margin.top + margin.bottom
+                w - margin.left - margin.right,
+                h - margin.top  - margin.bottom
+            );
+        }
+
+        template <typename Elem>
+        RectImpl<Elem> unapply_margin(Elem margin) const {
+            return RectImpl<Elem>(
+                x - margin,
+                y - margin,
+                w + margin * 2,
+                h + margin * 2
+            );
+        }
+        template <typename Elem>
+        RectImpl<Elem> unapply_margin(const MarginImpl<Elem> &margin) const {
+            return RectImpl<Elem>(
+                x - margin.left,
+                y - margin.top,
+                w + margin.left + margin.right,
+                h + margin.top + margin.bottom
             );
         }
 
         // Get
-        SizeImpl<T> size() const {
+        SizeImpl<T>  size() const {
             return SizeImpl<T>(w, h);
         }
         PointImpl<T> position() const {
             return PointImpl<T>(x, y);
+        }
+        
+        // Get detail position
+        PointImpl<T> top_left() const {
+            return PointImpl<T>(x, y);
+        }
+        PointImpl<T> top_right() const {
+            return PointImpl<T>(x + w, y);
+        }
+        PointImpl<T> bottom_left() const {
+            return PointImpl<T>(x, y + h);
+        }
+        PointImpl<T> bottom_right() const {
+            return PointImpl<T>(x + w, y + h);
+        }
+        PointImpl<T> center() const {
+            return PointImpl<T>(x + w / 2, y + h / 2);
         }
 
         // Check

@@ -56,6 +56,8 @@ class GLColor {
 enum class PixFormat : uint32_t {
     RGBA32 = 0,
     RGB24  = 1,
+    BGRA32 = 2,
+    BGR24  = 3,
 };
 
 /**
@@ -100,6 +102,15 @@ class BTKAPI PixBuffer {
             return _pixels;
         }
 
+        template <typename T>
+        T * pixels() noexcept {
+            return reinterpret_cast<T *>(_pixels);
+        }
+        template <typename T>
+        const T * pixels() const noexcept {
+            return reinterpret_cast<const T *>(_pixels);
+        }
+
         int w() const noexcept {
             return _width;
         }
@@ -137,6 +148,8 @@ class BTKAPI PixBuffer {
         Color    color_at(int x,int y) const;
         void     set_color(int x,int y,Color c);
 
+        PixBuffer convert(PixFormat ) const;
+        PixBuffer resize(int w,int h) const;
         PixBuffer clone() const;
         PixBuffer ref()   const;
 

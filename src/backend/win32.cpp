@@ -29,12 +29,26 @@
 #define WM_CALL    (WM_APP + 0x100)
 #define WM_REPAINT (WM_APP + 0x101)
 
+// OpenGL support
+#define GL_LIB(x)    HMODULE library = LoadLibraryA(x)
+#define GL_TYPE(x)   decltype(::x)
+#define GL_PROC(x)   GL_TYPE(x) *x = (GL_TYPE(x)*) GetProcAddress(library, #x) 
+
+// Timer support
+#define TIMER_PRECISE (UINTPTR_MAX / 2)
+#define TIMER_COARSE  (              0)
+
+#define TIMER_IS_PRECISE(x) ((x) >= TIMER_PRECISE)
+#define TIMER_IS_COARSE(x)  ((x) <  TIMER_PRECISE)
+
 // Debug show key translation strings
 #if !defined(NDEBUG)
 #define SHOW_KEY(vk, k) printf(vk); printf(" => "); printf(k); printf("\n");
 #define MAP_KEY(vk, k) case vk : { SHOW_KEY(#vk, #k) ; keycode = k; break;}
+#define WIN_INFO(...) printf(__VA_ARGS__); printf("\n");
 #else
 #define MAP_KEY(vk, k) case vk : { keycode = k; break; }
+#define WIN_INFO(...)
 #endif
 
 using Microsoft::WRL::ComPtr;
@@ -61,6 +75,7 @@ class Win32Window : public AbstractWindow {
         // Overrides from WindowContext
         Size       size() const override;
         Point      position() const override;
+        void       close() override;
         void       raise() override;
         void       resize(int w, int h) override;
         void       show(bool v) override;
@@ -80,6 +95,7 @@ class Win32Window : public AbstractWindow {
         HWND         hwnd   = {};
         Win32Driver *driver = {};
         widget_t     widget = {};
+        Win32Window *parent = {}; //< For embedding
 
         bool         mouse_enter = false;
         bool         has_menu  = false;
@@ -112,8 +128,8 @@ class Win32Driver : public GraphicsDriver {
         void     clipboard_set(const char_t *text) override;
         u8string clipboard_get() override;
 
-        timerid_t timer_add(Object *object, uint32_t ms) override;
-        bool      timer_del(Object *object,timerid_t id) override;
+        timerid_t timer_add(Object *object, timertype_t type, uint32_t ms) override;
+        bool      timer_del(Object *object, timerid_t id) override;
 
         LRESULT   wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
         LRESULT   helper_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
@@ -136,10 +152,30 @@ class Win32Driver : public GraphicsDriver {
 
 class Win32GLContext : public GLContext {
     public:
-        HDC          hdc = {};
-        HGLRC        hglrc = {};
+        void begin() override;
+        void end() override;
+        void swap_buffers() override;
+
+        bool initialize(const GLFormat &format) override;
+    private:
+        HDC          hdc    = {};
+        HGLRC        hglrc  = {};
         Win32Driver *driver = {};
         Win32Window *window = {};
+
+        // OpenGL functions pointers
+        GL_LIB      ("opengl32.dll");
+        GL_PROC     (wglMakeCurrent);
+        GL_PROC     (wglCreateContext);
+        GL_PROC     (wglDeleteContext);
+        GL_PROC     (wglGetProcAddress);
+        GL_PROC     (wglGetCurrentContext);
+};
+
+// For timer stored at object
+class Win32Timer : public Any {
+    public:
+        HANDLE handle;
 };
 
 // For invoke a call in GUI Thread and wait the result
@@ -223,6 +259,34 @@ auto   gui_thread_call(Callable &&c, Args &&...args) {
 
     return call.result();
 }
+HBITMAP buffer_to_hbitmap(const PixBuffer &buf) {
+    // We need to convert to BGRA
+    int w = buf.width();
+    int h = buf.height();
+    uint32_t *dst = static_cast<uint32_t*>(_malloca(w * h * 4));
+
+    if (buf.format() == PixFormat::RGBA32) {
+        auto src = static_cast<const uint32_t*>(buf.pixels());
+        for (int i = 0; i < w * h; i++) {
+            dst[i] = (src[i] & 0xFF00FF00) | ((src[i] & 0xFF) << 16) | ((src[i] & 0xFF0000) >> 16);
+        }
+    }
+    else if (buf.format() == PixFormat::RGB24) {
+        // 3 bytes per pixel, no alpha
+        auto src = static_cast<const uint8_t*>(buf.pixels());
+        for (int i = 0; i < w * h; i++) {
+            dst[i] = (src[i * 3 + 2] << 16) | (src[i * 3 + 1] << 8) | src[i * 3];
+        }
+    }
+    else {
+        // Unsupport now ! just zero buffer
+        Btk_memset(dst, 0, w * h * 4);
+    }
+
+    HBITMAP hbitmap = CreateBitmap(buf.width(), buf.height(), 1, 32, dst);
+    _freea(dst);
+    return hbitmap;
+}
 
 
 Win32Driver::Win32Driver() {
@@ -278,6 +342,13 @@ Win32Driver::Win32Driver() {
     #pragma comment(lib, "dbghelp.lib")
     SetUnhandledExceptionFilter([](_EXCEPTION_POINTERS *info) -> LONG {
         // Dump callstack
+        static bool recursive = false;
+        if (recursive) {
+            ExitProcess(EXIT_FAILURE);
+            return EXCEPTION_CONTINUE_SEARCH;
+        }
+        recursive = true;
+
 #if     defined(_MSC_VER)
         class Walk : public StackWalker {
             public:
@@ -352,7 +423,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     Widget *widget   = win->widget;
     switch (msg) {
         case WM_QUIT : {
-            context->send_event(Event(Event::Quit));
+            context->send_event(QuitEvent());
             break;
         }
         case WM_CLOSE : {
@@ -370,7 +441,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
                 ShowWindow(hwnd, SW_HIDE);
 
                 if (windows.empty()) {
-                    printf("Quitting\n");
+                    BTK_LOG("Quitting\n");
                     PostQuitMessage(0);
                     
                     Event e(Event::Quit);
@@ -402,7 +473,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
             if (w == 0 || h == 0) {
                 // Probably mini, ignore it
-                printf("Resize to %d, %d", w, h);
+                BTK_LOG("Resize to %d, %d\n", w, h);
                 break;
             }
 
@@ -441,7 +512,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         }
         case WM_MOUSEMOVE : {
             if (!win->mouse_enter) {
-                printf("Mouse enter\n");
+                BTK_LOG("Mouse enter\n");
                 win->mouse_enter = true;
                 WidgetEvent event(Event::MouseEnter);
                 event.set_widget(win->widget);
@@ -476,7 +547,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             break;
         }
         case WM_MOUSELEAVE : {
-            printf("Mouse leave\n");
+            BTK_LOG("Mouse leave\n");
             win->mouse_enter = false;
             win->mouse_last_x = -1;
             win->mouse_last_y = -1;
@@ -557,7 +628,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
             // Get drop string
             UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
-            printf("Drop count: %d\n", count);
+            BTK_LOG("Drop count: %d\n", count);
 
             // Begin drop
             DropEvent event;
@@ -612,7 +683,7 @@ LRESULT Win32Driver::helper_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM 
             }
             else {
                 //??? 
-                printf("Unregitered WM_TIMER id => %d\n", int(wparam));
+                BTK_LOG("Unregitered WM_TIMER id => %d\n", int(wparam));
             }
             return 0;
         }
@@ -656,13 +727,13 @@ window_t Win32Driver::window_create(const char_t *title, int width, int height, 
     rect.bottom = height;
     rect.right = width;
     if (!AdjustWindowRectExForDpi(&rect, style, FALSE, style, dpi)) {
-        printf("Bad adjust");
+        BTK_LOG("Bad adjust");
     }
 
     width = rect.right - rect.left;
     height = rect.bottom - rect.top;
 
-    printf("Creating window %d %d\n", width, height);
+    BTK_LOG("Creating window %d %d\n", width, height);
 
 
     HWND hwnd = CreateWindowExW(
@@ -739,25 +810,57 @@ u8string Win32Driver::clipboard_get() {
     return text;
 }
 // TODO: Timers
-timerid_t Win32Driver::timer_add(Object *object, uint32_t ms) {
+timerid_t Win32Driver::timer_add(Object *object, timertype_t t, uint32_t ms) {
     timerid_t id;
+    timerid_t offset = 0;
+    if (t == TimerType::Precise) {
+        offset = TIMER_PRECISE;
+    }
     // Random a id
     do {
         id = rand();
+        id %= TIMER_PRECISE; //< Avoid overflow
+        id += offset;//< Add offset if is precise timer
     }
     while(timers.find(id) != timers.end());
 
-    // Let system add it
-    id = SetTimer(
-        helper_hwnd, 
-        id,
-        ms,
-        nullptr
-    );
+    if (!offset) {
+        // Coarse timer
+        // Let system add it
+        id = SetTimer(
+            helper_hwnd, 
+            id,
+            ms,
+            nullptr
+        );
 
-    if (id == 0) {
-        printf("SetTimer failed\n");
-        return 0;
+        if (id == 0) {
+            BTK_LOG("SetTimer failed\n");
+            return 0;
+        }
+    }
+    else {
+        // Use winapi
+        auto cb = [](void *id, BOOLEAN) -> void {
+            PostMessageW(
+                win32_driver->helper_hwnd,
+                WM_TIMER,
+                reinterpret_cast<WPARAM>(id),
+                0
+            );
+        };
+        HANDLE t;
+        if (!CreateTimerQueueTimer(&t, nullptr, cb, reinterpret_cast<void*>(id), ms, ms, WT_EXECUTEDEFAULT)) {
+            // Unsupported ?
+            BTK_LOG("CreateTimerQueueTimer failed");
+            // Back to coarse timer
+            return timer_add(object, timertype_t::Coarse, ms);
+        }
+        // Store to object
+        auto name = u8string::format("_wt_%p", id);
+        auto wt   = new Win32Timer;
+        wt->handle = t;
+        object->set_userdata(name.c_str(), wt);
     }
 
     // Register to timer map
@@ -766,7 +869,25 @@ timerid_t Win32Driver::timer_add(Object *object, uint32_t ms) {
 }
 bool Win32Driver::timer_del(Object *object, timerid_t id) {
     timers.erase(id);
-    return KillTimer(helper_hwnd, id);
+    if (TIMER_IS_COARSE(id)) {
+        // Create from SetTimer
+        return KillTimer(helper_hwnd, id);
+    }
+    // Create from CreateTimerQueueTimer
+    BTK_LOG("del timer %p\n", id);
+    auto name = u8string::format("_wt_%p", id);
+    auto wt   = (Win32Timer *)object->userdata(name.c_str());
+    // Make sure it is our timer
+    assert(wt);
+    if (!wt) {
+        return false;
+    }
+    // Delete timer
+    BOOL v = DeleteTimerQueueTimer(nullptr, wt->handle, nullptr);
+    // Remove from object
+    delete wt;
+    object->set_userdata(name.c_str(), nullptr);
+    return v;
 }
 
 Win32Window::Win32Window(HWND h, Win32Driver *d) {
@@ -794,9 +915,13 @@ Point Win32Window::position() const {
 void Win32Window::raise() {
     SetForegroundWindow(hwnd);
 }
+void Win32Window::close() {
+    PostMessageW(hwnd, WM_CLOSE, 0, 0);
+}
 void Win32Window::repaint() {
+#if 1
     InvalidateRect(hwnd, nullptr, FALSE);
-#if 0
+#else
     // Our paint event
     DWORD64 now = GetTickCount64();
     DWORD64 limit = 1000 / repaint_limit;
@@ -858,8 +983,28 @@ void Win32Window::set_title(const char_t * title) {
 void Win32Window::set_icon(const PixBuffer &pixbuf) {
     // Get pixbuf format first
     if (pixbuf.format() == PixFormat::RGBA32) {
-        // TODO: Convert to DIB
+        ICONINFO info = {};
+        info.fIcon    = TRUE;
+        info.hbmColor = buffer_to_hbitmap(pixbuf);
+        info.hbmMask  = CreateBitmap(pixbuf.width(), pixbuf.height(), 1, 1, nullptr);
 
+        auto icon = CreateIconIndirect(&info);
+
+        DeleteObject(info.hbmColor);
+        DeleteObject(info.hbmMask);
+        if (icon) {
+            // Set icon
+            SendMessageW(hwnd, WM_SETICON, ICON_BIG,    (LPARAM)icon);
+            SendMessageW(hwnd, WM_SETICON, ICON_SMALL,  (LPARAM)icon);
+
+#if         defined(ICON_SMALL2)
+            SendMessageW(hwnd, WM_SETICON, ICON_SMALL2, (LPARAM)icon);
+#endif
+        }
+        else {
+            BTK_LOG("CreateIconIndirect failed\n");
+            BTK_LOG("GetLastError: %d\n", GetLastError());
+        }
     }
 }
 widget_t Win32Window::bind_widget(widget_t w) {
@@ -900,7 +1045,7 @@ LRESULT Win32Window::proc_keyboard(UINT msg, WPARAM wp, LPARAM lp) {
         else {
             mod_state &= ~m;
         }
-        printf("mod_state: %x\n", mod_state);
+        BTK_LOG("mod_state: %x\n", mod_state);
     };
 
     WORD vk = LOWORD(wp); //< Virtual key code
@@ -924,33 +1069,33 @@ LRESULT Win32Window::proc_keyboard(UINT msg, WPARAM wp, LPARAM lp) {
         // Modifier keys begin
         case VK_SHIFT : {   // => VK_RSHIFT / VK_LSHIFT
             if (is_extended_key) {
-                printf ("VK_RSHIFT\n");
+                BTK_LOG ("VK_RSHIFT\n");
                 proc_mod(Modifier::Rshift);
             }
             else {
-                printf ("VK_LSHIFT\n");
+                BTK_LOG ("VK_LSHIFT\n");
                 proc_mod(Modifier::Lshift);
             }
             break;
         }
         case VK_CONTROL : {
             if (is_extended_key) {
-                printf ("VK_RCONTROL\n");
+                BTK_LOG ("VK_RCONTROL\n");
                 proc_mod(Modifier::Rctrl);
             }
             else {
-                printf ("VK_LCONTROL\n");
+                BTK_LOG ("VK_LCONTROL\n");
                 proc_mod(Modifier::Lctrl);
             }
             break;
         }
         case VK_MENU : {
             if (is_extended_key) {
-                printf ("VK_RMENU\n");
+                BTK_LOG ("VK_RMENU\n");
                 proc_mod(Modifier::Ralt);
             }
             else {
-                printf ("VK_LMENU\n");
+                BTK_LOG ("VK_LMENU\n");
                 proc_mod(Modifier::Lalt);
             }
             break;

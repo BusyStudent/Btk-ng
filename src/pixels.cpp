@@ -82,6 +82,42 @@ PixBuffer PixBuffer::clone() const {
     Btk_memcpy(bf._pixels, _pixels, _width * _height * bytes_per_pixel());
     return bf;
 }
+PixBuffer PixBuffer::resize(int w, int h) const {
+
+#if defined(_WIN32)
+    auto wic = static_cast<IWICImagingFactory*>(Win32::WicFactory());
+    ComPtr<IWICBitmapScaler> scaler;
+    wic->CreateBitmapScaler(&scaler);
+
+    // Copy our bitmap to a WIC bitmap
+    ComPtr<IWICBitmap> wic_bitmap;
+    wic->CreateBitmapFromMemory(
+        _width, _height,
+        GUID_WICPixelFormat32bppPBGRA, 
+        _pitch, 
+        _pitch * _height, 
+        static_cast<BYTE*>(_pixels),
+        &wic_bitmap
+    );
+
+    // Scale the bitmap to the new size
+    scaler->Initialize(wic_bitmap.Get(), w, h, WICBitmapInterpolationModeHighQualityCubic);
+
+    // Create a new PixBuffer
+    PixBuffer buf(w, h);
+
+    // Copy to the new PixBuffer
+    scaler->CopyPixels(
+        nullptr,
+        buf._pitch,
+        buf._pitch * h,
+        static_cast<BYTE*>(buf._pixels)
+    );
+    return buf;
+#else
+    return PixBuffer();
+#endif
+}
 
 // Write to
 void PixBuffer::write_to(const char_t *path) const {

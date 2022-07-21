@@ -62,6 +62,10 @@ enum class Direction : uint8_t {
     TopToBottom = 2,
     BottomToTop = 3,
 };
+enum class TimerType : uint8_t {
+    Precise = 0, 
+    Coarse  = 1, //< In windows, use SetTimer()
+};
 
 constexpr inline auto Horizontal = Orientation::Horizontal;
 constexpr inline auto Vertical   = Orientation::Vertical;
@@ -89,14 +93,12 @@ class Font;
 class IOStream;
 class IODevice;
 
-class AbstractTexture;
+class AbstractVideoSurface;
+class AbstractAudioDevice;
 class AbstractWindow;
-class AbstractFont;
 
 // Painting
-class GraphicsContext;
 class GraphicsDriver;
-class VGraphicsContext;
 class PixBuffer;
 class Painter;
 class Texture;
@@ -113,14 +115,11 @@ enum class Modifier : uint16_t;
 using  any_t      = Any *;
 using  widget_t   = Widget *;
 using  context_t  = UIContext *;
-using  font_t     = AbstractFont *;
 using  window_t   = AbstractWindow *;
 using  driver_t   = GraphicsDriver *;
-using  texture_t  = AbstractTexture *;
-using  gcontext_t = GraphicsContext *;
-using vgcontext_t = VGraphicsContext *;
 
 using  align_t       = Alignment;
+using  timertype_t   = TimerType;
 using  direction_t   = Direction;
 using  orientation_t = Orientation;
 // Function

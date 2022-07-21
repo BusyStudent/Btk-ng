@@ -4,17 +4,18 @@
 #include <Btk/defs.hpp>
 #include <type_traits>
 
+#define BTK_EXPOSE_SIGNAL(name) \
+    auto &signal##name() { \
+        return name;\
+    }
+
 BTK_NS_BEGIN
 
 class ObjectImpl;
 class TimerEvent;
 
-template <typename T>
-class ValueHolder : public Any {
-    public:
-        ValueHolder(T value) : value(value) {}
-        T value;
-};
+// Event filter, return true to discard event
+using EventFilter = bool (*)(Object *, Event &, void *);
 
 class BTKAPI Object : public Any, public Trackable {
     public:
@@ -28,24 +29,6 @@ class BTKAPI Object : public Any, public Trackable {
         void set_userdata(const char_t *key, Any *value);
         Any     *userdata(const char_t *key) const;
 
-        template <typename T>
-        void set_userdata(const char_t *key, T && value) {
-            if constexpr(std::is_pointer_v<T>) {
-                set_userdata(key, new ValueHolder<void*>(value));
-            }
-            else {
-                set_userdata(key, new ValueHolder<T>(value));
-            }
-        }
-
-        template <typename T>
-        T  *userdata(const char_t *key) const {
-            Any *value = userdata(key);
-            if (value) {
-                return dynamic_cast<ValueHolder<T>*>(value)->value;
-            }
-            return nullptr;
-        }
         // Context
         context_t ui_context() const;
 
@@ -54,6 +37,10 @@ class BTKAPI Object : public Any, public Trackable {
         bool      del_timer(timerid_t timerid);
         // Deferred call
         void      defer_delete();
+        // Event filter
+        void      add_event_filter(EventFilter filter, pointer_t data);
+        void      del_event_filter(EventFilter filter, pointer_t data);
+        bool      run_event_filter(Event &);
 
         // Timer Event
         virtual bool timer_event(TimerEvent &) { return false; }
@@ -63,8 +50,25 @@ class BTKAPI Object : public Any, public Trackable {
         mutable ObjectImpl *priv = nullptr;
 };
 
-class Timer : public Object {
-    
+class BTKAPI Timer : public Object {
+    public:
+        Timer();
+        Timer(const Timer &) = delete;
+        ~Timer();
+
+        void set_interval(uint32_t interval);
+        void set_repeat(bool repeat);
+        void start();
+        void stop();
+
+        bool timer_event(TimerEvent &) override;
+
+        BTK_EXPOSE_SIGNAL(_timeout);
+    private:
+        Signal<void()> _timeout;
+        timerid_t      _id       = 0;
+        uint32_t       _interval = 0;
+        bool           _repeat   = false;
 };
 
 BTK_NS_END

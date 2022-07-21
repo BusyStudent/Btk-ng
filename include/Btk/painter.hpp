@@ -9,6 +9,7 @@
 
 BTK_NS_BEGIN
 
+class PainterPathsImpl ;
 class TextLayoutImpl ;
 class PainterImpl    ;
 class TextureImpl    ;
@@ -27,6 +28,11 @@ enum class CoordinateMode : uint8_t {
     Absolute, // Absolute coordinates
     Relative, // Depends on the current drawing object
     Device,   // Depends on the device
+};
+enum class FontStyle : uint8_t {
+    Normal = 0,
+    Bold   = 1 << 0,
+    Italic = 1 << 1,
 };
 
 class ColorStop {
@@ -117,6 +123,10 @@ class RadialGradient : public Gradient {
         float  _radius_y      =  0.5f;
 };
 
+/**
+ * @brief Brush for painting
+ * 
+ */
 class Brush {
     public:
         Brush();
@@ -144,6 +154,10 @@ class Brush {
     friend class Painter;
 };
 
+/**
+ * @brief Texture for direct copy to GPU( render target )
+ * 
+ */
 class Texture {
     public:
         Texture();
@@ -162,6 +176,18 @@ class Texture {
     friend class Painter;
 };
 
+class TextHitResult {
+    public:
+        bool   inside;
+        bool   trailing;
+        size_t text; //< Text position
+        size_t length; //< Text length
+        FRect  box;
+};
+/**
+ * @brief For analizing and drawing text
+ * 
+ */
 class TextLayout {
     public:
         TextLayout();
@@ -180,6 +206,7 @@ class TextLayout {
         
         Size size() const;
 
+        bool hit_test(float x, float y, TextHitResult *res = nullptr) const;
     private:
         void begin_mut();
 
@@ -187,6 +214,21 @@ class TextLayout {
     friend class Painter;
 };
 
+class PainterPaths {
+    public:
+        PainterPaths();
+        PainterPaths(PainterPaths &&);
+        ~PainterPaths();
+
+    private:
+        PainterPathsImpl *priv;
+    friend class Painter;
+};
+
+/**
+ * @brief Logical font description
+ * 
+ */
 class Font {
     public:
         Font();
@@ -205,6 +247,7 @@ class Font {
         bool  empty() const;
         void  set_size(float size);
         void  set_bold(bool bold);
+        void  set_family(u8string_view family);
 
         static Font FromFile(u8string_view fname, float size);
     private:
@@ -257,6 +300,7 @@ class Painter {
         void draw_lines(const FPoint *fp, size_t n);
         void draw_rounded_rect(const FRect &, float r);
         
+        void draw_image(const Texture &tex, const FRect *dst, const FRect *src);
         void draw_text(const TextLayout &lay, float x, float y);        
         void draw_text(u8string_view txt, float x, float y);
 
@@ -292,6 +336,7 @@ class Painter {
 
         // Texture
         auto create_texture(PixFormat fmt, int w, int h) -> Texture;
+        auto create_texture(const PixBuffer &buf)        -> Texture;
 
         // Notify 
         void notify_resize(int w, int h); //< Target size changed

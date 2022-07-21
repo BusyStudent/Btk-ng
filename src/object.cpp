@@ -9,18 +9,24 @@ BTK_NS_BEGIN
 
 struct UserData {
     UserData *next = nullptr;
-    Any *value = nullptr;
-    u8string key;
+    Any      *value = nullptr;
+    u8string  key;
 };
-
+struct EventFilterNode {
+    EventFilter filter;
+    void       *userdata;
+    EventFilterNode *next;
+};
 //< Object implementation
 struct ObjectImpl {
+    EventFilterNode *filters = nullptr;
     UserData *chain = nullptr;
     UIContext *ctxt = nullptr;
 
     std::set<timerid_t> timers;
     
     ~ObjectImpl() {
+        // Remove all userdata
         UserData *cur = chain;
         while (cur) {
             UserData *next = cur->next;
@@ -28,17 +34,36 @@ struct ObjectImpl {
             delete cur;
             cur = next;
         }
-
+        // Remove all filters
+        while (filters) {
+            auto next = filters->next;
+            delete filters;
+            filters = next;
+        }
     }
     void set_userdata(const char_t *key, Any *value) {
         UserData *cur = chain;
         while (cur) {
             if (cur->key == key) {
-                cur->value = value;
+                if (value == nullptr) {
+                    // Remove it
+                    if (cur->next) {
+                        cur->next->next = cur->next;
+                    }
+                    else {
+                        chain = cur->next;
+                    }
+                    delete cur;
+                }
+                else{
+                    // Just update
+                    cur->value = value;
+                }
                 return;
             }
             cur = cur->next;
         }
+        // Insert new
         UserData *new_data = new UserData;
         new_data->key = key;
         new_data->value = value;
@@ -74,6 +99,9 @@ Any *Object::userdata(const char_t *key) const {
     return implment()->userdata(key);
 }
 bool Object::handle(Event &event) {
+    if (run_event_filter(event)) {
+        return true;
+    }
     if (event.type() == Event::Timer) {
         return timer_event(event.as<TimerEvent>());
     }
@@ -92,6 +120,7 @@ UIContext  *Object::ui_context() const {
     return implment()->ctxt;
 }
 
+// Timer
 timerid_t  Object::add_timer(uint32_t ms) {
     auto timerid = implment()->ctxt->timer_add(this, ms);
     if (timerid != 0) {
@@ -105,6 +134,8 @@ bool       Object::del_timer(timerid_t timerid) {
     }
     return false;
 }
+
+// Deferred call
 void       Object::defer_delete() {
     auto ctxt = ui_context();
     CallEvent event;
@@ -113,6 +144,99 @@ void       Object::defer_delete() {
     });
     event.set_user(this);
     ctxt->send_event(event);
+}
+
+// Event Filter
+// EventFilter
+void  Object::add_event_filter(EventFilter filter, pointer_t user) {
+    EventFilterNode *node = new EventFilterNode;
+    node->filter = filter;
+    node->userdata = user;
+    node->next = implment()->filters;
+    implment()->filters = node;
+}
+void  Object::del_event_filter(EventFilter filter, pointer_t user) {
+    EventFilterNode *node = implment()->filters;
+    EventFilterNode *prev = nullptr;
+    while (node) {
+        if (node->filter == filter && node->userdata == user) {
+            if (prev == nullptr) {
+                implment()->filters = node->next;
+            }
+            else {
+                prev->next = node->next;
+            }
+            delete node;
+            return;
+        }
+        prev = node;
+        node = node->next;
+    }
+}
+bool  Object::run_event_filter(Event &event) {
+    if (priv == nullptr) {
+        return false;
+    }
+    // Run it
+    auto node = priv->filters;
+    while (node) {
+        if (node->filter(this, event, node->userdata)) {
+            // Discard event
+            return true;
+        }
+        node = node->next;
+    }
+    return false;
+}
+
+
+// Timer
+Timer::Timer() {}
+Timer::~Timer() {
+    if (_id != 0) {
+        del_timer(_id);
+    }
+}
+
+void Timer::stop() {
+    if (_id != 0) {
+        del_timer(_id);
+        _id = 0;
+    }
+}
+void Timer::start() {
+    if (_id != 0) {
+        del_timer(_id);
+        _id = 0;
+    }
+    if (_interval > 0) {
+        _id = add_timer(_interval);
+    }
+}
+void Timer::set_interval(uint32_t ms) {
+    _interval = ms;
+    if (_id == 0) {
+        return;
+    }
+    // Update timer
+    del_timer(_id);
+    _id = 0;
+    if (_interval > 0) {
+        _id = add_timer(_interval);
+    }
+}
+void Timer::set_repeat(bool repeat) {
+    _repeat = repeat;
+}
+bool Timer::timer_event(TimerEvent &event) {
+    if (event.timerid() != _id) {
+        return false;
+    }
+    _timeout.emit();
+    if (!_repeat) {
+        stop();
+    }
+    return true;
 }
 
 BTK_NS_END

@@ -9,14 +9,11 @@
 
 #include <list>
 
-#define BTK_EXPOSE_SIGNAL(name) \
-    auto &signal##name() { \
-        return name;\
-    }
 
 BTK_NS_BEGIN
 
 class KeyEvent;
+class DragEvent;
 class MouseEvent;
 class PaintEvent;
 class MotionEvent;
@@ -34,18 +31,13 @@ enum class WindowFlags : uint32_t {
     Vulkan     = 1 << 7,
 };
 // Enum for widget.
+enum class FocusPolicy : uint8_t {
+    None = 0,       //< Widget does not accept focus.
+    Mouse = 1 << 0, //< Widget accepts focus by mouse click.
+};
 
 BTK_FLAGS_OPERATOR(WindowFlags, uint32_t);
 
-// Event filter, return true to discard event
-using EventFilter = bool (*)(Widget *, Event &, void *);
-
-class EventFilterNode {
-    public:
-        EventFilter filter;
-        void *userdata;
-        EventFilterNode *next;
-};
 /**
  * @brief Widget base class
  * 
@@ -56,11 +48,10 @@ class BTKAPI Widget : public Object {
         Widget(Widget *parent);
         ~Widget();
 
-        bool handle(Event &event) override;
-
         // Configure
         void show();
         void hide();
+        void close();
         void repaint();
 
         void set_visible(bool visible);
@@ -80,6 +71,7 @@ class BTKAPI Widget : public Object {
         Widget *root() const;
         Style  *style() const;
         bool    is_window() const;
+        bool    is_root() const;
         auto    font() const -> const Font &;
 
         int     width() const {
@@ -89,10 +81,15 @@ class BTKAPI Widget : public Object {
             return rect().h;
         }
 
+        Size    size() const {
+            return rect().size();
+        }
+
         // Size Hints
         virtual Size size_hint() const;
 
         // Event handlers
+        virtual bool handle       (Event &event) override;
         virtual bool key_press    (KeyEvent &) { return false; }
         virtual bool key_release  (KeyEvent &) { return false; }
 
@@ -101,6 +98,10 @@ class BTKAPI Widget : public Object {
         virtual bool mouse_enter  (MotionEvent &) { return false; }
         virtual bool mouse_leave  (MotionEvent &) { return false; }
         virtual bool mouse_motion (MotionEvent &) { return false; }
+
+        virtual bool drag_begin   (DragEvent &) { return false; }
+        virtual bool drag_end     (DragEvent &) { return false; }
+        virtual bool drag_motion  (DragEvent &) { return false; }
 
         virtual bool paint_event(PaintEvent &) { return false; }
 
@@ -119,17 +120,15 @@ class BTKAPI Widget : public Object {
         void set_window_title(u8string_view title);
         void set_window_size(int width, int height);
         void set_window_position(int x, int y);
+        void set_window_icon(const PixBuffer &icon);
         void capture_mouse(bool capture);
 
-        // EventFilter
-        void add_event_filter(EventFilter filter, pointer_t data);
-        void del_event_filter(EventFilter filter, pointer_t data);
     private:
-        EventFilterNode *_filters = nullptr   ;//< Event filter list
         UIContext  *_context    = nullptr;//< Pointer to UIContext
         Widget     *_parent    = nullptr;//< Parent widget
         Style      *_style      = nullptr;//< Pointer to style
         WindowFlags _flags      = WindowFlags::Resizable;//< Window flags
+        FocusPolicy _focus      = FocusPolicy::None;//< Focus policy
         std::list<Widget *> _children;//< Child widgets
         std::list<Widget *>::iterator _in_child_iter = {};//< Child iterator
 
@@ -145,6 +144,7 @@ class BTKAPI Widget : public Object {
         uint8_t     _visible     = true;//< Visibility
         uint8_t     _enabled     = true;//< Enabled
         uint8_t     _drag_reject = false;//< Is drag rejected ?
+        uint8_t     _pressed     = false;//< Is pressed ?
 
         // Event Dispatch (private)
         Widget      *mouse_current_widget = nullptr;//< Current widget under mouse
@@ -219,6 +219,21 @@ class BTKAPI Button      : public AbstractButton {
         bool _entered = false;
 };
 
+// Label
+class BTKAPI Label : public Widget {
+    public:
+        Label(Widget *parent, u8string_view txt);
+        Label(u8string_view txt) : Label(nullptr, txt) {}
+        ~Label();
+
+        void set_text(u8string_view txt);
+
+        bool paint_event(PaintEvent &event) override;
+        Size size_hint() const override; //< Return to text size
+    private:
+        TextLayout _layout;
+        Alignment  _align = Alignment::Left | Alignment::Middle;
+};
 
 // Frame 
 class BTKAPI Frame : public Widget {
@@ -226,7 +241,6 @@ class BTKAPI Frame : public Widget {
 };
 
 // TextEdit
-
 class BTKAPI LineEdit : public Widget {
 
 };
@@ -262,6 +276,13 @@ class BTKAPI ProgressBar : public Widget {
         Signal<void()> _value_changed;
         Signal<void()> _range_changed;
 };
+
+// Display image
+class ImageView : public Widget {
+    private:
+        Brush _image;
+};
+
 
 
 // Layout Tools
