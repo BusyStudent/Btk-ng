@@ -32,6 +32,17 @@ class Style {
         int   progressbar_width; //< Default progressbar width
         int   progressbar_height; //< Default progressbar height
 
+        // Margin
+        int   margin; //< Default margin
+
+        // Icon 
+        float icon_width; //< Default icon width
+        float icon_height; //< Default icon height
+
+        // Window
+        int   window_width; //< Default window width
+        int   window_height; //< Default window height
+        
         // Font
         Font  font;
 };

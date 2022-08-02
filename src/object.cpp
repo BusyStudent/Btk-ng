@@ -121,8 +121,8 @@ UIContext  *Object::ui_context() const {
 }
 
 // Timer
-timerid_t  Object::add_timer(uint32_t ms) {
-    auto timerid = implment()->ctxt->timer_add(this, ms);
+timerid_t  Object::add_timer(timertype_t t,uint32_t ms) {
+    auto timerid = implment()->ctxt->timer_add(this, t, ms);
     if (timerid != 0) {
         implment()->timers.insert(timerid);
     }
@@ -147,7 +147,6 @@ void       Object::defer_delete() {
 }
 
 // Event Filter
-// EventFilter
 void  Object::add_event_filter(EventFilter filter, pointer_t user) {
     EventFilterNode *node = new EventFilterNode;
     node->filter = filter;

@@ -39,6 +39,16 @@ class ColorStop {
     public:
         float  offset; // normalized offset from [0.0 => 1.0]
         GLColor color;
+
+        bool compare(const ColorStop &other) const {
+            return Btk_memcmp(this, &other, sizeof(ColorStop)) == 0;
+        }
+        bool operator ==(const ColorStop &other) const {
+            return compare(other);
+        }
+        bool operator !=(const ColorStop &other) const {
+            return !compare(other);
+        }
 };
 
 class Gradient {
@@ -51,6 +61,22 @@ class Gradient {
 
         auto stops() const -> const std::vector<ColorStop> & {
             return _stops;
+        }
+
+        // Compare 
+        bool compare(const Gradient &other) const {
+            if (_stops.size() != other._stops.size()) {
+                return false;
+            }
+            // Because is vector
+            auto size = sizeof(ColorStop) * _stops.size();
+            return Btk_memcmp(_stops.data(), other._stops.data(), size) == 0;
+        }
+        bool operator ==(const Gradient &other) const {
+            return compare(other);
+        }
+        bool operator !=(const Gradient &other) const {
+            return !compare(other);
         }
     protected:
         std::vector<ColorStop> _stops = {};
@@ -75,6 +101,20 @@ class LinearGradient : public Gradient {
         // Query
         FPoint  start_point() const { return _start_point; }
         FPoint  end_point()   const { return _end_point; }
+
+        // Compare
+        bool    compare(const LinearGradient &other) const {
+            if (!Gradient::compare(other)) {
+                return false;
+            }
+            return _start_point == other._start_point && _end_point == other._end_point;
+        }
+        bool    operator ==(const LinearGradient &other) const {
+            return compare(other);
+        }
+        bool    operator !=(const LinearGradient &other) const {
+            return !compare(other);
+        }
     protected:
         FPoint  _start_point = {0.0f, 0.0f};
         FPoint  _end_point   = {1.0f, 1.0f};
@@ -116,6 +156,21 @@ class RadialGradient : public Gradient {
         FPoint  origin_offset() const { return _origin_offset; }
         float   radius_x()     const { return _radius_x; }
         float   radius_y()     const { return _radius_y; }
+
+        // Compare
+        bool    compare(const RadialGradient &other) const {
+            if (!Gradient::compare(other)) {
+                return false;
+            }
+            return _center_point == other._center_point && _origin_offset == other._origin_offset &&
+                   _radius_x == other._radius_x && _radius_y == other._radius_y;
+        }
+        bool    operator ==(const RadialGradient &other) const {
+            return compare(other);
+        }
+        bool    operator !=(const RadialGradient &other) const {
+            return !compare(other);
+        }
     private:
         FPoint _origin_offset = {0.0f, 0.0f};
         FPoint _center_point  = {0.5f, 0.5f};
@@ -127,7 +182,7 @@ class RadialGradient : public Gradient {
  * @brief Brush for painting
  * 
  */
-class Brush {
+class BTKAPI Brush {
     public:
         Brush();
         Brush(const Brush &);
@@ -158,7 +213,7 @@ class Brush {
  * @brief Texture for direct copy to GPU( render target )
  * 
  */
-class Texture {
+class BTKAPI Texture {
     public:
         Texture();
         Texture(Texture &&);
@@ -178,17 +233,21 @@ class Texture {
 
 class TextHitResult {
     public:
+        // Properties unused in hit_test_range()
         bool   inside;
         bool   trailing;
+
         size_t text; //< Text position
         size_t length; //< Text length
-        FRect  box;
+        FRect  box; //< Bounding box
 };
+using TextHitResults = std::vector<TextHitResult>;
+
 /**
  * @brief For analizing and drawing text
  * 
  */
-class TextLayout {
+class BTKAPI TextLayout {
     public:
         TextLayout();
         TextLayout(const TextLayout &);
@@ -207,6 +266,8 @@ class TextLayout {
         Size size() const;
 
         bool hit_test(float x, float y, TextHitResult *res = nullptr) const;
+        bool hit_test_pos(size_t pos, float org_x, float org_y, TextHitResult *res = nullptr) const;
+        bool hit_test_range(size_t text, size_t len, float org_x, float org_y, TextHitResults *res = nullptr) const;
     private:
         void begin_mut();
 
@@ -214,7 +275,7 @@ class TextLayout {
     friend class Painter;
 };
 
-class PainterPaths {
+class BTKAPI PainterPaths {
     public:
         PainterPaths();
         PainterPaths(PainterPaths &&);
@@ -229,7 +290,7 @@ class PainterPaths {
  * @brief Logical font description
  * 
  */
-class Font {
+class BTKAPI Font {
     public:
         Font();
         Font(u8string_view s, float size);
@@ -259,13 +320,31 @@ class Font {
 };
 
 class Pen {
+    public:
+        Pen();
+        Pen(const Pen &);
+        Pen(Pen &&);
+        ~Pen();
+
+        void swap(Pen &);
+
+        Pen &operator =(Pen &&);
+        Pen &operator =(const Pen &);
+        Pen &operator =(std::nullptr_t);
+
+        void set_dash_pattern(const float *pattern, size_t count);
+        void set_dash_pattern(const std::vector<float> &pattern) {
+            set_dash_pattern(pattern.data(), pattern.size());
+        }
+        void set_dash_pattern(float pattern) {
+            set_dash_pattern(&pattern, 1);
+        }
     private:
         PenImpl *priv;
     friend class Painter;
 };
 
-class PainterImpl ;
-class Painter {
+class BTKAPI Painter {
     public:
         Painter();
         Painter(const Painter&) = delete;
@@ -314,12 +393,10 @@ class Painter {
         void fill_rounded_rect(const FRect &, float r);
 
         // Scissor
-        void set_scissor(float x, float y, float w, float h);
-        void intersect_scissor(float x, float y, float w, float h);
-        void reset_scissor();
+        void push_scissor(float x, float y, float w, float h);
+        void push_scissor(const FRect &);
+        void pop_scissor();
 
-        void set_scissor(const FRect &);
-        void intersect_scissor(const FRect &);
 
         // Vector Graphics
         void begin_path();
@@ -327,12 +404,14 @@ class Painter {
         void end_path();
 
         // Transform
+        void transform(const FMatrix  &);
         void translate(float x, float y);
         void scale(float x, float y);
         void rotate(float angle);
         void skew_x(float angle);
         void skew_y(float angle);
         void reset_transform();
+        auto transform_matrix() -> FMatrix;
 
         // Texture
         auto create_texture(PixFormat fmt, int w, int h) -> Texture;
@@ -345,6 +424,7 @@ class Painter {
         void operator =(Painter &&);
 
         // Construct painter from 
+        static Painter FromDxgiSurface(void *surface);
         static Painter FromHwnd(void * hwnd);
         static Painter FromHdc(void * hdc);
         static Painter FromXlib(void * dpy, void * win);
@@ -393,11 +473,8 @@ inline void Painter::fill_rounded_rect(const FRect &r, float rad) {
     fill_rounded_rect(r.x, r.y, r.w, r.h, rad);
 }
 
-inline void Painter::set_scissor(const FRect &r) {
-    set_scissor(r.x, r.y, r.w, r.h);
-}
-inline void Painter::intersect_scissor(const FRect &r) {
-    intersect_scissor(r.x, r.y, r.w, r.h);
+inline void Painter::push_scissor(const FRect &r) {
+    push_scissor(r.x, r.y, r.w, r.h);
 }
 
 // Platform specific declarations

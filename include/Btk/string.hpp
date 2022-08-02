@@ -8,6 +8,7 @@
 
 // TODO List
 // 0 - Add support for replace , insert, erase, etc.
+// 1 - Improve emoji support
 
 
 BTK_NS_BEGIN
@@ -26,7 +27,7 @@ BTKAPI size_t  Utf8Encode(char_t buf[4], uchar_t c)      BTK_NOEXCEPT;
 // Locate a codepoint in a string. return position (in logical).
 BTKAPI size_t  Utf8Locate(const char_t *str, const char_t *p) BTK_NOEXCEPT;
 // Seek to
-BTKAPI void    Utf8Seek(const char_t *str, size_t size, const char_t *&cur, int64_t dis) BTK_NOEXCEPT;
+BTKAPI void    Utf8Seek(const char_t *str, size_t size, const char_t *&cur, ptrdiff_t dis) BTK_NOEXCEPT;
 
 
 // Move to next character in string.
@@ -67,6 +68,7 @@ class _Utf8Codepoint {
 template <typename T>
 class _Utf8FastIteratorBase {
     public:
+        _Utf8FastIteratorBase() = default;
         _Utf8FastIteratorBase(T *c, const char_t *p) : container(c), where(p) {}
 
         // Method for children
@@ -79,6 +81,9 @@ class _Utf8FastIteratorBase {
         }
         void   move_prior() {
             where = Utf8ToPrior(where);
+        }
+        void   seek(ptrdiff_t dis) {
+            Utf8Seek(container->data(), container->size(), where, dis);
         }
 
         // Method for string
@@ -97,8 +102,8 @@ class _Utf8FastIteratorBase {
             container->store_uchar(where, c);
             return *this;
         }
-        uchar_t                operator *() const {
-            return Utf8Peek(where);
+        _Utf8Codepoint<T>      operator *() const {
+            return {container, where}
         }
 
         // Comparison
@@ -120,13 +125,14 @@ class _Utf8FastIteratorBase {
         }
 
     protected:
-        T *container;
-        const char_t *where;
+        T        *container = nullptr;
+        const char_t *where = nullptr;
 };
 
 template <typename T>
 class _Utf8StableIteratorBase {
     public:
+        _Utf8StableIteratorBase() = default;
         _Utf8StableIteratorBase(T *c, const char_t *p) : 
             container(c), where(Utf8Locate(c->data(), p)) {}
 
@@ -150,6 +156,9 @@ class _Utf8StableIteratorBase {
         void   move_prior() {
             where -= 1;
         }
+        void   seek(ptrdiff_t dis) {
+            where += dis;
+        }
 
         // Method for u8string
         size_t range_begin() const {
@@ -168,8 +177,8 @@ class _Utf8StableIteratorBase {
             container->store_uchar(addr, c);
             return *this;
         }
-        uchar_t                 operator *() const {
-            return *this;
+        uchar_t                  operator *() const {
+            return Utf8Peek(address());
         }
 
         // Comparison
@@ -186,8 +195,8 @@ class _Utf8StableIteratorBase {
         }
 
     protected:
-        T *container;
-        size_t where;
+        T *container = nullptr;
+        size_t where = 0;
 };
 
 // Template for container
@@ -217,6 +226,26 @@ class _Utf8ComIterator : public Base<T> {
             auto tmp = *this;
             this->move_prior();
             return tmp;
+        }
+        // +
+        _Utf8ComIterator operator +(ptrdiff_t dis) const {
+            auto tmp = *this;
+            tmp.seek(dis);
+            return tmp;
+        }
+        _Utf8ComIterator operator -(ptrdiff_t dis) const {
+            auto tmp = *this;
+            tmp.seek(-dis);
+            return tmp;
+        }
+        // +=
+        _Utf8ComIterator &operator +=(ptrdiff_t dis) {
+            this->seek(dis);
+            return *this;
+        }
+        _Utf8ComIterator &operator -=(ptrdiff_t dis) {
+            this->seek(-dis);
+            return *this;
         }
 
 };
@@ -329,6 +358,10 @@ class BTKAPI u8string {
             _str.append(str._str);
             return *this;
         }
+        u8string &append(stdu8string_view str) {
+            _str.append(str);
+            return *this;
+        }
         u8string &append(std::initializer_list<char_t> list) {
             _str.append(list);
             return *this;
@@ -351,7 +384,68 @@ class BTKAPI u8string {
             size_t len = where.range_len();
             _str.replace(beg, len, str);
         }
+        void     replace(size_t pos, size_t len, stdu8string_view str) {
+            iterator beg;
+            iterator ed;
+            // No char to replace
+            if (len == 0) {
+                return;
+            }
+            beg = begin() + pos;
+            if (len == npos) {
+                ed = end();
+            }
+            else {
+                ed = beg + (len - 1);
+            }
+            replace(beg, ed, str);
+        }
+        void     replace(size_t pos, stdu8string_view str) {
+            replace(begin() + pos, str);
+        }
         void     replace(u8string_view from, u8string_view to, size_t limit = size_t(-1));
+
+        // Erase
+        void     erase(iterator where) {
+            size_t beg = where.range_begin();
+            size_t len = where.range_len();
+            _str.erase(beg, len);
+        }
+        void     erase(iterator start, iterator end) {
+            size_t beg = start.range_begin();
+            size_t len = end.range_end() - beg;
+            _str.erase(beg, len);
+        }
+        void      erase(size_t pos, size_t len) {
+            iterator beg;
+            iterator ed;
+            // No char to erase
+            if (len == 0) {
+                return;
+            }
+            beg = begin() + pos;
+            if (len == npos) {
+                ed = end();
+            }
+            else {
+                ed = beg + (len - 1);
+            }
+            erase(beg, ed);
+        }
+        void     erase(size_t pos) {
+            erase(begin() + pos);
+        }
+
+        // Insert
+        void     insert(iterator iter, stdu8string_view str) {
+            size_t beg = iter.range_begin();
+            _str.insert(beg, str);
+        }
+        void     insert(size_t pos, stdu8string_view str) {
+            iterator beg;
+            beg = begin() + pos;
+            insert(beg, str);
+        }
 
         // Push back
         void     push_back(char_t ch) {
@@ -362,11 +456,34 @@ class BTKAPI u8string {
             auto len = Utf8Encode(buf, ch);
             _str.append(buf, len);
         }
+        void     pop_back();
+
+        // Find
+        size_t   find(u8string_view what) const;
+        size_t   find(size_t pos, u8string_view what) const;
+
+        // Ranges
+        iterator begin() {
+            return iterator(this, data());
+        }
+        iterator end() {
+            return iterator(this, data() + size());
+        }
+        const_iterator begin() const {
+            return const_iterator(this, data());
+        }
+        const_iterator end() const {
+            return const_iterator(this, data() + size());
+        }
+
 
         // Utils
         List       split    (u8string_view what, size_t max = size_t(-1)) const;
         RefList    split_ref(u8string_view what, size_t max = size_t(-1)) const;
         bool       contains (u8string_view what)                          const;
+        u8string   substr   (size_t start, size_t len = size_t(-1))       const;
+        bool       ends_with(u8string_view what)                          const;
+        bool       starts_with(u8string_view what)                        const;
 
         // Make a view of the string
         u8string_view view() const;
@@ -408,6 +525,22 @@ class BTKAPI u8string {
         bool       operator !=(const char_t *str) const noexcept {
             return !compare(str);
         }
+        reference  operator [](size_t pos) {
+            auto where = c_str();
+            Utf8Seek(where, size(), where, pos);
+            return {
+                this,
+                where
+            };
+        }
+        const_reference  operator [](size_t pos) const {
+            auto where = c_str();
+            Utf8Seek(where, size(), where, pos);
+            return {
+                this,
+                where
+            };
+        }
 
         // Cast
         std::u16string to_utf16() const;
@@ -423,6 +556,7 @@ class BTKAPI u8string {
 
         // From another types
         static u8string from(const void *data, size_t size);
+        static u8string from(const wchar_t  *data, size_t size);
         static u8string from(const char16_t *data, size_t size);
         static u8string from(const char32_t *data, size_t size);
 
@@ -504,15 +638,18 @@ class StringRefList : public std::vector<u8string_view> {
 // Implementation for some method in u8string
 
 inline u8string u8string::from(std::u16string_view str) {
-    return u8string::from(str.data(), str.size());
+    return u8string::from(str.data(), str.length());
 }
 inline u8string u8string::from(std::u32string_view str) {
-    return u8string::from(str.data(), str.size());
+    return u8string::from(str.data(), str.length());
 }
 inline u8string u8string::from(std::wstring_view   str) {
     // Check wstring in current platform is UTF-16 or UTF-32
+    return u8string::from(str.data(), str.length());
+}
+inline u8string u8string::from(const wchar_t *str, size_t size) {
     using wchar = std::conditional_t<sizeof(wchar_t) == 2, char16_t, char32_t>;
-    return u8string::from(reinterpret_cast<const wchar*>(str.data()), str.size());
+    return u8string::from(reinterpret_cast<const wchar *>(str), size);
 }
 
 // Implmementation for some utils in u8string

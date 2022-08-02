@@ -28,7 +28,6 @@ class EventQueue;
 class GraphicsDriver;
 class GraphicsDriverInfo;
 class AbstractWindow;
-class AbstractFont;
 
 class GraphicsDriverInfo {
     public:
@@ -156,7 +155,9 @@ class AbstractWindow : public Any {
         virtual void       resize(int width, int height) = 0;
         virtual void       set_title(const char_t * title) = 0;
         virtual void       set_icon(const PixBuffer &buffer) = 0;
+        virtual void       set_textinput_rect(const Rect &rect) = 0;
         virtual void       capture_mouse(bool capture) = 0;
+        virtual void       start_textinput(bool start) = 0;
         // virtual bool       set_attribute(int attr, ...) = 0;
 
         // virtual pointer_t native_handle() = 0;
@@ -324,9 +325,6 @@ class BTKAPI UIContext : public Trackable {
         }
         timerid_t timer_add(Object *obj, timertype_t t, uint32_t ms) {
             return driver->timer_add(obj, t, ms);
-        }
-        timerid_t timer_add(Object *obj, uint32_t ms) {
-            return driver->timer_add(obj, TimerType::Precise, ms);
         }
         bool      timer_del(Object *obj,timerid_t id) {
             return driver->timer_del(obj, id);

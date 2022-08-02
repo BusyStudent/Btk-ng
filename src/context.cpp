@@ -12,7 +12,7 @@
 
 BTK_NS_BEGIN
 
-static UIContext *ui_context = nullptr;
+static UIContext  *ui_context = nullptr; //< Global UI context
 
 void SetUIContext(UIContext *context) {
     ui_context = context;
@@ -179,7 +179,14 @@ void StyleBreeze(Style *style) {
 #else
     style->font = Font("", 12);
 #endif
+    
+    // Icon
+    style->icon_width = 16;
+    style->icon_height = 16;
 
+    // Window default
+    style->window_height = 100;
+    style->window_width  = 100;
 }
 
 BTK_NS_END

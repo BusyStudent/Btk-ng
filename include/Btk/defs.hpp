@@ -34,11 +34,6 @@ class Any {
     public:
         inline virtual ~Any() = default;
 };
-class AnyRef {
-    public:
-        virtual void ref() = 0;
-        virtual void unref() = 0;
-};
 
 // Basic enumerations
 enum class Alignment : uint8_t {
@@ -102,6 +97,7 @@ class GraphicsDriver;
 class PixBuffer;
 class Painter;
 class Texture;
+class Brush;
 // String 
 class u8string;
 class u8string_view;

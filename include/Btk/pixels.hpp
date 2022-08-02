@@ -31,12 +31,12 @@ class Color {
         uint8_t b; //< Blue
         uint8_t a; //< Alpha
 
-        Color() : r(0), g(0), b(0), a(0) {}
-        Color(Enum e) : r(e >> 24), g(e >> 16), b(e >> 8), a(e & 0xFF) {}
-        Color(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255) : r(r), g(g), b(b), a(a) {}
-        Color(const Color &) = default;
+        constexpr Color() : r(0), g(0), b(0), a(0) {}
+        constexpr Color(Enum e) : r(e >> 24), g(e >> 16), b(e >> 8), a(e & 0xFF) {}
+        constexpr Color(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255) : r(r), g(g), b(b), a(a) {}
+        constexpr Color(const Color &) = default;
 
-        operator GLColor() const noexcept;
+        constexpr operator GLColor() const noexcept;
 };
 class GLColor {
     public:
@@ -45,12 +45,12 @@ class GLColor {
         float b; //< Blue component (0.0f - 1.0f)
         float a; //< Alpha component (0.0f - 1.0f)
 
-        GLColor() : r(0.0f), g(0.0f), b(0.0f), a(0.0f) {}
-        GLColor(float r, float g, float b, float a = 1.0f) : r(r), g(g), b(b), a(a) {}
-        GLColor(Color::Enum e) : GLColor(Color(e)) {}
-        GLColor(const GLColor &) = default;
+        constexpr GLColor() : r(0.0f), g(0.0f), b(0.0f), a(0.0f) {}
+        constexpr GLColor(float r, float g, float b, float a = 1.0f) : r(r), g(g), b(b), a(a) {}
+        constexpr GLColor(Color::Enum e) : GLColor(Color(e)) {}
+        constexpr GLColor(const GLColor &) = default;
 
-        operator Color() const noexcept;
+        constexpr operator Color() const noexcept;
 };
 
 enum class PixFormat : uint32_t {
@@ -135,6 +135,9 @@ class BTKAPI PixBuffer {
         bool empty() const noexcept {
             return _width == 0 || _height == 0;
         }
+        Size size() const noexcept {
+            return Size(_width, _height);
+        }
         PixFormat format() const noexcept {
             return bpp() == 32 ? PixFormat::RGBA32 : PixFormat::RGB24;
         }
@@ -154,13 +157,13 @@ class BTKAPI PixBuffer {
         PixBuffer ref()   const;
 
         // Write to file / memory / iostream
-        void      write_to(const char_t *path) const;
+        bool      write_to(u8string_view path) const;
 
         // Assignment
         PixBuffer &operator=(const PixBuffer &);
         PixBuffer &operator=(PixBuffer &&);
 
-        static PixBuffer FromFile(const char *filename);
+        static PixBuffer FromFile(u8string_view path);
         static PixBuffer FromStream(IOStream *stream);
     private:
         pointer_t _pixels = nullptr;
@@ -180,7 +183,10 @@ class BTKAPI PixBuffer {
         int      *_refcount = nullptr;
 };
 
-inline Color::operator GLColor() const noexcept {
+
+// Helpful color functions
+
+constexpr inline Color::operator GLColor() const noexcept {
     return GLColor{
         r / 255.0f,
         g / 255.0f,
@@ -188,7 +194,7 @@ inline Color::operator GLColor() const noexcept {
         a / 255.0f
     };
 }
-inline GLColor::operator Color() const noexcept {
+constexpr inline GLColor::operator Color() const noexcept {
     return Color{
         uint8_t(r * 255.0f),
         uint8_t(g * 255.0f),
@@ -196,6 +202,26 @@ inline GLColor::operator Color() const noexcept {
         uint8_t(a * 255.0f)
     };
 }
+
+constexpr inline Color   lerp(Color a, Color b, float t) noexcept {
+    return Color{
+        // Using short to avoid overflow in the subtraction
+        uint8_t(lerp<short>(a.r, b.r, t)),
+        uint8_t(lerp<short>(a.g, b.g, t)),
+        uint8_t(lerp<short>(a.b, b.b, t)),
+        uint8_t(lerp<short>(a.a, b.a, t))
+    };
+}
+
+constexpr inline GLColor lerp(GLColor a, GLColor b, float t) noexcept {
+    return GLColor{
+        lerp(a.r, b.r, t),
+        lerp(a.g, b.g, t),
+        lerp(a.b, b.b, t),
+        lerp(a.a, b.a, t)
+    };
+}
+
 
 inline PixBuffer PixBuffer::ref() const {
     return *this;

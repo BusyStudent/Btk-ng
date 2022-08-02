@@ -70,6 +70,15 @@ namespace {
         }
         return ret;
     }
+
+    size_t btkus_find(stdu8string_view view, stdu8string_view str) {
+        auto pos = view.find(str);
+        if (pos == view.npos) {
+            return pos;
+        }
+        // Get distance from the beginning of the string
+        return Utf8Strlen(view.data(), pos);
+    }
 }
 
 
@@ -128,6 +137,29 @@ size_t  Utf8Encode(char_t buf[4], uchar_t c) {
 
     return size;
 }
+// Seek forward / backward 
+void   Utf8Seek(const char_t *str, size_t size, const char_t *&cur, ptrdiff_t dis) {
+    auto begin = str;
+    auto end   = str + size;
+
+    if (dis > 0) {
+        while (cur != end && dis > 0) {
+            Utf8Next(cur);
+            dis --;
+        }
+    }
+    else if (dis < 0) {
+        while (cur != begin && dis < 0) {
+            Utf8Prior(cur);
+            dis ++;
+        }
+    }
+
+    if (dis != 0) {
+        // Out of range
+        BTK_THROW(std::out_of_range("Bad utf8 seek position"));
+    }
+}
 
 // u8string implementation
 
@@ -150,6 +182,22 @@ void u8string::replace(u8string_view from, u8string_view to, size_t limit) {
         pos = _str.find(from, pos);
     }
 }
+void u8string::pop_back() {
+    // Find last uchar begin
+    if (size() == 0) {
+        return;
+    }
+    auto str = _str.data();
+    auto end = _str.data() + _str.size();
+    auto last = end;
+
+    last = Utf8ToPrior(last);
+
+    _str.erase(
+        last - str,
+        end - last
+    );
+}
 
 void u8string::store_uchar(const char_t *&where, uchar_t c) {
     auto pos = where - c_str();
@@ -166,6 +214,11 @@ void u8string::store_uchar(const char_t *&where, uchar_t c) {
     where = c_str() + pos;
 }
 
+// Find
+size_t u8string::find(u8string_view v) const {
+    return btkus_find(_str, v);
+}
+
 // Convert
 std::u16string u8string::to_utf16() const {
     return btkus_to_utf16(c_str(), size());
@@ -180,6 +233,26 @@ StringList u8string::split(u8string_view delim, size_t limit) const {
 }
 StringRefList u8string::split_ref(u8string_view delim, size_t limit) const {
     return btkus_split<StringRefList>(_str, delim, limit);
+}
+
+// Sub
+u8string u8string::substr(size_t pos, size_t len) const {
+    if (len == 0) {
+        return u8string();
+    }
+    const_iterator beg = begin() + pos;
+    const_iterator ed;
+    if (len == npos) {
+        ed = end();
+    }
+    else {
+        ed = beg + (len - 1);
+    }
+
+    pos = beg.range_begin();
+    len = ed.range_end() - pos;
+
+    return _str.substr(pos, len);
 }
 
 // Convert from

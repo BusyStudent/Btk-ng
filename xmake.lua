@@ -7,6 +7,17 @@ end
 
 set_languages("c++17")
 
+-- Options
+option("tests")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Enable tests")
+    set_category("Debugging")
+option_end()
+
+
+-- Main Target
+
 target("btk")
     set_kind(lib_kind)
     add_files("src/*.cpp")
@@ -24,9 +35,28 @@ target("btk")
     else
         add_files("src/backend/sdl2.cpp")
     end
+target_end()
 
-target("win")
-    set_kind("binary")
-    add_deps("btk")
-    add_includedirs("include")
-    add_files("tests/win.cpp")
+-- Enable google test if tests are enabled
+if has_config("tests") then
+    add_requires("gtest")
+    add_packages("gtest")
+
+    -- Add tests
+    target("win")
+        set_kind("binary")
+        add_deps("btk")
+
+        add_includedirs("include")
+        add_files("tests/win.cpp")
+    target_end()
+
+    -- Add string test
+    target("test")
+        set_kind("binary")
+        add_deps("btk")
+
+        add_includedirs("include")
+        add_files("tests/test.cpp")
+    target_end()
+end

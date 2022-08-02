@@ -2,14 +2,12 @@
 #include <Btk/widget.hpp>
 #include <iostream>
 
-using namespace Btk;
+using namespace BTK_NAMESPACE;
 
 class Canvas : public Widget {
     public:
         Canvas() : Widget() {
-            // Make sure the painter is initialized
-            show();
-
+            
             add_timer(100);
             progress.resize(64 , 20);
             progress.set_text_visible(true);
@@ -39,6 +37,8 @@ class Canvas : public Widget {
             auto [w, h] = txt_layout.size();
             printf("%d %d\n", w, h);
 
+            // Set its icon
+            set_window_icon(pixbuf);
         }
 
         bool paint_event(PaintEvent &e) override {
@@ -81,7 +81,11 @@ class Canvas : public Widget {
 
             gc.set_brush(radial_brush);
             gc.fill_circle(150, 150, 50);
-            
+
+            gc.set_antialias(true);
+            gc.set_color(Color::Cyan);
+            gc.draw_rounded_rect(200, 200, 100, 100, 10);
+            gc.set_antialias(true);
 
             return true;
         }
@@ -123,26 +127,142 @@ class Canvas : public Widget {
 
         ProgressBar progress = {this};
 };
+class Editer : public Widget {
+    public:
+        Editer() : Widget() {
+            set_window_title("Editor");
+            start_textinput();
 
-void test_str() {
-    // Make some English / Chinese / Japanese text
-    auto str = u8string("Hello World 你好世界 こんにちは");
-    // Try replace some characters
+            auto f = font();
+            f.set_size(20);
+            f.set_bold(true);
 
-    std::cout << "Sample string: " << str << std::endl;
+            lay.set_font(f);
+        }
 
-    str.replace("你好世界", "'Replaced Chinese'");
+        bool paint_event(PaintEvent &) {
+            auto &p = painter();
+            p.set_antialias(false);
 
-    std::cout << "Replaced string: " << str << std::endl;
+            if (!text.empty()) {
+                auto [w, h] = lay.size();
+                p.set_color(Color::Red);
+                p.set_font(font());
+                p.set_text_align(Alignment::Left + Alignment::Top);
+                p.draw_text(lay, rect.x, rect.y);
 
-    str.replace("こんにちは", "'Replaced Japanese'");
+                // Draw a box
+                p.set_color(bounds);
+                p.draw_rect(rect);
 
-    std::cout << "Replaced string: " << str << std::endl;
-}
+                // Draw a line
+                p.set_color(Color::Green);
+                if (sel_pos == 0) {
+                    p.draw_line(rect.x + 1, rect.y, rect.x + 1, rect.y + h);
+                }
+
+                if (inside) {
+                    printf("Draw box");
+
+                    auto r = box;
+                    r.x += rect.x;
+                    r.y += rect.y;
+                    p.set_color(Color::Blue);
+                    p.draw_rect(r);
+                }
+            }
+            return true;
+        }
+        bool textinput_event(TextInputEvent &e) {
+            text.append(e.text());
+            lay.set_text(text);
+
+            auto [w, h] = lay.size();
+            rect.w = w;
+            rect.h = h;
+            auto r = rect.cast<int>();
+            set_textinput_rect(r);
+
+
+            repaint();
+            return true;
+        }
+        bool key_press(KeyEvent &e) {
+            if (e.key() == Key::Backspace) {
+                text.pop_back();
+                lay.set_text(text);
+                auto [w, h] = lay.size();
+                rect.w = w;
+                rect.h = h;
+                repaint();
+            }
+            else if (e.key() == Key::Up) {
+                rect.y -= 10;
+                set_textinput_rect(rect.cast<int>());
+                repaint();
+            }
+            else if (e.key() == Key::Down) {
+                rect.y += 10;
+                set_textinput_rect(rect.cast<int>());
+                repaint();
+            }
+            else if (e.key() == Key::Left) {
+                rect.x -= 10;
+                set_textinput_rect(rect.cast<int>());
+                repaint();
+            }
+            else if (e.key() == Key::Right) {
+                rect.x += 10;
+                set_textinput_rect(rect.cast<int>());
+                repaint();
+            }
+            return true;
+        }
+        bool mouse_press(MouseEvent &event) override {
+            if (text.empty()) {
+                return true;
+            }
+            auto pos = event.position().cast<float>() - rect.position();
+
+            TextHitResult result;
+            lay.hit_test(pos.x, pos.y, &result);
+
+            if (result.inside) {
+                bounds = Color::Blue;
+            }
+            else {
+                printf("Outside\n");
+                bounds = Color::Black;
+            }
+            if (result.trailing) {
+                printf("Trailing\n");
+            }
+            else {
+                printf("Leading\n");
+            }
+            printf("%d %d\n", int(result.text), int(result.length));
+            std::cout << result.box << std::endl;
+
+            inside = result.inside;
+            box    = result.box;
+
+            repaint();
+            return true;
+        }
+    public:
+        TextLayout lay;
+        u8string text;
+        FRect    rect = {0.0f, 0.0f, 0.0f, 0.0f};
+        FRect    box;
+        float    step = 10.0f;
+        GLColor  bounds = Color::Black;
+
+        bool     inside = false;
+        int      sel_pos = 0;
+};
 
 int main () {
-    test_str();
-
+    
     auto device = Win32DriverInfo.create();
     UIContext context(device);
 
@@ -233,6 +353,41 @@ int main () {
     c.set_window_title("Canvas");
 
     c.resize(800, 600);
+
+    // Test image view
+    ImageView view;
+    view.set_image(PixBuffer::FromFile("icon.jpeg"));
+    view.set_keep_aspect_ratio(true);
+    view.set_window_title("ImageView");
+    view.show();
+
+    // Test Text input
+    Widget   troot;
+    TextEdit tedit(&troot);
+    tedit.resize(200, 40);
+    tedit.move(10, 10);
+    troot.resize(220, 60);
+    troot.show();
+
+    tedit.set_placeholder("Please enter text");
+
+    tedit.signal_enter_pressed().connect([&]() {
+        troot.set_window_title(tedit.text());
+    });
+
+    auto tft = tedit.font();
+    tft.set_bold(true);
+    tft.set_size(15);
+    tedit.set_font(tft);
+
+
+    // Test lerping
+    Point p1(0, 0);
+    Point p2(100, 100);
+
+    auto p3 = lerp(p1, p2, 0.5);
+
+    std::cout << p3 << std::endl;
 
     context.run();
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Btk/defs.hpp>
+#include <iosfwd>
 #include <cmath>
 
 BTK_NS_BEGIN
@@ -36,6 +37,9 @@ class PointImpl {
         bool operator ==(const PointImpl &p) const {
             return compare(p);
         }
+        bool operator !=(const PointImpl &p) const {
+            return !compare(p);
+        }
 
         // Vector operations
         PointImpl operator +(const PointImpl &p) const {
@@ -44,10 +48,11 @@ class PointImpl {
         PointImpl operator -(const PointImpl &p) const {
             return PointImpl(x - p.x, y - p.y);
         }
-        PointImpl operator *(T s) const {
+        PointImpl operator *(double s) const {
+            // Using double to avoid rounding errors.
             return PointImpl(x * s, y * s);
         }
-        PointImpl operator /(T s) const {
+        PointImpl operator /(double s) const {
             return PointImpl(x / s, y / s);
         }
         PointImpl operator -() const {
@@ -63,12 +68,12 @@ class PointImpl {
             y -= p.y;
             return *this;
         }
-        PointImpl &operator *=(T s) {
+        PointImpl &operator *=(double s) {
             x *= s;
             y *= s;
             return *this;
         }
-        PointImpl &operator /=(T s) {
+        PointImpl &operator /=(double s) {
             x /= s;
             y /= s;
             return *this;
@@ -86,8 +91,8 @@ class PointImpl {
             return x * p.y - y * p.x;
         }
 
-        T          length() const { return std::sqrt(x * x + y * y); }
-        T          length2() const { return x * x + y * y; }
+        auto       length() const { return std::sqrt(x * x + y * y); }
+        auto       length2() const { return x * x + y * y; }
 
         // Cast
 
@@ -105,6 +110,9 @@ class SizeImpl {
         SizeImpl() = default;
         SizeImpl(T w, T h) : w(w), h(h) {}
         SizeImpl(const SizeImpl &s) : w(s.w), h(s.h) {}
+        // Allow implicit conversion from PointImpl.
+        template <typename Elem>
+        SizeImpl(const SizeImpl<Elem> &s) : w(static_cast<T>(s.w)), h(static_cast<T>(s.h)) {}
 
         bool is_valid() const {
             return w > 0 && h > 0;
@@ -114,6 +122,9 @@ class SizeImpl {
         }
         bool operator ==(const SizeImpl &s) const {
             return compare(s);
+        }
+        bool operator !=(const SizeImpl &s) const {
+            return !compare(s);
         }
 };
 
@@ -242,6 +253,120 @@ class RectImpl {
         bool operator ==(const RectImpl &r) const {
             return compare(r);
         }
+        bool operator !=(const RectImpl &r) const {
+            return !compare(r);
+        }
+};
+
+template <typename T>
+class Matrix3x2Impl {
+    public:
+        T m[3][2] = {
+            {T(1), T(0)},
+            {T(0), T(1)},
+            {T(0), T(0)}
+        };
+
+        Matrix3x2Impl() = default;
+        Matrix3x2Impl(
+            T m11, T m12,
+            T m21, T m22,
+            T dx, T dy
+        ) {
+            m[0][0] = m11; m[0][1] = m12;
+            m[1][0] = m21; m[1][1] = m22;
+            m[2][0] = dx;  m[2][1] = dy;
+        }
+        Matrix3x2Impl(const Matrix3x2Impl &m) {
+            this->m[0][0] = m.m[0][0]; this->m[0][1] = m.m[0][1];
+            this->m[1][0] = m.m[1][0]; this->m[1][1] = m.m[1][1];
+            this->m[2][0] = m.m[2][0]; this->m[2][1] = m.m[2][1];
+        }
+
+        // Get
+        const T *operator [](size_t i) const {
+            return m[i];
+        }
+        T *operator [](size_t i) {
+            return m[i];
+        }
+
+        // Calculate
+        void translate(T dx, T dy) {
+            m[2][0] += dx;
+            m[2][1] += dy;
+        }
+        void scale(T sx, T sy) {
+            m[0][0] *= sx;
+            m[1][1] *= sy;
+        }
+        void scale(T s) {
+            m[0][0] *= s;
+            m[1][1] *= s;
+        }
+        void rotate(T rad) {
+            T c = std::cos(rad);
+            T s = std::sin(rad);
+            T m11 = m[0][0] * c - m[1][0] * s;
+            T m12 = m[0][1] * c - m[1][1] * s;
+            T m21 = m[1][0] * c + m[0][0] * s;
+            T m22 = m[1][1] * c + m[0][1] * s;
+            m[0][0] = m11; m[0][1] = m12;
+            m[1][0] = m21; m[1][1] = m22;
+        }
+        void skew(T sx, T sy) {
+            m[0][1] += m[0][0] * sy;
+            m[1][0] += m[1][1] * sx;
+        }
+        void skew_x(T sx) {
+            m[0][1] += m[0][0] * sx;
+        }
+        void skew_y(T sy) {
+            m[1][0] += m[1][1] * sy;
+        }
+
+        Matrix3x2Impl operator *(const Matrix3x2Impl &m) const {
+            Matrix3x2Impl ret;
+            ret.m[0][0] = m.m[0][0] * this->m[0][0] + m.m[0][1] * this->m[1][0];
+            ret.m[0][1] = m.m[0][0] * this->m[0][1] + m.m[0][1] * this->m[1][1];
+            ret.m[1][0] = m.m[1][0] * this->m[0][0] + m.m[1][1] * this->m[1][0];
+            ret.m[1][1] = m.m[1][0] * this->m[0][1] + m.m[1][1] * this->m[1][1];
+            ret.m[2][0] = m.m[2][0] * this->m[0][0] + m.m[2][1] * this->m[1][0] + this->m[2][0];
+            ret.m[2][1] = m.m[2][0] * this->m[0][1] + m.m[2][1] * this->m[1][1] + this->m[2][1];
+            return ret;
+        }
+
+        template <typename Elem>
+        PointImpl<Elem> operator *(const PointImpl<Elem> &p) const {
+            return PointImpl<Elem>(
+                p.x * m[0][0] + p.y * m[1][0] + m[2][0],
+                p.x * m[0][1] + p.y * m[1][1] + m[2][1]
+            );
+        }
+
+        template <typename Elem>
+        Matrix3x2Impl<Elem> cast() const {
+            return Matrix3x2Impl<Elem>(
+                static_cast<Elem>(m[0][0]),
+                static_cast<Elem>(m[0][1]),
+                static_cast<Elem>(m[1][0]),
+                static_cast<Elem>(m[1][1]),
+                static_cast<Elem>(m[2][0]),
+                static_cast<Elem>(m[2][1])
+            );
+        }
+
+        // Compare
+        bool compare(const Matrix3x2Impl &m) const {
+            return Btk_memcmp(this, &m, sizeof(m)) == 0;
+        }
+        bool operator ==(const Matrix3x2Impl &m) const {
+            return compare(m);
+        }
+        bool operator !=(const Matrix3x2Impl &m) const {
+            return !compare(m);
+        }
+
 };
 
 using Rect  = RectImpl<int>;
@@ -255,5 +380,30 @@ using FPoint = PointImpl<float>;
 
 using Margin  = MarginImpl<int>;
 using FMargin = MarginImpl<float>;
+
+using FMatrix = Matrix3x2Impl<float>;
+
+// Output templates
+
+template <typename T>
+std::ostream &operator <<(std::ostream &os, const PointImpl<T> &p) {
+    return os << "Point(" << p.x << ", " << p.y << ")";
+}
+template <typename T>
+std::ostream &operator <<(std::ostream &os, const SizeImpl<T> &s) {
+    return os << "Size(" << s.w << ", " << s.h << ")";
+}
+template <typename T>
+std::ostream &operator <<(std::ostream &os, const RectImpl<T> &r) {
+    return os << "Rect(" << r.x << ", " << r.y << ", " << r.w << ", " << r.h << ")";
+}
+template <typename T>
+std::ostream &operator <<(std::ostream &os, const MarginImpl<T> &m) {
+    return os << "Margin(" << m.left << ", " << m.top << ", " << m.right << ", " << m.bottom << ")";
+}
+template <typename T>
+std::ostream &operator <<(std::ostream &os, const Matrix3x2Impl<T> &m) {
+    return os << "Matrix3x2(" << m.m[0][0] << ", " << m.m[0][1] << ", " << m.m[1][0] << ", " << m.m[1][1] << ", " << m.m[2][0] << ", " << m.m[2][1] << ")";
+}
 
 BTK_NS_END

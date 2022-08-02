@@ -250,9 +250,9 @@ enum class Key : uint32_t {
 };
 
 enum class Modifier : uint16_t {
-    None   = 0,
-    Lshift = 1 << 0,
-    Rshift = 1 << 1,
+    None   =  0,
+    Lshift =  1 << 0,
+    Rshift =  1 << 1,
     Lctrl  =  1 << 2,
     Rctrl  =  1 << 3,
     Lalt   =  1 << 4,
@@ -263,9 +263,9 @@ enum class Modifier : uint16_t {
     Caps   =  1 << 9,
     Mode   =  1 << 10,
 
-    Shift = Lshift | Rshift,
-    Ctrl = Lctrl | Rctrl,
-    Gui  = Lgui | Rgui,
+    Shift  = Lshift | Rshift,
+    Ctrl   = Lctrl  | Rctrl,
+    Gui    = Lgui   | Rgui,
 };
 
 BTK_FLAGS_OPERATOR(Modifier, uint32_t);

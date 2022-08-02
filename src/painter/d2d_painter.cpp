@@ -23,7 +23,7 @@
 using Microsoft::WRL::ComPtr;
 
 #if !defined(NDEBUG)
-#define D2D_WARN(...) printf(__VA_ARGS__)
+#define D2D_WARN(...) printf("D2D: " __VA_ARGS__)
 #else
 #define D2D_WARN(...)
 #endif
@@ -165,6 +165,12 @@ class FontImpl : public Refable <FontImpl> {
         DWRITE_FONT_STRETCH       stretch = DWRITE_FONT_STRETCH_NORMAL;
 };
 
+class PenImpl : public Refable<PenImpl> {
+    public:
+
+        ComPtr<ID2D1StrokeStyle> style;
+};
+
 class TextLayoutImpl : public Refable <TextLayoutImpl> {
     public:
         IDWriteTextLayout *lazy_eval();
@@ -217,31 +223,28 @@ class PainterImpl {
         void fill_ellipse(float x, float y, float xr, float yr);
         void fill_rounded_rect(float x, float y, float w, float h, float r);
 
+        void fill_path(ID2D1PathGeometry *path);
+
         // Scissor
-        void set_scissor(float x, float y, float w, float h);
-        void intersect_scissor(float x, float y, float w, float h);
-        void reset_scissor();
+        void push_scissor(float x, float y, float w, float h);
+        void pop_scissor();
 
         // Transform
+        void transform(const FMatrix &m);
         void translate(float x, float y);
         void scale(float x, float y);
         void rotate(float angle);
         void skew_x(float angle);
         void skew_y(float angle);
         void reset_transform();
-
+        auto transform_matrix() -> FMatrix;
         // Texture
         auto create_texture(PixFormat fmt, int w, int h) -> TextureImpl *;
-
-        // State
-        void save();
-        void restore();
-        void reset();
 
         // Notify 
         void notify_resize(int w, int h); //< Target size changed
 
-        void initlize();
+        void initialize();
 
         static
         void Init();
@@ -307,7 +310,7 @@ PainterImpl::PainterImpl(HWND hwnd) {
     );
     do_hr(hr);
 
-    initlize();
+    initialize();
 
     // Set target options
     ZeroMemory(&target_opt, sizeof(target_opt));
@@ -329,7 +332,7 @@ PainterImpl::PainterImpl(HDC hdc) {
 
     do_hr(hr);
 
-    initlize();
+    initialize();
 
     // Set target options
     ZeroMemory(&target_opt, sizeof(target_opt));
@@ -358,7 +361,7 @@ PainterImpl::PainterImpl(PixBuffer &bf) {
         reinterpret_cast<ID2D1RenderTarget**>(target.GetAddressOf())
     );
 
-    initlize();
+    initialize();
 
     // Set target options
     ZeroMemory(&target_opt, sizeof(target_opt));
@@ -453,7 +456,7 @@ void PainterImpl::do_recreate() {
     // TODO : Recreate render target
     signal_cleanup.emit();
 }
-void PainterImpl::initlize() {
+void PainterImpl::initialize() {
     HRESULT hr;
     // Make cached brushs
     hr = target->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 1), brushs.solid.GetAddressOf());
@@ -792,6 +795,8 @@ void PainterImpl::begin() {
     target->SetTransform(D2D1::Matrix3x2F::Identity());
 }
 void PainterImpl::end() {
+    assert(state.n_clip_rects == 0);
+
     target->EndDraw();
 
     if (target_opt.bitmap_target) {
@@ -904,36 +909,40 @@ void PainterImpl::draw_image(TextureImpl *tex,  const FRect *_dst, const FRect *
         src = FRect(0, 0, w, h);
     }
 
-    // Zoom the image let it display at the right size
-    auto [tex_w, tex_h] = bitmap->GetSize();
+    // // Zoom the image let it display at the right size
+    // auto [tex_w, tex_h] = bitmap->GetSize();
     
-    float w_ratio = float(tex_w) / float(src.w);
-    float h_ratio = float(tex_h) / float(src.h);
+    // float w_ratio = float(tex_w) / float(src.w);
+    // float h_ratio = float(tex_h) / float(src.h);
 
-    // Transform the image to fit it
-    FRect tgt;
+    // // Transform the image to fit it
+    // FRect tgt;
 
-    tgt.w = dst.w * w_ratio;
-    tgt.h = dst.h * h_ratio;
+    // tgt.w = dst.w * w_ratio;
+    // tgt.h = dst.h * h_ratio;
 
-    tgt.x = dst.x - (src.x / src.w) * dst.w;
-    tgt.y = dst.y - (src.y / src.h) * dst.h;
+    // tgt.x = dst.x - (src.x / src.w) * dst.w;
+    // tgt.y = dst.y - (src.y / src.h) * dst.h;
 
-    auto brush = brushs.bitmap.Get();
+    // auto brush = brushs.bitmap.Get();
 
-    brush->SetBitmap(bitmap);
-    brush->SetTransform(
-        D2D1::Matrix3x2F::Scale(tgt.w / tex_w, tgt.h / tex_h) *
-        D2D1::Matrix3x2F::Translation(tgt.x, tgt.y)
-    );
-    // Draw actual area
-    target->FillRectangle(
-        D2D1::RectF(dst.x, dst.y, dst.x + dst.w, dst.y + dst.h),
-        brush
-    );
+    // brush->SetBitmap(bitmap);
+    // brush->SetTransform(
+    //     D2D1::Matrix3x2F::Scale(tgt.w / tex_w, tgt.h / tex_h) *
+    //     D2D1::Matrix3x2F::Translation(tgt.x, tgt.y)
+    // );
+    // // Draw actual area
+    // target->FillRectangle(
+    //     D2D1::RectF(dst.x, dst.y, dst.x + dst.w, dst.y + dst.h),
+    //     brush
+    // );
 
-    // Reset bitmap
-    brush->SetBitmap(nullptr);
+    // // Reset bitmap
+    // brush->SetBitmap(nullptr);
+    D2D1_RECT_F d2d_src = D2D1::RectF(src.x, src.y, src.x + src.w, src.y + src.h);
+    D2D1_RECT_F d2d_dst = D2D1::RectF(dst.x, dst.y, dst.x + dst.w, dst.y + dst.h);
+
+    target->DrawBitmap(bitmap, &d2d_dst, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &d2d_src);
 }
 void PainterImpl::draw_lines(const FPoint *fp, size_t n) {
     // TODO : Optimize this
@@ -1023,26 +1032,38 @@ void PainterImpl::fill_rounded_rect(float x, float y, float w, float h, float r)
     target->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x, y, x + w, y + h), r, r), brush);
 }
 
+void PainterImpl::fill_path(ID2D1PathGeometry *path) {
+    D2D1_RECT_F rect;
+    path->GetBounds(nullptr, &rect);
+    auto brush = get_brush(rect);
+    target->FillGeometry(path, brush);
+}
+
 // Scissor
 // TODO : 
-void PainterImpl::set_scissor(float x, float y, float w, float h) {
-    // target->PopAxisAlignedClip();
-    reset_scissor();
+void PainterImpl::push_scissor(float x, float y, float w, float h) {
     target->PushAxisAlignedClip(D2D1::RectF(x, y, x + w, y + h), target->GetAntialiasMode());
     state.n_clip_rects += 1;
 }
-void PainterImpl::intersect_scissor(float x, float y, float w, float h) {
-    target->PushAxisAlignedClip(D2D1::RectF(x, y, x + w, y + h), target->GetAntialiasMode());
-    state.n_clip_rects += 1;
-}
-void PainterImpl::reset_scissor() {
-    while (state.n_clip_rects > 0) {
-        target->PopAxisAlignedClip();
-        state.n_clip_rects -= 1;
-    }
+void PainterImpl::pop_scissor() {
+    target->PopAxisAlignedClip();
+    state.n_clip_rects -= 1;
 }
 
 // Transform
+void PainterImpl::transform(const FMatrix &m) {
+    D2D1::Matrix3x2F pmat;
+    D2D1::Matrix3x2F mat;
+    mat.m11 = m[0][0];
+    mat.m12 = m[0][1];
+    mat.m21 = m[1][0];
+    mat.m22 = m[1][1];
+    mat.dx = m[2][0];
+    mat.dy = m[2][1];
+
+    target->GetTransform(&pmat);
+    target->SetTransform(mat * pmat);
+}
 void PainterImpl::translate(float x, float y) {
     D2D1::Matrix3x2F mat;
     target->GetTransform(&mat);
@@ -1070,6 +1091,11 @@ void PainterImpl::skew_y(float angle) {
 }
 void PainterImpl::reset_transform() {
     target->SetTransform(D2D1::Matrix3x2F::Identity());
+}
+auto PainterImpl::transform_matrix() -> FMatrix {
+    D2D1::Matrix3x2F mat;
+    target->GetTransform(&mat);
+    return FMatrix(mat.m11, mat.m12, mat.m21, mat.m22, mat.dx, mat.dy);
 }
 // Texture
 auto PainterImpl::create_texture(PixFormat fmt, int w, int h) -> TextureImpl *{
@@ -1280,16 +1306,16 @@ void Painter::fill_rounded_rect(float x, float y, float w, float h, float r) {
     priv->fill_rounded_rect(x, y, w, h, r);
 }
 
-void Painter::set_scissor(float x, float y, float w, float h) {
-    priv->set_scissor(x, y, w, h);
+void Painter::push_scissor(float x, float y, float w, float h) {
+    priv->push_scissor(x, y, w, h);
 }
-void Painter::intersect_scissor(float x, float y, float w, float h) {
-    priv->intersect_scissor(x, y, w, h);
-}
-void Painter::reset_scissor() {
-    priv->reset_scissor();
+void Painter::pop_scissor() {
+    priv->pop_scissor();
 }
 
+void Painter::transform(const FMatrix &m) {
+    priv->transform(m);
+}
 void Painter::translate(float x, float y) {
     priv->translate(x, y);
 }
@@ -1307,6 +1333,9 @@ void Painter::skew_y(float angle) {
 }
 void Painter::reset_transform() {
     priv->reset_transform();
+}
+auto Painter::transform_matrix() -> FMatrix {
+    return priv->transform_matrix();
 }
 
 auto Painter::create_texture(PixFormat fmt, int w, int h) -> Texture {
@@ -1481,7 +1510,8 @@ Size TextLayout::size() const {
         if (layout) {
             DWRITE_TEXT_METRICS m;
             layout->GetMetrics(&m);
-            return Size(m.width, m.height);
+            // This size include white space
+            return Size(m.widthIncludingTrailingWhitespace, m.height);
         }
     }
     return Size(-1, -1);
@@ -1509,7 +1539,80 @@ bool TextLayout::hit_test(float x, float y, TextHitResult *res) const {
                 res->inside = inside;
             }
 
-            return inside;
+            return true;
+        }
+    }
+    return false;
+}
+// bool TextLayout::hit_test_pos(size_t pos, float org_x, float org_y, TextHitResult *res) const {
+//     if (priv) {
+//         auto layout = priv->lazy_eval();
+//         if (layout) {
+//             BOOL inside;
+//             BOOL is_trailing_hit;
+//             DWRITE_HIT_TEST_METRICS m;
+//             if (FAILED(layout->HitTestTextPosition(pos, FALSE, org_x, org_y, &is_trailing_hit, &inside, &m))) {
+//                 return false;
+//             }
+//             if (res) {
+//                 res->text = m.textPosition;
+//                 res->length = m.length;
+
+//                 res->box.x = m.left;
+//                 res->box.y = m.top;
+//                 res->box.w = m.width;
+//                 res->box.h = m.height;
+
+//                 res->trailing = is_trailing_hit;
+//                 res->inside = inside;
+//             }
+
+//             return true;
+//         }
+//     }
+//     return false;
+// }
+bool TextLayout::hit_test_range(size_t text, size_t len, float org_x, float org_y, TextHitResults *res) const {
+    if (priv) {
+        auto layout = priv->lazy_eval();
+        if (layout) {
+            HRESULT hr;
+            UINT32 count = 0;
+
+            DWRITE_HIT_TEST_METRICS m;
+
+            hr = layout->HitTestTextRange(text, len, org_x, org_y, &m, 1, &count);
+            if (FAILED(hr)) {
+                D2D_WARN("HitTestTextRange failed %d", hr);
+                return false;
+            }
+
+            // Alloc the result array
+            auto *hit_res = (DWRITE_HIT_TEST_METRICS*) _malloca(sizeof(DWRITE_HIT_TEST_METRICS) * count);
+            hr = layout->HitTestTextRange(text, len, org_x, org_y, hit_res, count, &count);
+            if (FAILED(hr)) {
+                _freea(hit_res);
+                return false;
+            }
+
+            // Copy the result
+            if (res) {
+                res->resize(count);
+                for (size_t i = 0; i < count; i++) {
+                    (*res)[i].text = hit_res[i].textPosition;
+                    (*res)[i].length = hit_res[i].length;
+
+                    (*res)[i].box.x = hit_res[i].left;
+                    (*res)[i].box.y = hit_res[i].top;
+                    (*res)[i].box.w = hit_res[i].width;
+                    (*res)[i].box.h = hit_res[i].height;
+
+                    // Unused properties
+                    (*res)[i].trailing = true;
+                    (*res)[i].inside = true;
+                }
+            }
+            return true;
         }
     }
     return false;

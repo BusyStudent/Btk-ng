@@ -16,6 +16,7 @@
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
+#pragma comment(lib, "imm32.lib")
 // Import backtrace on MSVC (for debugging)
 #if !defined(NDEBUG)
 #pragma comment(lib, "advapi32.lib")
@@ -57,6 +58,8 @@ using Win32Callback = void (*)(void *param);
 // Make sure the MSG can be casted to a Win32Callback
 static_assert(sizeof(LPARAM) >= sizeof(void *));
 static_assert(sizeof(WPARAM) >= sizeof(void *));
+// Make sure is utf16
+static_assert(sizeof(wchar_t) == sizeof(uint16_t));
 
 BTK_NS_BEGIN2()
 
@@ -84,6 +87,9 @@ class Win32Window : public AbstractWindow {
         void       set_icon(const PixBuffer &buffer) override;
         void       repaint() override;
         void       capture_mouse(bool v) override;
+        // IME support
+        void       start_textinput(bool v) override;
+        void       set_textinput_rect(const Rect &r) override;
 
 
         Painter    painter_create() override;
@@ -113,6 +119,9 @@ class Win32Window : public AbstractWindow {
         DWORD64      last_repaint = 0; //< Last repaint time
         DWORD        repaint_limit = 60; //< Repaint limit in fps
         bool         repaint_in_progress = false; //< Repaint in progress
+        bool         textinput_enabled = false; //< Text input enabled
+
+        HIMC         imcontext = {}; //< Default IME context
 };
 
 class Win32Driver : public GraphicsDriver {
@@ -334,6 +343,8 @@ Win32Driver::Win32Driver() {
 
     assert(helper_hwnd);
 
+    // Initialize the IME
+
     // Set the instance
     win32_driver = this;
 
@@ -423,7 +434,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     Widget *widget   = win->widget;
     switch (msg) {
         case WM_QUIT : {
-            context->send_event(QuitEvent());
+            context->send_event(QuitEvent(wparam));
             break;
         }
         case WM_CLOSE : {
@@ -648,6 +659,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
                 DragQueryFileW(drop, i, drop_string.data(), len);
 
                 // Make DropEvent
+                event.set_text(u8string::from(drop_string));
                 event.set_type(Event::DropFile);
 
                 widget->handle(event);
@@ -660,6 +672,46 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             DragFinish(drop);
             break;
         }
+        // IME Here
+        case WM_IME_CHAR : {
+            BTK_LOG("WM_IME_CHAR char: %d\n", wparam);
+            if (!win->textinput_enabled) {
+                break;
+            }
+
+            uchar_t c = wparam;
+            TextInputEvent event(u8string::from(&c, 1));
+            event.set_widget(win->widget);
+            event.set_timestamp(GetTicks());
+            widget->handle(event);
+            break;
+        }
+        case WM_CHAR : {
+            // if (!win->textinput_enabled) {
+            //     BTK_LOG("Text input disabled, Drop it\n");
+            //     break;
+            // }
+            // Check the range of the char
+            if (!win->textinput_enabled) {
+                BTK_LOG("TextInput disabled, Drop it\n");
+                break;
+            }
+            if (wparam < 0x20 || wparam > 0x7E) {
+                BTK_LOG("Drop char: %d\n", wparam);
+                break;
+            }
+            else {
+                BTK_LOG("WM_CHAR : %d\n", wparam);
+            }
+
+            char16_t c = wparam;
+            TextInputEvent event(u8string::from(&c, 1));
+            event.set_widget(win->widget);
+            event.set_timestamp(GetTicks());
+            widget->handle(event);
+            break;
+        }
+
         default : {
             return DefWindowProcW(hwnd, msg, wparam, lparam);
         }
@@ -895,6 +947,9 @@ Win32Window::Win32Window(HWND h, Win32Driver *d) {
     driver = d;
 
     driver->window_add(this);
+
+    // Default disable IME
+    imcontext = ImmAssociateContext(hwnd, nullptr);
 }
 Win32Window::~Win32Window() {
     driver->window_del(this);
@@ -1019,6 +1074,30 @@ void     Win32Window::capture_mouse(bool v) {
     }
     else {
         ReleaseCapture();
+    }
+}
+void     Win32Window::set_textinput_rect(const Rect &rect) {
+    auto imc = ImmGetContext(hwnd);
+    if (imc) {
+        COMPOSITIONFORM cf = {};
+        cf.dwStyle = CFS_POINT;
+        cf.ptCurrentPos.x = rect.x;
+        cf.ptCurrentPos.y = rect.y + rect.h;
+        ImmSetCompositionWindow(imc, &cf);
+
+        ImmReleaseContext(hwnd, imc);
+    }
+}
+void     Win32Window::start_textinput(bool v) {
+    textinput_enabled = v;
+
+    if (v) {
+        // Enable ime
+        ImmAssociateContext(hwnd, imcontext);
+    }
+    else {
+        // Disable ime
+        ImmAssociateContext(hwnd, nullptr);
     }
 }
 

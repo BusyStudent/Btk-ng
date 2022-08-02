@@ -27,7 +27,7 @@ PixBuffer::PixBuffer(int w, int h) {
     _pitch = w * 4;
     _bpp = 32;
     _owned = true;
-    _pixels = malloc(w * h * 4);
+    _pixels = Btk_malloc(w * h * 4);
 
     // Zero out the buffer
     Btk_memset(_pixels, 0, w * h * 4);
@@ -59,7 +59,7 @@ void PixBuffer::clear() {
 
     delete _refcount;
     if(_owned){
-        free(_pixels);
+        Btk_free(_pixels);
     }
 
     // Zero out the buffer
@@ -120,12 +120,12 @@ PixBuffer PixBuffer::resize(int w, int h) const {
 }
 
 // Write to
-void PixBuffer::write_to(const char_t *path) const {
+bool PixBuffer::write_to(u8string_view path) const {
     if (empty()) {
-        return;
+        return false;
     }
 #if defined(_WIN32)
-    auto u16 = u8string_view(path).to_utf16();
+    auto u16 = path.to_utf16();
     auto wic = static_cast<IWICImagingFactory*>(Win32::WicFactory());
     ComPtr<IWICBitmapEncoder> encoder;
     ComPtr<IWICBitmapFrameEncode> frame;
@@ -137,7 +137,7 @@ void PixBuffer::write_to(const char_t *path) const {
 
     if (ext == (LPWSTR)u16.c_str() + u16.length()) {
         // Not found
-        return;
+        return false;
     }
     ext += 1; //< Skip '.'
 
@@ -157,16 +157,25 @@ void PixBuffer::write_to(const char_t *path) const {
     else if (_wcsicmp(ext, L"bmp") == 0) {
         fmt = &GUID_ContainerFormatBmp;
     }
+    else if (_wcsicmp(ext, L"raw") == 0) {
+        fmt = &GUID_ContainerFormatRaw;
+    }
+    else if (_wcsicmp(ext, L"webp") == 0) {
+        fmt = &GUID_ContainerFormatWebp;
+    }
+    else if (_wcsicmp(ext, L"tiff") == 0) {
+        fmt = &GUID_ContainerFormatTiff;
+    }
     else {
         // Unsupported format
-        return;
+        return false;
     }
 
     HRESULT hr = wic->CreateEncoder(*fmt, nullptr, &encoder);
 
     if (FAILED(hr)) {
         // Failed to create encoder
-        return;
+        return false;
     }
 
     // Create IStream based on file path
@@ -175,28 +184,28 @@ void PixBuffer::write_to(const char_t *path) const {
 
     if (FAILED(hr)) {
         // Failed to create stream
-        return;
+        return false;
     }
 
     // Create frame
     hr = encoder->Initialize(stream.Get(), WICBitmapEncoderNoCache);
     if (FAILED(hr)) {
         // Failed to initialize encoder
-        return;
+        return false;
     }
 
     // Create frame
     hr = encoder->CreateNewFrame(&frame, nullptr);
     if (FAILED(hr)) {
         // Failed to create frame
-        return;
+        return false;
     }
 
     // Initialize frame
     hr = frame->Initialize(nullptr);
     if (FAILED(hr)) {
         // Failed to initialize frame
-        return;
+        return false;
     }
 
     // Set frame properties
@@ -204,14 +213,14 @@ void PixBuffer::write_to(const char_t *path) const {
     hr = frame->SetPixelFormat(&pf);
     if (FAILED(hr)) {
         // Failed to set pixel format
-        return;
+        return false;
     }
 
     // Set frame properties
     hr = frame->SetSize(_width, _height);
     if (FAILED(hr)) {
         // Failed to set size
-        return;
+        return false;
     }
 
     // Write pixels to frame
@@ -219,17 +228,17 @@ void PixBuffer::write_to(const char_t *path) const {
 
     if (FAILED(hr)) {
         // Failed to write pixels
-        return;
+        return false;
     }
 
     // Commit frame
     hr = frame->Commit();
     if (FAILED(hr)) {
         // Failed to commit frame
-        return;
+        return false;
     }
 #else
-
+    return false;
 #endif
 }
 
@@ -253,7 +262,7 @@ PixBuffer &PixBuffer::operator =(PixBuffer &&bf) {
 }
 
 // Load from ...
-PixBuffer PixBuffer::FromFile(const char *s) {
+PixBuffer PixBuffer::FromFile(u8string_view path) {
 
 #if defined(_WIN32)
     auto wic = static_cast<IWICImagingFactory*>(Win32::WicFactory());
@@ -266,7 +275,7 @@ PixBuffer PixBuffer::FromFile(const char *s) {
     HRESULT hr;
 
     PixBuffer bf;
-    auto u16 = u8string_view(s).to_utf16();
+    auto u16 = path.to_utf16();
 
     hr = wic->CreateDecoderFromFilename(
         reinterpret_cast<const wchar_t*>(u16.c_str()),

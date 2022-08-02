@@ -17,6 +17,10 @@ class TimerEvent;
 // Event filter, return true to discard event
 using EventFilter = bool (*)(Object *, Event &, void *);
 
+/**
+ * @brief All objects has virtual destructor and slots should inherit from Object
+ * 
+ */
 class BTKAPI Object : public Any, public Trackable {
     public:
         Object() = default;
@@ -33,6 +37,7 @@ class BTKAPI Object : public Any, public Trackable {
         context_t ui_context() const;
 
         // Timer management
+        timerid_t add_timer(timertype_t type, uint32_t interval);
         timerid_t add_timer(uint32_t interval);
         bool      del_timer(timerid_t timerid);
         // Deferred call
@@ -70,5 +75,10 @@ class BTKAPI Timer : public Object {
         uint32_t       _interval = 0;
         bool           _repeat   = false;
 };
+
+// Inline functions
+inline timerid_t Object::add_timer(uint32_t interval) {
+    return add_timer(TimerType::Precise, interval);
+}
 
 BTK_NS_END

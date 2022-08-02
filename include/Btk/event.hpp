@@ -50,6 +50,8 @@ class Event {
             Call      , //< EventLoop will call it
             Timer     , //< The timer timeout
 
+            User        = 10086, //< User defined event
+            UserMax     = 65535, //< User defined event max
         };
 
         Event()          : Event(None) {}
@@ -213,6 +215,10 @@ class MouseEvent : public WidgetEvent {
             return _y;
         }
         int button() const;
+
+        Point position() const {
+            return Point(_x, _y);
+        }
     private:
         int _x; //< Mouse x position
         int _y; //< Mouse y position
@@ -247,6 +253,10 @@ class DragEvent  : public WidgetEvent {
         void set_rel(int x, int y) {
             _xrel = x;
             _yrel = y;
+        }
+
+        Point position() const {
+            return Point(_x, _y);
         }
     private:
         int _x = -1;
@@ -334,7 +344,14 @@ class TimerEvent : public Event {
 // Another Event
 class QuitEvent : public Event {
     public:
-        QuitEvent() : Event(Quit) {}
+        QuitEvent()      : Event(Quit) {}
+        QuitEvent(int c) : Event(Quit), _code(c) {}
+
+        int code() const {
+            return _code;
+        }
+    private:
+        int _code = EXIT_SUCCESS;
 };
 
 class CallEvent : public Event {

@@ -34,37 +34,17 @@ Widget::~Widget() {
         w->_in_child_iter = std::list<Widget *>::iterator{};
         delete w;
     }
-
-
-    // Release painter
-    _painter = {};
+    // Destroy window if needed
+    if (is_window()) {
+        window_destroy();
+    }
 }
 
 void Widget::set_visible(bool v) {
-    if (parent() == nullptr) {
+    if (is_root()) {
         //Top level widget
         if (_win == nullptr) {
-            Size size = _rect.size();
-            // Try to use size hint
-            if (size.w == 0 || size.h == 0) {
-                size = size_hint();
-            }
-            // Still no size, use default
-            if (size.w == 0 || size.h == 0) {
-                size = {100, 100};
-                _rect.w = size.w;
-                _rect.h = size.h;
-            }
-
-            _win = driver()->window_create(
-                nullptr,
-                size.w,
-                size.h,
-                _flags
-            );
-            _win->bind_widget(this);
-            _painter = _win->painter_create();
-            _painter_inited = true;
+            window_init();
         }
         _win->show(v);
     }
@@ -174,9 +154,11 @@ bool Widget::handle(Event &event) {
                 _rect.h = e.height();
 
                 // Painter notify
-                _painter.notify_resize(e.width(), e.height());
+                if (_win != nullptr) {
+                    _painter.notify_resize(e.width(), e.height());
+                }
             }
-            break;
+            return resize_event(e);
         }
         case Event::KeyPress : {
             if (focused_widget) {
@@ -184,6 +166,13 @@ bool Widget::handle(Event &event) {
                     return true;
                 }
             }
+            else if (mouse_current_widget) {
+                // No focused widget, try current widget
+                if (mouse_current_widget->handle(event)) {
+                    return true;
+                }
+            }
+            
             // No focused widget, or unhandled by focused widget
             return key_press(event.as<KeyEvent>());
         }
@@ -193,11 +182,38 @@ bool Widget::handle(Event &event) {
                     return true;
                 }
             }
+            else if (mouse_current_widget) {
+                // No focused widget, try current widget
+                if (mouse_current_widget->handle(event)) {
+                    return true;
+                }
+            }
             return key_release(event.as<KeyEvent>());
         }
         case Event::MousePress : {
             _pressed = true;
+            if (focused_widget) {
+                auto &mouse = event.as<MouseEvent>();
+                // Try reset previous focused widget
+                if (!focused_widget->_rect.contains(mouse.position())) {
+                    BTK_LOG("Focus out %s\n", Btk_typename(focused_widget));
+                    Event event(Event::FocusLost);
+                    focused_widget->handle(event);
+                    focused_widget = nullptr;
+                }
+            }
+
             if (mouse_current_widget) {
+                // Try Make a new focused widget
+                if (uint8_t(mouse_current_widget->_focus & FocusPolicy::Mouse)) {
+                    if (focused_widget == nullptr) {
+                        // Has this bit, Ok to focus
+                        BTK_LOG("Focus on %s\n", Btk_typename(mouse_current_widget));
+                        focused_widget = mouse_current_widget;
+                        Event event(Event::FocusGained);
+                        focused_widget->handle(event);
+                    }
+                }
                 if (mouse_current_widget->handle(event)) {
                     return true;
                 }
@@ -353,6 +369,19 @@ bool Widget::handle(Event &event) {
             // Unhandled or no widget under mouse
             return drag_motion(event.as<DragEvent>());
         }
+        case Event::TextInput : {
+            if (focused_widget) {
+                if (focused_widget->handle(event)) {
+                    return true;
+                }
+            }
+            if (mouse_current_widget) {
+                if (mouse_current_widget->handle(event)) {
+                    return true;
+                }
+            }
+            return textinput_event(event.as<TextInputEvent>());
+        }
         default: {
             break;
         }
@@ -376,9 +405,9 @@ void Widget::repaint() {
         }
         return top->repaint();
     }
-
-    // Is window , let driver to send a paint event
-    _win->repaint();
+    if (_win) {
+        _win->repaint();
+    }
 }
 
 // Query
@@ -390,7 +419,8 @@ bool Widget::visible() const {
     return _visible;
 }
 bool Widget::is_window() const {
-    return _win != nullptr;
+    // Is top level widget or _win is not nullptr
+    return _win != nullptr || _parent == nullptr;
 }
 bool Widget::is_root() const {
     return _parent == nullptr;
@@ -478,6 +508,21 @@ void Widget::remove_child(Widget *w) {
     event.set_widget(w);
     handle(event);
 }
+bool Widget::has_child(Widget *w) const {
+    auto it = std::find(_children.begin(), _children.end(), w);
+    return it != _children.end();
+}
+void Widget::set_parent(Widget *w) {
+    if (parent() == w) {
+        return ;
+    }
+    if (parent()) {
+        parent()->remove_child(this);
+    }
+    if (w) {
+        w->add_child(this);
+    }
+}
 
 // Root
 Widget *Widget::root() const {
@@ -502,290 +547,125 @@ Widget *Widget::window() const {
 // Window configure
 void Widget::set_window_title(u8string_view title) {
     if (is_window()) {
+        if (!_win) {
+            window_init();
+        }
         _win->set_title(title.data());
     }
 }
 void Widget::set_window_size(int w, int h) {
     if (is_window()) {
+        if (!_win) {
+            window_init();
+        }
         _win->resize(w, h);
     }
 }
 void Widget::set_window_position(int x, int y) {
     if (is_window()) {
+        if (!_win) {
+            window_init();
+        }
         _win->move(x, y);
     }
 }
 void Widget::set_window_icon(const PixBuffer &icon) {
     if (is_window()) {
+        if (!_win) {
+            window_init();
+        }
         _win->set_icon(icon);
     }
 }
+
+// Mouse
 void Widget::capture_mouse(bool capture) {
     if (is_window()) {
+        // Need we need more strict check ?
+        if (!_win) {
+            window_init();
+        }
         _win->capture_mouse(capture);
     }
 }
 
-// Common useful widgets
-
-Button::Button(Widget *parent ) {
-    if (parent != nullptr) {
-        parent->add_child(this);
-    }
-    auto style = this->style();
-    resize(style->button_width, style->button_height);
-}
-Button::~Button() {
-
-}
-
-bool Button::paint_event(PaintEvent &event) {
-    BTK_UNUSED(event);
-
-    auto rect = this->rect().cast<float>();
-    auto style = this->style();
-    auto &gc  = this->painter();
-
-    // Begin draw
-    auto border = rect.apply_margin(2.0f);
-
-    // Disable antialiasing
-    gc.set_antialias(false);
-
-    Color c;
-
-    // Background
-    if (_pressed) {
-        c = style->highlight;
-    }
-    else{
-        c = style->background;
-    }
-    gc.set_color(c.r, c.g, c.b, c.a);
-    gc.fill_rect(border);
-
-    if (_entered && !_pressed) {
-        c = style->highlight;
-    }
-    else{
-        c = style->border;
-    }
-
-    // Border
-    if (!(_flat && !_pressed && !_entered)) {
-        // We didnot draw border on _flat mode
-        gc.set_color(c.r, c.g, c.b, c.a);
-        gc.draw_rect(border);
-    }
-
-    // Text
-    if (!_text.empty()) {
-        if (_pressed) {
-            c = style->highlight_text;
+// IME
+void Widget::start_textinput(bool v) {
+    if (is_window()) {
+        if (!_win) {
+            window_init();
         }
-        else{
-            c = style->text;
+        _win->start_textinput(v);
+    }
+    // Try get root widget and start textinput
+    if (!is_root()) {
+        return root()->start_textinput(v);
+    }
+    // ???
+}
+void Widget::set_textinput_rect(const Rect &r) {
+    if (is_window()) {
+        if (!_win) {
+            window_init();
         }
-        gc.set_text_align(Alignment::Center | Alignment::Middle);
-        gc.set_font(font());
-        gc.set_color(c.r, c.g, c.b, c.a);
-        gc.draw_text(
-            _text,
-            border.x + border.w / 2,
-            border.y + border.h / 2
-        );
+        _win->set_textinput_rect(r);
     }
-
-    // Recover antialiasing
-    gc.set_antialias(true);
-    
-    return true;
-}
-bool Button::mouse_press(MouseEvent &event) {
-    _pressed = true;
-
-    repaint();
-    return true;
-}
-bool Button::mouse_release(MouseEvent &event) {
-    _pressed = false;
-    _clicked.emit();
-
-    repaint();
-    return true;
-}
-bool Button::mouse_enter(MotionEvent &event) {
-    _entered = true;
-    _howered.emit();
-    repaint();
-    return true;
-}
-bool Button::mouse_leave(MotionEvent &event) {
-    _entered = false;
-    _pressed = false;
-    repaint();
-    return true;
-}
-
-Size Button::size_hint() const {
-    auto style = this->style();
-    return Size(style->button_width, style->button_height);
-}
-
-// Label
-Label::Label(Widget *wi, u8string_view txt) : Widget(wi) {
-    _layout.set_font(font());
-    _layout.set_text(txt);
-
-    // Try measure text
-    auto size = size_hint();
-    if (size.is_valid()) {
-        resize(size.w, size.h);
+    if (!is_root()) {
+        return root()->set_textinput_rect(r);
     }
 }
-Label::~Label() {}
 
-void Label::set_text(u8string_view txt) {
-    _layout.set_text(txt);
+// Properties
+void Widget::set_focus_policy(FocusPolicy policy) {
+    _focus = policy;
+
+    // Check parent focus widget, and remove focus widget if need
+    if (_parent) {
+        if (_parent->focused_widget == this) {
+            handle(Event(Event::FocusLost));
+            _parent->focused_widget = nullptr;
+        }
+    }
 }
-bool Label::paint_event(PaintEvent &) {
-    auto border = this->rect().cast<float>();
-    auto style = this->style();
-    auto &painter = this->painter();
+void Widget::set_font(const Font &font) {
+    _font = font;
+}
 
-    painter.set_font(font());
-    painter.set_text_align(_align);
-    painter.set_color(style->text);
+// Window Internal
+void Widget::window_init() {
+    if (_win) {
+        return;
+    }
+    Size size = _rect.size();
+    // Try to use size hint
+    if (size.w <= 0 || size.h <= 0) {
+        size = size_hint();
+    }
+    // Still no size, use default
+    if (size.w <= 0 || size.h <= 0) {
+        size = {_style->window_width, _style->window_height};
+        _rect.w = size.w;
+        _rect.h = size.h;
+    }
 
-    painter.set_scissor(border);
-    painter.draw_text(
-        _layout,
-        border.x,
-        border.y + border.h / 2
+    _win = driver()->window_create(
+        nullptr,
+        size.w,
+        size.h,
+        _flags
     );
-    painter.reset_scissor();
-
-    return true;
+    _win->bind_widget(this);
+    _painter = _win->painter_create();
+    _painter_inited = true;
 }
-Size Label::size_hint() const {
-    auto size = _layout.size();
-    if (size.is_valid()) {
-        // Add margin
-        return Size(size.w + 2, size.h + 2);
+void Widget::window_destroy() {
+    if (_win) {
+        // Release painter first
+        _painter = {};
+        _painter_inited = false;
+        delete _win;
+        _win = nullptr;
     }
-    return size;
-}
-
-
-// ProgressBar
-ProgressBar::ProgressBar(Widget *parent) {
-    if (parent) {
-        parent->add_child(this);
-    }
-}
-ProgressBar::~ProgressBar() {
-
-}
-
-void ProgressBar::set_range(int64_t min, int64_t max) {
-    _min = min;
-    _max = max;
-    _range_changed.emit();
-    repaint();
-}
-void ProgressBar::set_value(int64_t value) {
-    value = clamp(value, _min, _max);
-    _value = value;
-    _value_changed.emit();
-    repaint();
-}
-void ProgressBar::set_direction(Direction direction) {
-    _direction = direction;
-    repaint();
-}
-void ProgressBar::set_text_visible(bool visible) {
-    _text_visible = visible;
-    repaint();
-}
-void ProgressBar::reset() {
-    set_value(_min);
-
-    // TODO : reset animation
-}
-bool ProgressBar::paint_event(PaintEvent &) {
-    auto rect = this->rect().cast<float>();
-    auto style = this->style();
-    auto &gc  = this->painter();
-
-    auto border = rect.apply_margin(2.0f);
-
-    gc.set_antialias(false);
-
-    // Background
-    gc.set_color(style->background);
-    gc.fill_rect(border);
-
-    // Progress
-    gc.set_color(style->highlight);
-
-    auto bar = border;
-
-    switch(_direction) {
-        case LeftToRight : {
-            bar.w = (border.w * (_value - _min)) / (_max - _min);
-            break;
-        }
-        case RightToLeft : {
-            bar.w = (border.w * (_value - _min)) / (_max - _min);
-            bar.x += border.w - bar.w;
-            break;
-        }
-        case TopToBottom : {
-            bar.h = (border.h * (_value - _min)) / (_max - _min);
-            break;
-        }
-        case BottomToTop : {
-            bar.h = (border.h * (_value - _min)) / (_max - _min);
-            bar.y += border.h - bar.h;
-            break;
-        }
-    }
-
-    gc.fill_rect(bar);
-
-    if (_text_visible) {
-        int percent = (_value - _min) * 100 / (_max - _min);
-        auto text = u8string::format("%d %%", percent);
-
-        gc.set_text_align(Alignment::Center | Alignment::Middle);
-        gc.set_font(font());
-
-        gc.set_color(style->text);
-        gc.draw_text(
-            text,
-            border.x + border.w / 2,
-            border.y + border.h / 2
-        );
-
-        gc.set_scissor(bar);
-        gc.set_color(style->highlight_text);
-        gc.draw_text(
-            text,
-            border.x + border.w / 2,
-            border.y + border.h / 2
-        );
-        gc.reset_scissor();
-    }
-
-
-    // Border
-    gc.set_color(style->border);
-    gc.draw_rect(border);
-
-    // End
-    gc.set_antialias(true);
-    
-    return true;
 }
 
 BTK_NS_END
