@@ -54,7 +54,7 @@ class GLColor {
 };
 
 enum class PixFormat : uint32_t {
-    RGBA32 = 0,
+    RGBA32 = 0, //< ABGR in little ed
     RGB24  = 1,
     BGRA32 = 2,
     BGR24  = 3,
@@ -72,12 +72,27 @@ class BTKAPI PixBuffer {
          */
         PixBuffer();
         /**
-         * @brief Construct a new Pix Buffer object
+         * @brief Construct a new RGBA32 Pix Buffer object
          * 
          * @param w 
          * @param h 
          */
         PixBuffer(int w, int h);
+        /**
+         * @brief Construct a new Pix Buffer object with format
+         * 
+         * @param w 
+         * @param h 
+         */
+        PixBuffer(PixFormat fmt, int w, int h);
+        /**
+         * @brief Construct a new Pix Buffer object with format and data
+         * 
+         * @param p 
+         * @param w 
+         * @param h 
+         */
+        PixBuffer(PixFormat fmt, void *p, int w, int h);
         /**
          * @brief Construct a new Pix Buffer object (just reference to another buffer)
          * 
@@ -222,6 +237,11 @@ constexpr inline GLColor lerp(GLColor a, GLColor b, float t) noexcept {
     };
 }
 
+inline PixBuffer::PixBuffer(int w, int h) : 
+    PixBuffer(PixFormat::RGBA32, w, h)
+{
+    
+}
 
 inline PixBuffer PixBuffer::ref() const {
     return *this;

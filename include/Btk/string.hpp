@@ -103,7 +103,7 @@ class _Utf8FastIteratorBase {
             return *this;
         }
         _Utf8Codepoint<T>      operator *() const {
-            return {container, where}
+            return {container, where};
         }
 
         // Comparison

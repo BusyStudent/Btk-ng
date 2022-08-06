@@ -69,11 +69,14 @@ bool Button::paint_event(PaintEvent &event) {
         gc.set_text_align(Alignment::Center | Alignment::Middle);
         gc.set_font(font());
         gc.set_color(c.r, c.g, c.b, c.a);
+
+        gc.push_scissor(border);
         gc.draw_text(
             _text,
             border.x + border.w / 2,
             border.y + border.h / 2
         );
+        gc.pop_scissor();
     }
 
     // Recover antialiasing
@@ -152,6 +155,10 @@ bool TextEdit::handle(Event &e) {
     return false;
 }
 bool TextEdit::mouse_press(MouseEvent &event) {
+    if (_text.empty()) {
+        return true;
+    }
+
     size_t pos = get_pos_from(event.position());
     BTK_LOG("LineEdit::handle_mouse %d\n",int(pos));
 

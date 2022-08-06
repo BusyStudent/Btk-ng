@@ -2,6 +2,7 @@
 
 #include <Btk/string.hpp>
 #include <stdexcept>
+#include <cstdarg>
 #include <ostream>
 
 // Utf8 header 
@@ -252,7 +253,7 @@ u8string u8string::substr(size_t pos, size_t len) const {
     pos = beg.range_begin();
     len = ed.range_end() - pos;
 
-    return _str.substr(pos, len);
+    return u8string(_str.substr(pos, len));
 }
 
 // Convert from

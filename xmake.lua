@@ -3,6 +3,9 @@ lib_kind = "static"
 
 if is_plat("windows") then
     add_cxxflags("/utf-8")
+elseif is_plat("linux") then
+    add_requires("pango", "pangocairo", "cairo")
+    add_packages("pango", "pangocairo", "cairo")
 end
 
 set_languages("c++17")
@@ -26,6 +29,9 @@ target("btk")
 
     -- Backends
     if is_plat("windows") then
+        -- Make default driver
+        add_defines("BTK_DRIVER=Win32DriverInfo")
+
         add_files("src/backend/win32.cpp")
         add_files("src/painter/d2d_painter.cpp")
 
@@ -33,7 +39,11 @@ target("btk")
         add_links("user32", "shlwapi", "shell32")
         add_links("windowscodecs", "d2d1", "dwrite")
     else
+        -- Make default driver
+        add_defines("BTK_DRIVER=SDLDriverInfo")
+
         add_files("src/backend/sdl2.cpp")
+        add_files("src/painter/cairo_painter.cpp")
     end
 target_end()
 

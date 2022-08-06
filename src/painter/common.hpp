@@ -421,11 +421,11 @@ class Union {
             _id = Traits::null_id;
         }
 
-        template <typename T, typename ...Args>
-        void emplace(Args &&...args) {
+        template <typename T, typename ...NArgs>
+        void emplace(NArgs &&...args) {
             reset();
             _id = Traits::template id_from_type<T>;
-            new (_buffer) T(std::forward<Args>(args)...);
+            new (_buffer) T(std::forward<NArgs>(args)...);
         }
 
         // Assignement
@@ -487,6 +487,7 @@ template <typename T>
 class GPointer {
     public:
         explicit GPointer(T *ptr) : _ptr(ptr) {}
+        GPointer() = default;
         GPointer(const GPointer & gp) : _ptr(gp._ptr) {
             if (_ptr) {
                 g_object_ref(_ptr);
@@ -495,14 +496,50 @@ class GPointer {
         GPointer(GPointer && gp) : _ptr(gp._ptr) {
             gp._ptr = nullptr;
         }
-        ~GPointer() {
-            if (_ptr) {
-                g_object_unref(_ptr);
-            }
+        ~GPointer() noexcept {
+            reset();
         }
 
         T *get() const noexcept {
             return _ptr;
+        }
+        void reset() noexcept {
+            if (_ptr) {
+                g_object_unref(_ptr);
+                _ptr = nullptr;
+            }
+        }
+        T   *release() noexcept {
+            auto p = _ptr;
+            _ptr = nullptr;
+            return p;
+        }
+
+        bool empty() const noexcept {
+            return _ptr == nullptr;
+        }
+
+        GPointer &operator =(const GPointer &gp) noexcept {
+            reset();
+            _ptr = gp._ptr;
+            if (_ptr) {
+                g_object_ref(_ptr);
+            }
+            return *this;
+        }
+        GPointer &operator =(GPointer &&gp) noexcept {
+            reset();
+            _ptr = gp._ptr;
+            gp._ptr = nullptr;
+            return *this;
+        }
+        GPointer &operator =(T *p) noexcept {
+            reset();
+            _ptr = p;
+            if (_ptr) {
+                g_object_ref(_ptr);
+            }
+            return *this;
         }
     private:
         T *_ptr = nullptr;

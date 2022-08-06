@@ -15,6 +15,22 @@
             "cStandard": "c17",
             "cppStandard": "c++17",
             "intelliSenseMode": "${default}"
+        },
+        {
+            "name": "Linux",
+            "includePath": [
+                "${default}",
+                "${workspaceFolder}/include",
+                "${workspaceFolder}/src",
+                "/usr/include/pango-1.0",
+                "/usr/include/glib-2.0",
+                "/usr/include/harfbuzz",
+                "/usr/lib/x86_64-linux-gnu/glib-2.0/include",
+                "/usr/include/cairo"
+            ],
+            "cStandard": "c17",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "${default}"
         }
     ],
     "version": 4

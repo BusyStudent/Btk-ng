@@ -26,6 +26,16 @@ UIContext::UIContext(GraphicsDriver *driv) {
     StyleBreeze(&style);
     SetUIContext(this);
 }
+UIContext::UIContext() {
+
+#if defined(BTK_DRIVER)
+    driver = BTK_DRIVER.create();
+#else
+    abort();
+#endif
+    StyleBreeze(&style);
+    SetUIContext(this);
+}
 UIContext::~UIContext() {
     for(auto w : widgets) {
         delete w;

@@ -622,7 +622,8 @@ void Widget::set_focus_policy(FocusPolicy policy) {
     // Check parent focus widget, and remove focus widget if need
     if (_parent) {
         if (_parent->focused_widget == this) {
-            handle(Event(Event::FocusLost));
+            Event event(Event::FocusLost);
+            handle(event);
             _parent->focused_widget = nullptr;
         }
     }
@@ -644,9 +645,9 @@ void Widget::window_init() {
     // Still no size, use default
     if (size.w <= 0 || size.h <= 0) {
         size = {_style->window_width, _style->window_height};
-        _rect.w = size.w;
-        _rect.h = size.h;
     }
+    _rect.w = size.w;
+    _rect.h = size.h;
 
     _win = driver()->window_create(
         nullptr,

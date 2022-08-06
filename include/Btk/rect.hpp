@@ -4,6 +4,10 @@
 #include <iosfwd>
 #include <cmath>
 
+#if !defined(_MSC_VER)
+#include <ostream>
+#endif
+
 BTK_NS_BEGIN
 
 template <typename T>

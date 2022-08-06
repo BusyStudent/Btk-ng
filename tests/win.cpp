@@ -263,8 +263,7 @@ class Editer : public Widget {
 
 int main () {
     
-    auto device = Win32DriverInfo.create();
-    UIContext context(device);
+    UIContext context;
 
     // PixBuffer pixbuf(100, 100);
     // auto painter = Painter::FromPixBuffer(pixbuf);

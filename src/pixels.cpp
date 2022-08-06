@@ -3,13 +3,23 @@
 #include <Btk/painter.hpp>
 #include <Btk/pixels.hpp>
 
-#if defined(_WIN32)
+#if  defined(_WIN32)
 #include <wincodec.h> //< Load image from file / memory
 #include <shlwapi.h> //< PathFindExtensionW
 #include <cwchar> //< wcslen
 #include <wrl.h>
 
 using Microsoft::WRL::ComPtr;
+#else
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_STATIC
+
+// Replace memory fn
+#define STBI_REALLOC Btk_realloc
+#define STBI_MALLOC  Btk_malloc
+#define STBI_FREE    Btk_free
+
+#include "libs/stb_image.h" //Stb library image loading
 #endif
 
 BTK_NS_BEGIN
@@ -21,16 +31,33 @@ PixBuffer::PixBuffer() {
     _bpp = 0;
     _owned = false;
 }
-PixBuffer::PixBuffer(int w, int h) {
+PixBuffer::PixBuffer(PixFormat fmt, int w, int h) {
+    int bpp = fmt == PixFormat::RGBA32 ? 32 : 24;
+    int byte = fmt == PixFormat::RGBA32 ? 4 : 3;
+
     _width = w;
     _height = h;
-    _pitch = w * 4;
-    _bpp = 32;
+    _pitch = w * byte;
+    _bpp = bpp;
     _owned = true;
-    _pixels = Btk_malloc(w * h * 4);
+    _pixels = Btk_malloc(w * h * byte);
 
     // Zero out the buffer
-    Btk_memset(_pixels, 0, w * h * 4);
+    Btk_memset(_pixels, 0, w * h * byte);
+
+    // Alloc refcount
+    _refcount = new int(1);
+}
+PixBuffer::PixBuffer(PixFormat fmt, void *p, int w, int h) {
+    int bpp = fmt == PixFormat::RGBA32 ? 32 : 24;
+    int byte = fmt == PixFormat::RGBA32 ? 4 : 3;
+
+    _width = w;
+    _height = h;
+    _pitch = w * byte;
+    _bpp = bpp;
+    _owned = false;
+    _pixels = p;
 
     // Alloc refcount
     _refcount = new int(1);
@@ -333,7 +360,41 @@ PixBuffer PixBuffer::FromFile(u8string_view path) {
     err:
         return PixBuffer();
 #else
-    return PixBuffer();
+    int w, h, comp;
+    auto data = stbi_load(u8string(path).c_str(),&w, &h, &comp, STBI_rgb_alpha);
+    if (!data) {
+        return PixBuffer();
+    }
+
+    // Manage by pixbuffer
+    if (comp == STBI_rgb_alpha) {
+        PixBuffer buf(PixFormat::RGBA32, data, w, h);
+        buf.set_managed(true);
+        return buf;
+    }
+    else if (comp == STBI_rgb) {
+        // We need to convert to RGBA32 (ABGR in little ed)
+        PixBuffer buf(PixFormat::RGBA32, w, h);
+        auto dst = buf.pixels<uint32_t>();
+
+        for (int i = 0; i < w * h; i++) {
+            uint32_t pix = 0xFF000000;
+            uint32_t r = data[i * 4 + 0];
+            uint32_t g = data[i * 4 + 1];
+            uint32_t b = data[i * 4 + 2];
+
+            pix |= b << 16;
+            pix |= g << 8;
+            pix |= r << 0;
+
+            dst[i] = pix;
+
+        }
+        Btk_free(data);
+        return buf;
+    }
+    // Unsupport
+    abort();
 #endif
 
 }
