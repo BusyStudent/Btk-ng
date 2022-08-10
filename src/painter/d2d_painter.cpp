@@ -1,6 +1,7 @@
 #include "build.hpp"
 #include "common.hpp"
 
+#include <Btk/context.hpp>
 #include <Btk/painter.hpp>
 #include <Btk/object.hpp>
 #include <wincodec.h>
@@ -73,6 +74,25 @@ namespace {
                 return DXGI_FORMAT_UNKNOWN;
             }
         }
+    }
+    auto btkmat_to_d2d(const FMatrix &mat) -> D2D1_MATRIX_3X2_F {
+        if constexpr (std::is_same_v<decltype(mat.m), decltype(D2D1_MATRIX_3X2_F::m)>) {
+            return reinterpret_cast<const D2D1_MATRIX_3X2_F&>(mat);
+        }
+        else {
+            return D2D1::Matrix3x2F(
+                mat[0][0], mat[0][1],
+                mat[1][0], mat[1][1],
+                mat[2][0], mat[2][1]
+            );
+        }
+    }    
+    auto d2dmat_to_btk(const D2D1_MATRIX_3X2_F &mat) -> FMatrix {
+        return FMatrix(
+            mat.m11, mat.m12,
+            mat.m21, mat.m22,
+            mat.dx , mat.dy
+        );
     }
 
     auto layout_translate_by_align(IDWriteTextLayout *layout, Btk::Alignment align, float *x, float *y) {
@@ -182,6 +202,17 @@ class TextLayoutImpl : public Refable <TextLayoutImpl> {
         float                     max_height = std::numeric_limits<float>::max(); //< Max height of the text
 };
 
+class PainterPathImpl {
+    public:
+        // Should I add this transform matrix to the path?
+        D2D1::Matrix3x2F          mat = D2D1::Matrix3x2F::Identity();
+        ComPtr<ID2D1PathGeometry> path;
+        ComPtr<ID2D1GeometrySink> sink;
+
+        bool is_figure_open = false;
+        bool is_open = false;
+};
+
 class PainterImpl {
     public:
         PainterImpl(HWND hwnd);
@@ -217,13 +248,15 @@ class PainterImpl {
         void draw_text(u8string_view txt, float x, float y);
         void draw_text(IDWriteTextLayout *lay, float x, float y);
 
+        void draw_path(PainterPathImpl *p);
+
         // Fill
         void fill_rect(float x, float y, float w, float h);
         void fill_circle(float x, float y, float r);
         void fill_ellipse(float x, float y, float xr, float yr);
         void fill_rounded_rect(float x, float y, float w, float h, float r);
 
-        void fill_path(ID2D1PathGeometry *path);
+        void fill_path(PainterPathImpl *p);
 
         // Scissor
         void push_scissor(float x, float y, float w, float h);
@@ -298,7 +331,7 @@ class PainterImpl {
 
 };
 
-PainterImpl::PainterImpl(HWND hwnd) {
+inline PainterImpl::PainterImpl(HWND hwnd) {
 
     HRESULT hr;
 
@@ -1010,6 +1043,20 @@ void PainterImpl::draw_text(IDWriteTextLayout *layout, float x, float y) {
 
     target->DrawTextLayout(D2D1::Point2F(x, y), layout, brush);
 }
+void PainterImpl::draw_path(PainterPathImpl *p) {
+    auto path = p->path.Get();
+    auto &mat = p->mat;
+
+    D2D1_RECT_F rect;
+    HRESULT hr;
+    hr = path->GetBounds(nullptr, &rect);
+
+    assert(SUCCEEDED(hr));
+
+    auto brush = get_brush(rect);
+
+    target->DrawGeometry(path, brush, state.stroke_width);
+}
 
 void PainterImpl::fill_rect(float x, float y, float w, float h) {
     auto rect = D2D1::RectF(x, y, x + w, y + h);
@@ -1032,11 +1079,17 @@ void PainterImpl::fill_rounded_rect(float x, float y, float w, float h, float r)
     target->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x, y, x + w, y + h), r, r), brush);
 }
 
-void PainterImpl::fill_path(ID2D1PathGeometry *path) {
+void PainterImpl::fill_path(PainterPathImpl *p) {
+    auto path = p->path.Get();
+    auto &mat = p->mat;
+    
     D2D1_RECT_F rect;
-    path->GetBounds(nullptr, &rect);
+    HRESULT hr;
+    hr = path->GetBounds(nullptr, &rect);
     auto brush = get_brush(rect);
+
     target->FillGeometry(path, brush);
+
 }
 
 // Scissor
@@ -1261,6 +1314,9 @@ void Painter::set_brush(const Brush &brush) {
 void Painter::set_text_align(align_t align) {
     priv->set_text_align(align);
 }
+void Painter::set_stroke_width(float width) {
+    priv->set_stroke_width(width);
+}
 // 
 void Painter::draw_rect(float x, float y, float w, float h) {
     priv->draw_rect(x, y, w, h);
@@ -1292,6 +1348,11 @@ void Painter::draw_text(const TextLayout &lay, float x, float y) {
     }
     return priv->draw_text(lay.priv->lazy_eval(), x, y);
 }
+void Painter::draw_path(const PainterPath &path) {
+    if (path.priv) {
+        priv->draw_path(path.priv);
+    }
+}
 
 void Painter::fill_rect(float x, float y, float w, float h) {
     priv->fill_rect(x, y, w, h);
@@ -1304,6 +1365,11 @@ void Painter::fill_ellipse(float x, float y, float xr, float yr) {
 }
 void Painter::fill_rounded_rect(float x, float y, float w, float h, float r) {
     priv->fill_rounded_rect(x, y, w, h, r);
+}
+void Painter::fill_path(const PainterPath &path) {
+    if (path.priv) {
+        priv->fill_path(path.priv);
+    }
 }
 
 void Painter::push_scissor(float x, float y, float w, float h) {
@@ -1362,6 +1428,9 @@ void Painter::operator =(Painter && p) {
     p.priv = nullptr;
 }
 
+Painter Painter::FromWindow(AbstractWindow *w) {
+    return FromHwnd(w->native_handle(AbstractWindow::Hwnd));
+}
 Painter Painter::FromHwnd(void * hwnd) {
     Painter p;
     p.priv = new PainterImpl(reinterpret_cast<HWND>(hwnd));
@@ -1624,7 +1693,7 @@ COW_IMPL(Brush);
 Brush::Brush() {
     priv = nullptr;
 }
-void Brush::set_color(GLColor c) {
+void Brush::set_color(const GLColor &c) {
     begin_mut();
     priv->set_color(c);
 }
@@ -1648,6 +1717,99 @@ BrushType Brush::type() const {
     return BrushType::Solid;
 }
 
+// PainterPath
+
+PainterPath::PainterPath() {
+    priv = nullptr;
+}
+PainterPath::PainterPath(PainterPath &&p) {
+    priv = p.priv;
+    p.priv = nullptr;
+}
+PainterPath::~PainterPath() {
+    delete priv;
+}
+void PainterPath::open() {
+    if (!priv) {
+        // Not yet initialized
+        priv = new PainterPathImpl;
+
+        // Call factory to create it
+        HRESULT hr;
+        hr = d2d_factory->CreatePathGeometry(&priv->path);
+        if (FAILED(hr)) {
+            D2D_WARN("CreatePathGeometry failed %d", hr);
+            BTK_THROW(std::runtime_error("CreatePathGeometry failed"));
+        }
+    }
+
+    HRESULT hr;
+    hr = priv->path->Open(
+        &priv->sink
+    );
+    if (FAILED(hr)) {
+        D2D_WARN("Open failed %d", hr);
+        BTK_THROW(std::runtime_error("Open failed"));
+    }
+    priv->is_open = true;
+}
+void PainterPath::close() {
+    HRESULT hr;
+    // If not open, do nothing
+    if (priv->is_figure_open) {
+        priv->sink->EndFigure(D2D1_FIGURE_END_OPEN);
+    }
+    hr = priv->sink->Close();
+    if (FAILED(hr)) {
+        D2D_WARN("Close failed %d", hr);
+        BTK_THROW(std::runtime_error("Close failed"));
+    }
+    priv->sink.Reset();
+    priv->is_figure_open = false;
+    priv->is_open = false;
+}
+void PainterPath::move_to(float x, float y) {
+    // Start a new figure if not open
+    if (priv->is_figure_open) {
+        priv->sink->EndFigure(D2D1_FIGURE_END_OPEN);
+    }
+    priv->sink->BeginFigure(
+        D2D1::Point2F(x, y),
+        D2D1_FIGURE_BEGIN_FILLED
+    );
+    priv->is_figure_open = true;
+}
+void PainterPath::line_to(float x, float y) {
+    priv->sink->AddLine(D2D1::Point2F(x, y));
+}
+void PainterPath::quad_to(float x1, float y1, float x2, float y2) {
+    priv->sink->AddQuadraticBezier(
+        D2D1::QuadraticBezierSegment(
+            D2D1::Point2F(x1, y1),
+            D2D1::Point2F(x2, y2)
+        )
+    );
+}
+void PainterPath::bezier_to(float x1, float y1, float x2, float y2, float x3, float y3) {
+    priv->sink->AddBezier(
+        D2D1::BezierSegment(
+            D2D1::Point2F(x1, y1),
+            D2D1::Point2F(x2, y2),
+            D2D1::Point2F(x3, y3)
+        )
+    );
+}
+void PainterPath::close_path() {
+    priv->sink->EndFigure(D2D1_FIGURE_END_CLOSED);
+    priv->is_figure_open = false;
+}
+
+PainterPath &PainterPath::operator =(PainterPath &&p) {
+    delete priv;
+    priv = p.priv;
+    p.priv = nullptr;
+    return *this;
+}
 
 // Exposed factory
 namespace Win32 {

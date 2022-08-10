@@ -319,6 +319,8 @@ Painter::~Painter() {
     delete priv;
 }
 void Painter::Init() {
+    BTK_ONCE(BTK_LOG("Cairo : This painter is experimental.\n"));
+
     if (mem_refcount != 0) {
         ++mem_refcount;
         return;
@@ -616,13 +618,13 @@ auto Painter::create_texture(const PixBuffer &buf) -> Texture {
 
 
 void Painter::begin() {
-    cairo_save(priv->cr);
+    cairo_push_group(priv->cr);
 }
 void Painter::clear() {
     cairo_paint(priv->cr);
 }
 void Painter::end() {
-    cairo_restore(priv->cr);
+    cairo_pop_group_to_source(priv->cr);
     cairo_surface_flush(priv->surf);
 
     //
@@ -653,6 +655,12 @@ void Painter::notify_resize(int w, int h) {
     priv->notify_resize(w, h);
 }
 
+Painter Painter::FromWindow(AbstractWindow *w) {
+    return Painter::FromXlib(
+        w->native_handle(AbstractWindow::XDisplay), 
+        w->native_handle(AbstractWindow::XWindow)
+    );
+}
 Painter Painter::FromXlib(void *dpy, void *xwin) {
     Painter p;
     p.priv = new PainterImpl(
@@ -972,7 +980,7 @@ COW_IMPL(Brush);
 Brush::Brush() {
     priv = nullptr;
 }
-void Brush::set_color(GLColor c) {
+void Brush::set_color(const GLColor &c) {
     begin_mut();
     cairo_pattern_destroy(priv->pat);
     priv->pat = cairo_pattern_create_rgba(

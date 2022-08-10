@@ -93,7 +93,9 @@ class AbstractAudioDevice;
 class AbstractWindow;
 
 // Painting
+class GraphicsContext;
 class GraphicsDriver;
+class GLContext;
 class PixBuffer;
 class Painter;
 class Texture;

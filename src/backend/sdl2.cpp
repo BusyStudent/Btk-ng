@@ -70,8 +70,9 @@ class SDLWindow : public AbstractWindow {
         void       set_textinput_rect(const Rect &r) override;
         void       start_textinput(bool v) override;
 
-        widget_t   bind_widget(widget_t widget) override;
-        Painter    painter_create() override;
+        pointer_t  native_handle(int what) override;
+        widget_t   bind_widget(widget_t w) override;
+        any_t      gc_create(const char_t *type) override;
 
         uint32_t   id() const;
     private:
@@ -493,7 +494,7 @@ widget_t SDLWindow::bind_widget(widget_t widget) {
     this->widget = widget;
     return ret;
 }
-Painter  SDLWindow::painter_create() {
+pointer_t SDLWindow::native_handle(int what) {
     SDL_SysWMinfo info;
     SDL_GetVersion(&info.version);
 
@@ -502,14 +503,39 @@ Painter  SDLWindow::painter_create() {
     }
 
 #if defined(_WIN32)
-    return Painter::FromHwnd(info.info.win.window);
+    if (what == NativeHandle || what == Hwnd) {
+        return info.info.win.window;
+    }
 #elif defined(__gnu_linux__)
-    return Painter::FromXlib(info.info.x11.display, reinterpret_cast<void*>(info.info.x11.window));
+    if (what == NativeHandle || what == XWindow) {
+        return reinterpret_cast<pointer_t>(info.info.x11.window);
+    }
+    if (what == XDisplay) {
+        return info.info.x11.display;
+    }
 #else
 #error "Unsupport backend"
 #endif
-
+    // Unmatched
+    return nullptr;
 }
+any_t   SDLWindow::gc_create(const char_t *what) {
+    // Create GC
+    if (SDL_strcasecmp(what, "opengl") == 0) {
+        return nullptr;
+    }
+    if (SDL_strcasecmp(what, "vulkan") == 0) {
+        return nullptr;
+    }
+    if (SDL_strcasecmp(what, "metal") == 0) {
+        return nullptr;
+    }
+    if (SDL_strcasecmp(what, "framebuffer") == 0) {
+        // Get Framebuffer
+        return nullptr;
+    }    
+}
+
 uint32_t SDLWindow::id() const {
     return SDL_GetWindowID(win);
 }

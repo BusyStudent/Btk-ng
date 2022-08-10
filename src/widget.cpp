@@ -334,6 +334,14 @@ bool Widget::handle(Event &event) {
             // No current mouse widget or unhandled motion event, notify self
             return mouse_motion(motion);
         }
+        case Event::MouseWheel : {
+            if (mouse_current_widget) {
+                if (mouse_current_widget->handle(event)) {
+                    return true;
+                }
+            }
+            return mouse_wheel(event.as<WheelEvent>());
+        }
         case Event::Timer : {
             return timer_event(event.as<TimerEvent>());
         }
@@ -382,6 +390,16 @@ bool Widget::handle(Event &event) {
             }
             return textinput_event(event.as<TextInputEvent>());
         }
+        case Event::FocusLost : {
+            if (focused_widget) {
+                if (focused_widget->handle(event)) {
+                    BTK_LOG("Focus out %s\n", Btk_typename(focused_widget));
+                    ret = true;
+                }
+                focused_widget = nullptr;
+            }
+            break;
+        }
         default: {
             break;
         }
@@ -395,18 +413,21 @@ void Widget::repaint() {
     //     return;
     // }
     if (!is_window()) {
-        Widget *top = parent();
-        if (top == nullptr) {
-            // Drop it
-            return ;
-        }
-        while (top->parent() != nullptr) {
-            top = top->parent();
-        }
-        return top->repaint();
+        return root()->repaint();
     }
     if (_win) {
         _win->repaint();
+    }
+}
+void Widget::repaint_now() {
+    if (!is_window()) {
+        return root()->repaint_now();
+    }
+    if (_win) {
+        PaintEvent event;
+        event.set_widget(this);
+        event.set_timestamp(GetTicks());
+        handle(event);
     }
 }
 
@@ -656,7 +677,7 @@ void Widget::window_init() {
         _flags
     );
     _win->bind_widget(this);
-    _painter = _win->painter_create();
+    _painter = Painter::FromWindow(_win);
     _painter_inited = true;
 }
 void Widget::window_destroy() {

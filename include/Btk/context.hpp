@@ -46,35 +46,23 @@ class GraphicsDriver : public Any {
 
 
         // Window management
-        virtual window_t window_create(const char_t * title, int width, int height,WindowFlags flags) = 0;
+        virtual window_t window_create(const char_t * title, int width, int height, WindowFlags flags) = 0;
 
         // Clipboard
         virtual void     clipboard_set(const char_t * text) = 0;
         virtual u8string clipboard_get() = 0;
 
-        // Graphics context
-        // 
-        // virtual gcontext_t   gc_create(int from,...) = 0;
-        // virtual vgcontext_t vgc_create(int from,...) = 0;
-        // virtual g3context_t gc3_create(int from,...) = 0;
+        // Cursor
 
-        // virtual void       gc_draw_line(gcontext_t gc, float x1, float y1, float x2, float y2) = 0;
-        // virtual void       gc_draw_rect(gcontext_t gc, float x, float y, float width, float height) = 0;
-        // virtual void       gc_fill_rect(gcontext_t gc, float x, float y, float width, float height) = 0;
-
-        // virtual void       gc_begin() = 0;
-        // virtual void       gc_end() = 0;
-        // Event collect
-
-        // Font
-        // virtual font_t     font_create(const char_t * name) = 0;
-        // virtual Stringlist font_list() = 0;
+        // Dymaic factory
+        // virtual any_t    instance_create(int what, ...) = 0;
 
 
         // Timer
         virtual timerid_t  timer_add(Object *object, timertype_t type, uint32_t ms) = 0;
         virtual bool       timer_del(Object *object, timerid_t id) = 0;
 
+        // Event collect
         virtual void       pump_events(UIContext *) = 0;
 };
 
@@ -90,10 +78,10 @@ class DesktopDriver : public GraphicsDriver {
 };
 
 /**
- * @brief 3D Context like OpenGL
+ * @brief Graphics Context like OpenGL
  * 
  */
-class Graphics3DContext : public Any {
+class GraphicsContext : public Any {
     public:
         virtual void      begin() = 0;
         virtual void      end() = 0;
@@ -118,13 +106,20 @@ class GLFormat {
  * @brief OpenGL graphics context.
  * 
  */
-class GLContext : public Graphics3DContext {
+class GLContext : public GraphicsContext {
     public:
         virtual bool      initialize(const GLFormat &) = 0;
-        virtual bool      set_sync(bool v) = 0;
-        virtual bool      set_viewport(const Rect &rect) = 0;
+        virtual bool      set_swap_interval(int v) = 0;
         virtual Size      get_drawable_size() = 0;
         virtual pointer_t get_proc_address(const char_t *name) = 0;
+};
+class VkContext : public GraphicsContext {
+    public:
+
+};
+class FbContext : public GraphicsContext {
+    public:
+        virtual pointer_t get_pixels_address() = 0;
 };
 
 class AbstractWindow : public Any {
@@ -133,8 +128,9 @@ class AbstractWindow : public Any {
             NativeHandle,
             Hwnd,
             Hdc,
-            XDisplay,
-            XWindow,
+            XConnection, //< Xcb  Connection
+            XDisplay,    //< Xlib Display
+            XWindow,     //< Window
         };
         enum Attr : int {
             AcceptDrop,
@@ -160,10 +156,11 @@ class AbstractWindow : public Any {
         virtual void       start_textinput(bool start) = 0;
         // virtual bool       set_attribute(int attr, ...) = 0;
 
-        // virtual pointer_t native_handle() = 0;
+        virtual pointer_t  native_handle(int what) = 0;
         virtual widget_t   bind_widget(widget_t widget) = 0;
-        // virtual gcontext_t gc_create() = 0;
-        virtual Painter    painter_create() = 0;
+        virtual any_t      gc_create(const char_t *type) = 0;
+        // [[deprecated("Use Painter::FromWindow()")]]
+        // virtual Painter    painter_create() = 0;
 };
 
 
@@ -344,5 +341,8 @@ BTKAPI UIContext *GetUIContext();
 BTKAPI void       SetUIContext(UIContext *context);
 
 inline EventLoop::EventLoop() : EventLoop(GetUIContext()) {}
+inline driver_t   GetDriver() {
+    return GetUIContext()->graphics_driver();
+}
 
 BTK_NS_END

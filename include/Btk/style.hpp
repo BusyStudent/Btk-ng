@@ -32,6 +32,10 @@ class Style {
         int   progressbar_width; //< Default progressbar width
         int   progressbar_height; //< Default progressbar height
 
+        // Slider
+        int   slider_width; //< Default slider width
+        int   slider_height; //< Default slider height
+
         // Margin
         int   margin; //< Default margin
 
@@ -45,6 +49,12 @@ class Style {
         
         // Font
         Font  font;
+
+        // Shadow
+        Brush shadow;
+        float shadow_offset_x;
+        float shadow_offset_y;
+        float shadow_radius;
 };
 
 BTKAPI void StyleBreeze(Style *style);

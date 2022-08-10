@@ -34,6 +34,7 @@
 #define GL_LIB(x)    HMODULE library = LoadLibraryA(x)
 #define GL_TYPE(x)   decltype(::x)
 #define GL_PROC(x)   GL_TYPE(x) *x = (GL_TYPE(x)*) GetProcAddress(library, #x) 
+#define GL_WPROC(x)  PFN##x x = nullptr
 
 // Timer support
 #define TIMER_PRECISE (UINTPTR_MAX / 2)
@@ -46,14 +47,20 @@
 #if !defined(NDEBUG)
 #define SHOW_KEY(vk, k) printf(vk); printf(" => "); printf(k); printf("\n");
 #define MAP_KEY(vk, k) case vk : { SHOW_KEY(#vk, #k) ; keycode = k; break;}
-#define WIN_INFO(...) printf(__VA_ARGS__); printf("\n");
 #else
 #define MAP_KEY(vk, k) case vk : { keycode = k; break; }
-#define WIN_INFO(...)
 #endif
+
+#define WIN_LOG(...) BTK_LOG(__VA_ARGS__)
 
 using Microsoft::WRL::ComPtr;
 using Win32Callback = void (*)(void *param);
+
+// WGL pfn
+using PFNwglChoosePixelFormatARB = BOOL (WINAPI *)(HDC h, const int *attr, const FLOAT *fattr, UINT n, int *pf, UINT *nf);
+using PFNwglCreateContextAttribsARB = HGLRC (WINAPI *)(HDC h, HGLRC share, const int *attr);
+using PFNwglGetExtensionsStringARB = const char *(WINAPI *)(HDC h);
+using PFNwglSetSwapIntervalEXT = BOOL (WINAPI *)(int interval);
 
 // Make sure the MSG can be casted to a Win32Callback
 static_assert(sizeof(LPARAM) >= sizeof(void *));
@@ -73,8 +80,6 @@ class Win32Window : public AbstractWindow {
         Win32Window(HWND h, Win32Driver *d);
         ~Win32Window();
 
-        widget_t bind_widget(widget_t w) override;
-
         // Overrides from WindowContext
         Size       size() const override;
         Point      position() const override;
@@ -92,7 +97,10 @@ class Win32Window : public AbstractWindow {
         void       set_textinput_rect(const Rect &r) override;
 
 
-        Painter    painter_create() override;
+        pointer_t  native_handle(int what) override;
+        widget_t   bind_widget(widget_t w) override;
+        any_t      gc_create(const char_t *type) override;
+
 
         LRESULT    proc_keyboard(UINT msg, WPARAM wp, LPARAM lp);
 
@@ -161,16 +169,26 @@ class Win32Driver : public GraphicsDriver {
 
 class Win32GLContext : public GLContext {
     public:
+        Win32GLContext(HWND hwnd);
+        ~Win32GLContext();
+
         void begin() override;
         void end() override;
         void swap_buffers() override;
 
-        bool initialize(const GLFormat &format) override;
+        bool  initialize(const GLFormat &format) override;
+        bool  set_swap_interval(int v)    override;
+        Size  get_drawable_size() override;
+        void *get_proc_address(const char_t *name) override;
     private:
         HDC          hdc    = {};
+        HWND         hwnd   = {};
         HGLRC        hglrc  = {};
         Win32Driver *driver = {};
         Win32Window *window = {};
+
+        HDC          prev_dc = {};
+        HGLRC        prev_rc = {};
 
         // OpenGL functions pointers
         GL_LIB      ("opengl32.dll");
@@ -178,7 +196,15 @@ class Win32GLContext : public GLContext {
         GL_PROC     (wglCreateContext);
         GL_PROC     (wglDeleteContext);
         GL_PROC     (wglGetProcAddress);
+        GL_PROC     (wglGetCurrentDC);
         GL_PROC     (wglGetCurrentContext);
+        GL_PROC     (wglShareLists);
+
+        // WGL Extension functions pointers
+        GL_WPROC    (wglChoosePixelFormatARB);
+        GL_WPROC    (wglGetExtensionsStringARB);
+        GL_WPROC    (wglSetSwapIntervalEXT);
+
 };
 
 // For timer stored at object
@@ -197,20 +223,13 @@ class Win32Call : public std::tuple<Args...> {
             std::tuple<Args...>(std::forward<Args>(args)...),
             callable(std::forward<Callable>(c))
         {
-            HRESULT hr = CoCreateInstance(
-                IID_ISynchronize,
-                nullptr,
-                CLSCTX_INPROC_SERVER,
-                IID_ISynchronize,
-                (void**)&sync
-            );
-
-            assert(SUCCEEDED(hr));
+            sync = CreateEventW(nullptr, false, false, nullptr);
+            assert(sync != INVALID_HANDLE_VALUE);
         }
 
 
         RetT result() const {
-            sync->Wait(COWAIT_DEFAULT, INFINITE);
+            WaitForSingleObject(sync, INFINITE);
             if constexpr (std::is_same_v<RetT, void>) {
                 return ;
             }
@@ -230,7 +249,7 @@ class Win32Call : public std::tuple<Args...> {
                 call->ret = std::apply(call->callable, static_cast<std::tuple<Args...>&&>(*call));
             }
             // Set the signal
-            call->sync->Signal();
+            SetEvent(call->sync);
         }
     private:
         std::conditional_t<
@@ -238,7 +257,7 @@ class Win32Call : public std::tuple<Args...> {
             int,
             RetT
         > ret;
-        ComPtr<ISynchronize> sync;
+        HANDLE   sync;
         Callable callable;
 };
 
@@ -452,7 +471,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
                 ShowWindow(hwnd, SW_HIDE);
 
                 if (windows.empty()) {
-                    BTK_LOG("Quitting\n");
+                    WIN_LOG("Quitting\n");
                     PostQuitMessage(0);
                     
                     Event e(Event::Quit);
@@ -484,7 +503,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
             if (w == 0 || h == 0) {
                 // Probably mini, ignore it
-                BTK_LOG("Resize to %d, %d\n", w, h);
+                WIN_LOG("Resize to %d, %d\n", w, h);
                 break;
             }
 
@@ -523,7 +542,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         }
         case WM_MOUSEMOVE : {
             if (!win->mouse_enter) {
-                BTK_LOG("Mouse enter\n");
+                WIN_LOG("Mouse enter\n");
                 win->mouse_enter = true;
                 WidgetEvent event(Event::MouseEnter);
                 event.set_widget(win->widget);
@@ -558,7 +577,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             break;
         }
         case WM_MOUSELEAVE : {
-            BTK_LOG("Mouse leave\n");
+            WIN_LOG("Mouse leave\n");
             win->mouse_enter = false;
             win->mouse_last_x = -1;
             win->mouse_last_y = -1;
@@ -575,6 +594,28 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             tme.hwndTrack = hwnd;
             TrackMouseEvent(&tme);
 
+            break;
+        }
+        case WM_MOUSEWHEEL : {
+            [[fallthrough]];
+        }
+        case WM_MOUSEHWHEEL : {
+            int x = 0;
+            int y = 0;
+
+            if (msg == WM_MOUSEWHEEL) {
+                x = GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA;
+            }
+            else {
+                y = GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA;
+            }
+
+            WIN_LOG("Mouse wheel %d, %d\n", x, y);
+
+            WheelEvent event(x, y);
+            event.set_widget(win->widget);
+            event.set_timestamp(GetTicks());
+            widget->handle(event);
             break;
         }
         case WM_LBUTTONDOWN : {
@@ -639,7 +680,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
             // Get drop string
             UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
-            BTK_LOG("Drop count: %d\n", count);
+            WIN_LOG("Drop count: %d\n", count);
 
             // Begin drop
             DropEvent event;
@@ -674,7 +715,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         }
         // IME Here
         case WM_IME_CHAR : {
-            BTK_LOG("WM_IME_CHAR char: %d\n", wparam);
+            WIN_LOG("WM_IME_CHAR char: %d\n", wparam);
             if (!win->textinput_enabled) {
                 break;
             }
@@ -688,20 +729,20 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         }
         case WM_CHAR : {
             // if (!win->textinput_enabled) {
-            //     BTK_LOG("Text input disabled, Drop it\n");
+            //     WIN_LOG("Text input disabled, Drop it\n");
             //     break;
             // }
             // Check the range of the char
             if (!win->textinput_enabled) {
-                BTK_LOG("TextInput disabled, Drop it\n");
+                WIN_LOG("TextInput disabled, Drop it\n");
                 break;
             }
             if (wparam < 0x20 || wparam > 0x7E) {
-                BTK_LOG("Drop char: %d\n", wparam);
+                WIN_LOG("Drop char: %d\n", wparam);
                 break;
             }
             else {
-                BTK_LOG("WM_CHAR : %d\n", wparam);
+                WIN_LOG("WM_CHAR : %d\n", wparam);
             }
 
             char16_t c = wparam;
@@ -735,7 +776,7 @@ LRESULT Win32Driver::helper_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM 
             }
             else {
                 //??? 
-                BTK_LOG("Unregitered WM_TIMER id => %d\n", int(wparam));
+                WIN_LOG("Unregitered WM_TIMER id => %d\n", int(wparam));
             }
             return 0;
         }
@@ -779,13 +820,13 @@ window_t Win32Driver::window_create(const char_t *title, int width, int height, 
     rect.bottom = height;
     rect.right = width;
     if (!AdjustWindowRectExForDpi(&rect, style, FALSE, style, dpi)) {
-        BTK_LOG("Bad adjust");
+        WIN_LOG("Bad adjust");
     }
 
     width = rect.right - rect.left;
     height = rect.bottom - rect.top;
 
-    BTK_LOG("Creating window %d %d\n", width, height);
+    WIN_LOG("Creating window %d %d\n", width, height);
 
 
     HWND hwnd = CreateWindowExW(
@@ -887,7 +928,7 @@ timerid_t Win32Driver::timer_add(Object *object, timertype_t t, uint32_t ms) {
         );
 
         if (id == 0) {
-            BTK_LOG("SetTimer failed\n");
+            WIN_LOG("SetTimer failed\n");
             return 0;
         }
     }
@@ -904,7 +945,7 @@ timerid_t Win32Driver::timer_add(Object *object, timertype_t t, uint32_t ms) {
         HANDLE t;
         if (!CreateTimerQueueTimer(&t, nullptr, cb, reinterpret_cast<void*>(id), ms, ms, WT_EXECUTEDEFAULT)) {
             // Unsupported ?
-            BTK_LOG("CreateTimerQueueTimer failed");
+            WIN_LOG("CreateTimerQueueTimer failed");
             // Back to coarse timer
             return timer_add(object, timertype_t::Coarse, ms);
         }
@@ -926,7 +967,7 @@ bool Win32Driver::timer_del(Object *object, timerid_t id) {
         return KillTimer(helper_hwnd, id);
     }
     // Create from CreateTimerQueueTimer
-    BTK_LOG("del timer %p\n", id);
+    WIN_LOG("del timer %p\n", id);
     auto name = u8string::format("_wt_%p", id);
     auto wt   = (Win32Timer *)object->userdata(name.c_str());
     // Make sure it is our timer
@@ -1057,8 +1098,8 @@ void Win32Window::set_icon(const PixBuffer &pixbuf) {
 #endif
         }
         else {
-            BTK_LOG("CreateIconIndirect failed\n");
-            BTK_LOG("GetLastError: %d\n", GetLastError());
+            WIN_LOG("CreateIconIndirect failed\n");
+            WIN_LOG("GetLastError: %d\n", GetLastError());
         }
     }
 }
@@ -1101,8 +1142,20 @@ void     Win32Window::start_textinput(bool v) {
     }
 }
 
-Painter Win32Window::painter_create() {
-    return Painter::FromHwnd(hwnd);
+pointer_t Win32Window::native_handle(int what) {
+    switch (what) {
+        case NativeHandle :
+        case Hwnd :
+            return hwnd;
+        default :
+            return nullptr;
+    }
+}
+any_t     Win32Window::gc_create(const char_t *name) {
+    if (_stricmp(name, "opengl") == 0) {
+        // return new Win32GLContext(hwnd);
+    }
+    return nullptr;
 }
 
 LRESULT Win32Window::proc_keyboard(UINT msg, WPARAM wp, LPARAM lp) {
@@ -1124,7 +1177,7 @@ LRESULT Win32Window::proc_keyboard(UINT msg, WPARAM wp, LPARAM lp) {
         else {
             mod_state &= ~m;
         }
-        BTK_LOG("mod_state: %x\n", mod_state);
+        WIN_LOG("mod_state: %x\n", mod_state);
     };
 
     WORD vk = LOWORD(wp); //< Virtual key code
@@ -1148,33 +1201,33 @@ LRESULT Win32Window::proc_keyboard(UINT msg, WPARAM wp, LPARAM lp) {
         // Modifier keys begin
         case VK_SHIFT : {   // => VK_RSHIFT / VK_LSHIFT
             if (is_extended_key) {
-                BTK_LOG ("VK_RSHIFT\n");
+                WIN_LOG ("VK_RSHIFT\n");
                 proc_mod(Modifier::Rshift);
             }
             else {
-                BTK_LOG ("VK_LSHIFT\n");
+                WIN_LOG ("VK_LSHIFT\n");
                 proc_mod(Modifier::Lshift);
             }
             break;
         }
         case VK_CONTROL : {
             if (is_extended_key) {
-                BTK_LOG ("VK_RCONTROL\n");
+                WIN_LOG ("VK_RCONTROL\n");
                 proc_mod(Modifier::Rctrl);
             }
             else {
-                BTK_LOG ("VK_LCONTROL\n");
+                WIN_LOG ("VK_LCONTROL\n");
                 proc_mod(Modifier::Lctrl);
             }
             break;
         }
         case VK_MENU : {
             if (is_extended_key) {
-                BTK_LOG ("VK_RMENU\n");
+                WIN_LOG ("VK_RMENU\n");
                 proc_mod(Modifier::Ralt);
             }
             else {
-                BTK_LOG ("VK_LMENU\n");
+                WIN_LOG ("VK_LMENU\n");
                 proc_mod(Modifier::Lalt);
             }
             break;
@@ -1313,6 +1366,108 @@ RECT Win32Window::adjust_rect(int x, int y, int w, int h) {
     return rect;
 }
 
+// Win32GLContext
+Win32GLContext::Win32GLContext(HWND h) {
+    hwnd  = h;
+}
+Win32GLContext::~Win32GLContext() {
+    if (hglrc) {
+        wglDeleteContext(hglrc);
+    }
+
+    // Release library
+    FreeLibrary(library);
+}
+void Win32GLContext::begin() {
+    auto prev_rc = wglGetCurrentContext();
+    auto prev_dc = wglGetCurrentDC();
+
+    if (prev_rc != hglrc) {
+        if (hwnd != nullptr) {
+            hdc = GetDC(hwnd);
+        }
+        wglMakeCurrent(hdc, hglrc);
+    }
+    else {
+        // Let end()
+        prev_rc = nullptr;
+    }
+}
+void Win32GLContext::end() {
+    if (hwnd != nullptr) {
+        ReleaseDC(hwnd, hdc);
+    }
+
+    if (prev_rc) {
+        wglMakeCurrent(prev_dc, prev_rc);
+    }
+}
+void Win32GLContext::swap_buffers() {
+    SwapBuffers(hdc);
+}
+bool Win32GLContext::initialize(const GLFormat &format) {
+    PIXELFORMATDESCRIPTOR d;
+    Btk_memset(&d, 0, sizeof(d));
+    d.nSize = sizeof(d);
+
+    d.nVersion = 1;
+    d.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    d.iPixelType = PFD_TYPE_RGBA;
+    d.cColorBits = 32;
+    d.cDepthBits = format.depth_size;
+    d.cStencilBits = format.stencil_size;
+    d.iLayerType = PFD_MAIN_PLANE;
+
+    if (hwnd) {
+        hdc = GetDC(hwnd);
+    }
+
+    auto pf = ChoosePixelFormat(hdc, &d);
+    if (pf == 0) {
+        return false;
+    }
+
+    if (!SetPixelFormat(hdc, pf, &d)) {
+        return false;
+    }
+    hglrc = wglCreateContext(hdc);
+    if (hglrc == nullptr) {
+        return false;
+    }
+
+    // Get extension function pointers
+    wglSetSwapIntervalEXT = (PFNwglSetSwapIntervalEXT) wglGetProcAddress("wglSwapIntervalEXT");
+
+    // Clenup
+    if (hwnd) {
+        ReleaseDC(hwnd, hdc);
+    }
+    return true;
+}
+bool Win32GLContext::set_swap_interval(int v) {
+    if (wglSetSwapIntervalEXT) {
+        return false;
+    }
+    begin();
+    auto ret = wglSetSwapIntervalEXT(v);
+    end();
+    return ret;
+}
+Size Win32GLContext::get_drawable_size() {
+    // Get drawable size
+    RECT rect;
+    GetClientRect(hwnd, &rect);
+    return Size(rect.right - rect.left, rect.bottom - rect.top);
+}
+void *Win32GLContext::get_proc_address(const char_t *name) {
+    if (wglGetProcAddress) {
+        begin();
+        auto proc = wglGetProcAddress(name);
+        end();
+        return proc;
+    }
+    return GetProcAddress(library, name);
+}
 
 BTK_NS_END2()
 

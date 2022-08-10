@@ -9,7 +9,7 @@
 
 BTK_NS_BEGIN
 
-class PainterPathsImpl ;
+class PainterPathImpl ;
 class TextLayoutImpl ;
 class PainterImpl    ;
 class TextureImpl    ;
@@ -29,11 +29,27 @@ enum class CoordinateMode : uint8_t {
     Relative, // Depends on the current drawing object
     Device,   // Depends on the device
 };
+enum class PainterFeature : uint8_t {
+    MultiStopGradient, //< Gradient with multiple stops (greater than 2)
+    TextGradient,      //< Does text support gradient?
+    Antialias,         //< Does the painter support antialiasing?
+    Gradient,          //< Does the painter support gradient?
+    Path,              //< Does the painter support rendering paths?
+};
+enum class PathWinding : uint8_t {
+    CW,  //< Odd-even rule
+    CCW, //< Non-zero rule
+
+    Solid = CW,
+    Hole  = CCW,
+};
 enum class FontStyle : uint8_t {
     Normal = 0,
     Bold   = 1 << 0,
     Italic = 1 << 1,
 };
+
+BTK_FLAGS_OPERATOR(FontStyle, uint8_t);
 
 class ColorStop {
     public:
@@ -185,8 +201,12 @@ class RadialGradient : public Gradient {
 class BTKAPI Brush {
     public:
         Brush();
-        Brush(const Brush &);
         Brush(Brush &&);
+        Brush(const Brush     &brush);
+        Brush(const GLColor   &color);
+        Brush(const PixBuffer &pixbuf);
+        Brush(const LinearGradient &gradient);
+        Brush(const RadialGradient &gradient);
         ~Brush();
 
         void swap(Brush &);
@@ -195,7 +215,7 @@ class BTKAPI Brush {
         Brush &operator =(const Brush &);
         Brush &operator =(std::nullptr_t);
 
-        void set_color(GLColor c);
+        void set_color(const GLColor &c);
         void set_image(const PixBuffer &);
         void set_gradient(const LinearGradient &g);
         void set_gradient(const RadialGradient &g);
@@ -275,14 +295,37 @@ class BTKAPI TextLayout {
     friend class Painter;
 };
 
-class BTKAPI PainterPaths {
+class BTKAPI PainterPath {
     public:
-        PainterPaths();
-        PainterPaths(PainterPaths &&);
-        ~PainterPaths();
+        PainterPath();
+        PainterPath(PainterPath &&);
+        ~PainterPath();
 
+        // Before modifying paths, call open()
+        // And after modifying paths, call close()
+        void open();
+        void close();
+
+        void move_to(float x, float y);
+        void line_to(float x, float y);
+        void quad_to(float x1, float y1, float x2, float y2);
+        void bezier_to(float x1, float y1, float x2, float y2, float x3, float y3);
+
+        // Point version
+        void move_to(const FPoint &point);
+        void line_to(const FPoint &point);
+        void quad_to(const FPoint &point1, const FPoint &point2);
+        void bezier_to(const FPoint &point1, const FPoint &point2, const FPoint &point3);
+
+        // Helper for directly add shapes
+        // void add_rect(float x, float y, float w, float h);
+
+
+        void close_path();
+
+        PainterPath &operator =(PainterPath &&);
     private:
-        PainterPathsImpl *priv;
+        PainterPathImpl *priv;
     friend class Painter;
 };
 
@@ -382,7 +425,7 @@ class BTKAPI Painter {
         void draw_image(const Texture &tex, const FRect *dst, const FRect *src);
         void draw_text(const TextLayout &lay, float x, float y);        
         void draw_text(u8string_view txt, float x, float y);
-
+        void draw_path(const PainterPath &path);
         // Fill
         void fill_rect(float x, float y, float w, float h);
         void fill_circle(float x, float y, float r);
@@ -391,6 +434,7 @@ class BTKAPI Painter {
 
         void fill_rect(const FRect &);
         void fill_rounded_rect(const FRect &, float r);
+        void fill_path(const PainterPath &paths);
 
         // Scissor
         void push_scissor(float x, float y, float w, float h);
@@ -424,6 +468,7 @@ class BTKAPI Painter {
         void operator =(Painter &&);
 
         // Construct painter from 
+        static Painter FromWindow(AbstractWindow *window);
         static Painter FromDxgiSurface(void *surface);
         static Painter FromHwnd(void * hwnd);
         static Painter FromHdc(void * hdc);
@@ -476,6 +521,35 @@ inline void Painter::fill_rounded_rect(const FRect &r, float rad) {
 inline void Painter::push_scissor(const FRect &r) {
     push_scissor(r.x, r.y, r.w, r.h);
 }
+
+// Brush implementation
+inline Brush::Brush(const GLColor &c) : Brush() {
+    set_color(c);
+}
+inline Brush::Brush(const PixBuffer &buf) : Brush() {
+    set_image(buf);
+}
+inline Brush::Brush(const LinearGradient &grad) : Brush() {
+    set_gradient(grad);
+}
+inline Brush::Brush(const RadialGradient &grad) : Brush() {
+    set_gradient(grad);
+}
+
+// PainterPath implementation
+inline void PainterPath::move_to(const FPoint &p) {
+    move_to(p.x, p.y);
+}
+inline void PainterPath::line_to(const FPoint &p) {
+    line_to(p.x, p.y);
+}
+inline void PainterPath::quad_to(const FPoint &p1, const FPoint &p2) {
+    quad_to(p1.x, p1.y, p2.x, p2.y);
+}
+inline void PainterPath::bezier_to(const FPoint &p1, const FPoint &p2, const FPoint &p3) {
+    bezier_to(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+}
+
 
 // Platform specific declarations
 #if defined(_WIN32)

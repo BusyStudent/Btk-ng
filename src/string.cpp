@@ -2,7 +2,6 @@
 
 #include <Btk/string.hpp>
 #include <stdexcept>
-#include <cstdarg>
 #include <ostream>
 
 // Utf8 header 

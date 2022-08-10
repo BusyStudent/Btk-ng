@@ -106,6 +106,8 @@ class Event {
         timestamp_t _timestamp = 0;
 };
 
+using EventType = Event::Type;
+
 class WidgetEvent : public Event {
     public:
         using Event::Event;
@@ -224,6 +226,21 @@ class MouseEvent : public WidgetEvent {
         int _y; //< Mouse y position
         int _button; //< Mouse button
         uint8_t _clicks; //< Number of clicks
+};
+class WheelEvent : public WidgetEvent {
+    public:
+        WheelEvent(int x, int y) 
+            : WidgetEvent(MouseWheel), _x(x), _y(y) {}
+
+        int x() const {
+            return _x;
+        }
+        int y() const {
+            return _y;
+        }
+    private:
+        int _x; //< Wheel in x
+        int _y;
 };
 class PaintEvent : public WidgetEvent {
     public:

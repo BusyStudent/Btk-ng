@@ -175,10 +175,11 @@ class BTKAPI PixBuffer {
         bool      write_to(u8string_view path) const;
 
         // Assignment
-        PixBuffer &operator=(const PixBuffer &);
-        PixBuffer &operator=(PixBuffer &&);
+        PixBuffer &operator =(const PixBuffer &);
+        PixBuffer &operator =(PixBuffer &&);
 
         static PixBuffer FromFile(u8string_view path);
+        static PixBuffer FromMem(cpointer_t data, size_t size);
         static PixBuffer FromStream(IOStream *stream);
     private:
         pointer_t _pixels = nullptr;

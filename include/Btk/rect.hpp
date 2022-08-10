@@ -328,6 +328,20 @@ class Matrix3x2Impl {
         void skew_y(T sy) {
             m[1][0] += m[1][1] * sy;
         }
+        bool invert() {
+            T det = m[0][0] * m[1][1] - m[0][1] * m[1][0];
+            if (det == 0) {
+                return false;
+            }
+            T inv_det = 1 / det;
+            T m11 = m[1][1] * inv_det;
+            T m12 = -m[0][1] * inv_det;
+            T m21 = -m[1][0] * inv_det;
+            T m22 = m[0][0] * inv_det;
+            m[0][0] = m11; m[0][1] = m12;
+            m[1][0] = m21; m[1][1] = m22;
+            return true;
+        }
 
         Matrix3x2Impl operator *(const Matrix3x2Impl &m) const {
             Matrix3x2Impl ret;

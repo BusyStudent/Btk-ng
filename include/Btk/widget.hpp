@@ -15,6 +15,7 @@ BTK_NS_BEGIN
 class KeyEvent;
 class DragEvent;
 class MouseEvent;
+class WheelEvent;
 class PaintEvent;
 class ResizeEvent;
 class MotionEvent;
@@ -57,6 +58,7 @@ class BTKAPI Widget : public Object {
         void hide();
         void close();
         void repaint();
+        void repaint_now();
 
         void set_visible(bool visible);
         void set_rect(int x, int y, int w, int h);
@@ -105,6 +107,7 @@ class BTKAPI Widget : public Object {
 
         virtual bool mouse_press  (MouseEvent &) { return false; }
         virtual bool mouse_release(MouseEvent &) { return false; }
+        virtual bool mouse_wheel  (WheelEvent &)  { return false; }
         virtual bool mouse_enter  (MotionEvent &) { return false; }
         virtual bool mouse_leave  (MotionEvent &) { return false; }
         virtual bool mouse_motion (MotionEvent &) { return false; }
@@ -370,6 +373,8 @@ class BTKAPI ProgressBar : public Widget {
         int64_t _max = 100;
         int64_t _value = 0;
 
+        u8string  _format = "%p %";
+
         Direction _direction = LeftToRight;
         bool      _text_visible = false;
 
@@ -381,13 +386,16 @@ class BTKAPI ProgressBar : public Widget {
 class BTKAPI Slider : public Widget {
     public:
         Slider(Widget *parent = nullptr);
+        ~Slider();
 
         void set_range(uint64_t min, uint64_t max);
         void set_value(uint64_t value);
 
         void set_page_step(uint64_t step);
         void set_line_step(uint64_t step);
-        void set_tracking(bool tracking);        
+        void set_tracking(bool tracking);
+
+        // bool paint_event(PaintEvent &) override;
     private:
         int64_t _min = 0;
         int64_t _max = 100;

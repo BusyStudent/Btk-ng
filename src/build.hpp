@@ -7,9 +7,6 @@
 #include <Btk/string.hpp>
 #include <Btk/defs.hpp>
 
-
-#if !defined(NDEBUG)
-#define BTK_LOG(...) ::printf(__VA_ARGS__);
-#else
-#define BTK_LOG(...)
+#if !defined(BTK_NO_EXCEPTIONS)
+#include <stdexcept>
 #endif

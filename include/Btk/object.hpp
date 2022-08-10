@@ -71,6 +71,7 @@ class BTKAPI Timer : public Object {
         BTK_EXPOSE_SIGNAL(_timeout);
     private:
         Signal<void()> _timeout;
+        timertype_t    _type     = TimerType::Precise;
         timerid_t      _id       = 0;
         uint32_t       _interval = 0;
         bool           _repeat   = false;

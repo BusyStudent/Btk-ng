@@ -1,6 +1,7 @@
 // Import google test and the string class
 #include <gtest/gtest.h>
 #include <Btk/string.hpp>
+#include <Btk/pixels.hpp>
 #include <Btk/rect.hpp>
 
 using namespace BTK_NAMESPACE;
@@ -90,6 +91,12 @@ TEST(MathTest, MatrixTransform) {
     auto newp3 = mat3 * p3;
     ASSERT_EQ(newp3, FPoint(20, 20));
     ASSERT_EQ(mat3, mat2 * mat);
+}
+TEST(MathTest, Lerp) {
+    constexpr Color c(Color::Red);
+    constexpr Color c2(Color::Green);
+
+    constexpr Color c3 = lerp(c, c2, 0.5);
 }
 
 

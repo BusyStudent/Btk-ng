@@ -82,20 +82,33 @@
 #define  BTK_ASSERT(cond) assert(cond)
 #include <cassert>
 
-#if   defined(_WIN32)
+#if   defined(_WIN32) && defined(_MSC_VER)
 #define  BTK_BTRAKPOINT() __debugbreak()
+#elif defined(_WIN32) && defined(__GNUC__)
+#define  BTK_BTRAKPOINT() __asm__("int $3")
 #elif defined(__linux__)
 #define  BTK_BTRAKPOINT() signal(SIGTRAP)
 #include <csignal>
 #endif
 
+
+// Debugging console output Support
 #if  !defined(NDEBUG)
-#define BTK_WARN
+#define BTK_LOG(...)  ::printf(__VA_ARGS__);
+#else
+#define BTK_LOG(...)
 #endif
 
-// Warning support
 
-
+// Simple Once call 
+#define BTK_ONCE(...) \
+    {\
+        static bool __once = false;\
+        if (!__once) {\
+            __once = true;\
+            __VA_ARGS__;\
+        }\
+    }
 
 // Macro for enum class to flag
 

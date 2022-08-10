@@ -174,8 +174,13 @@ void StyleBreeze(Style *style) {
     // Buffer radius
     style->button_radius = 0;
 
+    // Progress bar
     style->progressbar_width = 100;
     style->progressbar_height = 20;
+
+    // Slider
+    style->slider_height = 20;
+    style->slider_width  = 20;
 
     // Set font family and size
 // #if defined(_WIN32)
@@ -197,6 +202,19 @@ void StyleBreeze(Style *style) {
     // Window default
     style->window_height = 100;
     style->window_width  = 100;
+
+    // Shadow
+    style->shadow_radius = 4;
+    style->shadow_offset_x = 2;
+    style->shadow_offset_y = 2;
+
+    LinearGradient linear;
+    linear.add_stop(0, Color::Gray);
+    linear.add_stop(1, Color::Transparent);
+
+    style->shadow = linear;
+
+    
 }
 
 BTK_NS_END

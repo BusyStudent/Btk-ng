@@ -39,6 +39,14 @@ class Canvas : public Widget {
 
             // Set its icon
             set_window_icon(pixbuf);
+
+            // Make the path
+            path.open();
+            path.move_to(500, 500);
+            path.quad_to(500, 100, 100, 100);
+            path.bezier_to(700, 800, 0, 0, 122, 236);
+            path.close_path();
+            path.close();
         }
 
         bool paint_event(PaintEvent &e) override {
@@ -87,12 +95,31 @@ class Canvas : public Widget {
             gc.draw_rounded_rect(200, 200, 100, 100, 10);
             gc.set_antialias(true);
 
+            gc.set_stroke_width(stroke_width);
+            gc.set_brush(linear_brush);
+            gc.draw_path(path);
+            gc.set_stroke_width(1);
+
             return true;
         }
         bool mouse_motion(MotionEvent &e) override {
             x = e.x();
             y = e.y();
             repaint();
+            return true;
+        }
+        bool mouse_wheel(WheelEvent &e) override {
+            
+            if (e.x() > 0) {
+                stroke_width += 1;
+            }
+            else {
+                stroke_width -= 1;
+                stroke_width = max(1.0f, stroke_width);
+            }
+
+            repaint_now();
+
             return true;
         }
         bool timer_event(TimerEvent &) override {
@@ -119,11 +146,14 @@ class Canvas : public Widget {
         int start_x = 0;
         int start_y = 0;
 
+        float       stroke_width = 2.0f;
+
         Brush       brush;
         Brush       linear_brush;
         Brush       radial_brush;
 
         TextLayout  txt_layout;
+        PainterPath path;
 
         ProgressBar progress = {this};
 };
@@ -138,6 +168,11 @@ class Editer : public Widget {
             f.set_bold(true);
 
             lay.set_font(f);
+
+            LinearGradient g;
+            g.add_stop(0.0, Color::Red);
+            g.add_stop(1.0, Color::Cyan);
+            brush.set_gradient(g);
         }
 
         bool paint_event(PaintEvent &) {
@@ -145,8 +180,22 @@ class Editer : public Widget {
             p.set_antialias(false);
 
             if (!text.empty()) {
+                // Drop shadow below the background box 
+                p.set_brush(style()->shadow);
+                FRect nr = {
+                    rect.x + style()->shadow_offset_x,
+                    rect.y + rect.h,
+                    rect.w,
+                    4.0f
+                };
+                p.fill_rect(nr);
+
+                // Fill background
+                p.set_color(Color::White);
+                p.fill_rect(rect);
+
                 auto [w, h] = lay.size();
-                p.set_color(Color::Red);
+                p.set_brush(brush);
                 p.set_font(font());
                 p.set_text_align(Alignment::Left + Alignment::Top);
                 p.draw_text(lay, rect.x, rect.y);
@@ -256,6 +305,7 @@ class Editer : public Widget {
         FRect    box;
         float    step = 10.0f;
         GLColor  bounds = Color::Black;
+        Brush    brush;
 
         bool     inside = false;
         int      sel_pos = 0;
@@ -368,6 +418,11 @@ int main () {
     troot.resize(220, 60);
     troot.show();
 
+    // Test Hit test
+    Editer   editer;
+    editer.set_window_title("Test TextLayout hit test");
+    editer.show();
+
     tedit.set_placeholder("Please enter text");
 
     tedit.signal_enter_pressed().connect([&]() {
@@ -378,15 +433,6 @@ int main () {
     tft.set_bold(true);
     tft.set_size(15);
     tedit.set_font(tft);
-
-
-    // Test lerping
-    Point p1(0, 0);
-    Point p2(100, 100);
-
-    auto p3 = lerp(p1, p2, 0.5);
-
-    std::cout << p3 << std::endl;
 
     context.run();
 }

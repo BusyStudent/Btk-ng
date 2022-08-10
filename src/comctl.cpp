@@ -566,19 +566,19 @@ bool ImageView::paint_event(PaintEvent &event) {
         FRect dst;
         if (keep_aspect) {
             // Keep aspect ratio
-            FSize size = this->rect().size();
+            FSize size = rect().size();
             FSize img_size = pixbuf.size();
 
-            if (img_size.w > img_size.h) {
+            if (img_size.w * size.h > img_size.h * size.w) {
                 dst.w = size.w;
-                dst.h = size.w * img_size.h / img_size.w;
+                dst.h = img_size.h * size.w / img_size.w;
             }
             else {
                 dst.h = size.h;
-                dst.w = size.h * img_size.w / img_size.h;
+                dst.w = img_size.w * size.h / img_size.h;
             }
-            dst.x = (size.w - dst.w) / 2;
-            dst.y = (size.h - dst.h) / 2;
+            dst.x = rect().x + (size.w - dst.w) / 2;
+            dst.y = rect().y + (size.h - dst.h) / 2;
         }
         else{
             dst = this->rect().cast<float>();
@@ -708,5 +708,14 @@ bool ProgressBar::paint_event(PaintEvent &) {
     
     return true;
 }
+
+// Slider
+Slider::Slider(Widget *p) : Widget(p) {
+
+}
+Slider::~Slider() {
+
+}
+
 
 BTK_NS_END

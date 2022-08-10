@@ -209,7 +209,7 @@ void Timer::start() {
         _id = 0;
     }
     if (_interval > 0) {
-        _id = add_timer(_interval);
+        _id = add_timer(_type, _interval);
     }
 }
 void Timer::set_interval(uint32_t ms) {
@@ -221,7 +221,7 @@ void Timer::set_interval(uint32_t ms) {
     del_timer(_id);
     _id = 0;
     if (_interval > 0) {
-        _id = add_timer(_interval);
+        _id = add_timer(_type, _interval);
     }
 }
 void Timer::set_repeat(bool repeat) {
