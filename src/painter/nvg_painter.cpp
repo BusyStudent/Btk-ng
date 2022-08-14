@@ -19,7 +19,29 @@ BTK_NS_BEGIN2()
 
 using namespace BTK_NAMESPACE;
 
-class PhyBlob : public Refable<PhyBlob> {
+using GlyphIndex = uint32_t;
+using Codepoint  = uchar_t;
+
+class UnCopyable {
+    public:
+        UnCopyable(const UnCopyable &) = delete;
+};
+class GlyphMetrics {
+    public:
+        int width;
+        int height;
+        int bitmap_left;
+        int bitmap_top;
+        int advance_x;
+        int advance_y;
+};
+class FontGlyph {
+    public:
+        GlyphMetrics m; //< Glyph Metrics
+        short x, y; //< In bitmap position
+};
+
+class PhyBlob : public Refable<PhyBlob>, public UnCopyable {
     public:
         PhyBlob(const PhyBlob &) = delete;
 
@@ -27,8 +49,11 @@ class PhyBlob : public Refable<PhyBlob> {
         size_t    size;
 };
 
-class PhyFont : public Refable<PhyFont> {
+class PhyFont : public Refable<PhyFont>, public UnCopyable {
     public:
+        PhyFont() = default;
+        ~PhyFont() = default;
+
         bool has_uchar(uchar_t ch) {
             return stbtt_FindGlyphIndex(&info, ch) != 0;
         }
@@ -44,21 +69,27 @@ class PhyFont : public Refable<PhyFont> {
         int  num_faces() const {
             return stbtt_GetNumberOfFonts(static_cast<uint8_t*>(blob->data));
         }
+        void render() {
+
+        }
         stbtt_fontinfo info;
         Ref<PhyBlob>   blob;
 };
-class FontCollection : public Refable<FontCollection> {
-    public:
-        std::unordered_map<u8string, Ref<PhyFont>> phy_fonts;
-};
 
+// For cache Glyph
 class FontAtlas {
     public:
-        Ref<FontCollection> sys_col;
+        std::vector<uint8_t> bitmap; //< Gray scale bitmap
+        
+        float font_size;
+        Alignment align;
 };
+
+// Mainly runtime
 class FontContext {
     public:
-
+        // For storeing fonts
+        std::unordered_map<int, Ref<PhyFont>> fonts;
 };
 
 class GLFunctions {
@@ -116,7 +147,15 @@ static StringList   enum_system_fonts() {
 
 }
 
+BTK_NS_END2()
 
+
+BTK_NS_BEGIN
+
+class FontImpl    : public Refable<FontImpl> {
+    public:
+        Ref<PhyFont> font;
+};
 
 class PainterImpl : public GLFunctions {
     public:
@@ -129,6 +168,8 @@ class PainterImpl : public GLFunctions {
         GLContext  *ctxt  = nullptr;
 
         GLint       max_texture_size;
+
+        FontAtlas   atlas;
 };
 
 PainterImpl::PainterImpl(AbstractWindow *win) {
@@ -153,5 +194,4 @@ void PainterImpl::clear() {
 }
 
 
-
-BTK_NS_END2()
+BTK_NS_END

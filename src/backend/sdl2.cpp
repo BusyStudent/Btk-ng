@@ -195,6 +195,24 @@ int SDLDriver::sdl_event_filter(SDL_Event *event) {
             win->widget->handle(tr_event);
             break;
         }
+        case SDL_MOUSEWHEEL : {
+            SDLWindow *win = windows[event->text.windowID];
+            auto x = event->wheel.x;
+            auto y = event->wheel.y;
+            if (event->wheel.direction == SDL_MOUSEWHEEL_FLIPPED) {
+                x *= -1;
+                y *= -1;
+            }
+
+            BTK_LOG("%d, %d\n", x, y);
+
+            WheelEvent tr_event(x, y);
+            tr_event.set_widget(win->widget);
+            tr_event.set_timestamp(time);
+
+            win->widget->handle(tr_event);
+            break;
+        }
         case SDL_TEXTINPUT : {
             SDLWindow *win = windows[event->text.windowID];
             

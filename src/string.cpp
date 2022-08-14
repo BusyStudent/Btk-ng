@@ -3,6 +3,7 @@
 #include <Btk/string.hpp>
 #include <stdexcept>
 #include <ostream>
+#include <cstdarg>
 
 // Utf8 header 
 

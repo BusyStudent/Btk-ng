@@ -2,16 +2,17 @@
 #include "common.hpp"
 
 #include <Btk/painter.hpp>
+#include <Btk/context.hpp>
 #include <Btk/object.hpp>
 #include <pango/pangocairo.h>
 #include <cairo-xlib.h>
 #include <cairo-xcb.h>
 #include <cairo.h>
 #include <dlfcn.h>
-#include <variant>
 #include <map>
 
 #define FONT_CAST(ptr) ((PangoFontDescription*&)ptr)
+#define PATH_CAST(ptr) ((cairo_path_t    *&)ptr)
 #define TEX_CAST(ptr)  ((cairo_pattern_t *&)ptr)
 
 namespace {
@@ -22,10 +23,7 @@ namespace {
     static cairo_t *mem_cr = nullptr;
     static int      mem_refcount = 0;
 
-    void layout_translate_by_align(PangoLayout *layout, Alignment align, float &x, float &y) {
-        int w, h;
-        pango_layout_get_pixel_size(layout, &w, &h);
-
+    void layout_translate_by_align(PangoLayout *layout, Alignment align, float w, float h, float &x, float &y) {
         // Begin translate to left,top
         if ((align & Alignment::Top) == Alignment::Top) {
             // Nothing
@@ -91,6 +89,15 @@ namespace {
         dst[2] = r;
         return pix;
     }
+    uint32_t argb_to_rgb32(uint32_t pix) {
+        auto dst = (uint8_t*)&pix;
+        uint32_t g = dst[0];
+        uint32_t r = dst[2];
+
+        dst[0] = r;
+        dst[2] = g;
+        return pix;
+    }
 }
 
 
@@ -112,7 +119,7 @@ class BrushImpl : public Refable<BrushImpl> {
         }
         BrushImpl(const BrushImpl &b) {
             pat = cairo_pattern_reference(b.pat);
-            data = b.data;
+            // data = b.data;
             mode = b.mode;
             type = b.type;
             rect = b.rect;
@@ -127,7 +134,7 @@ class BrushImpl : public Refable<BrushImpl> {
         BrushType        type = BrushType::Solid;
 
 
-        std::variant<LinearGradient, RadialGradient, PixBuffer> data;
+        // std::variant<LinearGradient, RadialGradient, PixBuffer> data;
 };
 
 
@@ -152,12 +159,18 @@ class PainterImpl {
         Ref<BrushImpl>   brush;
 
         // Backend callback
-        Size (*get_surface_size)(PainterImpl *self);
+        Size (*get_surface_size)(PainterImpl *self) = nullptr;
+        void (*set_surface_size)(PainterImpl *self, int w, int h) = nullptr;
+        void (*flush_surface)(PainterImpl *self) = nullptr;
 
         struct {
             uint8_t xlib : 1;
             uint8_t xcb  : 1;
             uint8_t sw  : 1;
+        } target_opt;
+
+        union {
+            PixBuffer *bitmap;
         } target_info;
 };
 
@@ -184,8 +197,8 @@ inline PainterImpl::PainterImpl(::Display *dpy, ::Window xwin) {
     }
 
     // Set target info
-    Btk_memset(&target_info, 0, sizeof(target_info));
-    target_info.xlib = true;
+    Btk_memset(&target_opt, 0, sizeof(target_opt));
+    target_opt.xlib = true;
 
     // Set backend cb
     get_surface_size = [](PainterImpl *self) {
@@ -193,6 +206,9 @@ inline PainterImpl::PainterImpl(::Display *dpy, ::Window xwin) {
         s.w = cairo_xlib_surface_get_width(self->surf);
         s.h = cairo_xlib_surface_get_height(self->surf);
         return s;
+    };
+    set_surface_size = [](PainterImpl *self, int w, int h) {
+        cairo_xlib_surface_set_size(self->surf, w, h);
     };
 
     // Done
@@ -203,12 +219,10 @@ inline PainterImpl::PainterImpl(::Display *dpy, ::Window xwin) {
 
 }
 inline PainterImpl::PainterImpl(PixBuffer &buf) {
-    surf = cairo_image_surface_create_for_data(
-        buf.pixels<uint8_t>(),
-        btk_fmt_to_cr(buf.format()),
+    surf = cairo_image_surface_create(
+        CAIRO_FORMAT_ARGB32,
         buf.width(),
-        buf.height(),
-        buf.pitch()
+        buf.height()
     );
     if (!surf) {
 
@@ -218,9 +232,13 @@ inline PainterImpl::PainterImpl(PixBuffer &buf) {
 
     }
 
+    // Set target opt
+    Btk_memset(&target_opt, 0, sizeof(target_opt));
+    target_opt.sw = true;
+
     // Set target info
     Btk_memset(&target_info, 0, sizeof(target_info));
-    target_info.sw = true;
+    target_info.bitmap = &buf;
 
     // Set backend cb
     get_surface_size = [](PainterImpl *self) {
@@ -228,6 +246,29 @@ inline PainterImpl::PainterImpl(PixBuffer &buf) {
         s.w = cairo_image_surface_get_width(self->surf);
         s.h = cairo_image_surface_get_height(self->surf);
         return s;
+    };
+    flush_surface = [](PainterImpl *self) {
+        // Write the surface back to 
+        PixBuffer       *buf  = self->target_info.bitmap;
+        cairo_surface_t *surf = self->surf;
+
+        uint32_t *src = reinterpret_cast<uint32_t*>(cairo_image_surface_get_data(surf));
+        int     src_h = cairo_image_surface_get_height(surf);
+        int     src_w = cairo_image_surface_get_width(surf);
+
+        // Pitch shoule be 4 * w
+        assert(src_w * 4 == cairo_image_surface_get_stride(surf));
+
+        // Copy back
+        if (buf->format() == PixFormat::RGBA32) {
+            auto dst = buf->pixels<uint32_t>();
+            for (int i = 0;i < src_w * src_h; i++) {
+                dst[i] = argb_to_rgb32(src[i]);
+            }
+        }
+        else {
+            assert(!"Unsupport current format now");
+        }
     };
 
     // Done
@@ -248,8 +289,8 @@ inline void PainterImpl::initialize() {
 }
 
 inline void PainterImpl::notify_resize(int w, int h) {
-    if (target_info.xlib) {
-        cairo_xlib_surface_set_size(surf, w, h);
+    if (set_surface_size) {
+        set_surface_size(this, w, h);
     }
 }
 
@@ -445,6 +486,22 @@ void Painter::draw_circle(float x, float y, float r) {
     cairo_arc(priv->cr, x, y, r, 0.0, 2 * M_PI);
     cairo_stroke(priv->cr);
 }
+void Painter::draw_path(const PainterPath &p) {
+    if (p.priv == nullptr) {
+        return;
+    }
+    double x1, y1, x2, y2;
+    cairo_append_path(priv->cr, PATH_CAST(p.priv));
+    cairo_path_extents(priv->cr, &x1, &y1, &x2, &y2);
+
+    // Apply brush
+    priv->apply_brush(FRect(
+        x1, y1,
+        x2 - x1, y2 - y1
+    ));
+
+    cairo_stroke(priv->cr);
+}
 void Painter::draw_image(const Texture &t, const FRect *_dst, const FRect *_src) {
     cairo_surface_t *surf;
     auto pat = TEX_CAST(t.priv);
@@ -547,6 +604,22 @@ void Painter::fill_circle(float x, float y, float r) {
     cairo_arc(priv->cr, x, y, r, 0.0, 2 * M_PI);
     cairo_fill(priv->cr);
 }
+void Painter::fill_path(const PainterPath &p) {
+    if (p.priv == nullptr) {
+        return;
+    }
+    double x1, y1, x2, y2;
+    cairo_append_path(priv->cr, PATH_CAST(p.priv));
+    cairo_path_extents(priv->cr, &x1, &y1, &x2, &y2);
+
+    // Apply brush
+    priv->apply_brush(FRect(
+        x1, y1,
+        x2 - x1, y2 - y1
+    ));
+
+    cairo_fill(priv->cr);
+}
 
 // Text
 void Painter::set_font(const Font &f) {
@@ -561,8 +634,14 @@ void Painter::draw_text(u8string_view txt, float x, float y) {
     pango_layout_set_text(priv->layout, txt.data(), txt.size());
     pango_cairo_update_layout(priv->cr, priv->layout);
 
+
     // Transform
-    layout_translate_by_align(priv->layout, priv->align, x, y);
+    int w, h;
+    pango_layout_get_pixel_size(priv->layout, &w, &h);
+    layout_translate_by_align(priv->layout, priv->align, w, h, x, y);
+
+    // Apply brush
+    priv->apply_brush(FRect(x, y, w, h));
 
     // Draw it
     cairo_save(priv->cr);
@@ -574,7 +653,12 @@ void Painter::draw_text(const TextLayout &layout, float x, float y) {
     auto lay = layout.priv->lazy_eval(priv->cr);
 
     // Transform
-    layout_translate_by_align(lay, priv->align, x, y);
+    int w, h;
+    pango_layout_get_pixel_size(lay, &w, &h);
+    layout_translate_by_align(lay, priv->align, w, h, x, y);
+
+    // Apply brush
+    priv->apply_brush(FRect(x, y, w, h));
 
     // Draw it
     cairo_save(priv->cr);
@@ -625,7 +709,15 @@ void Painter::clear() {
 }
 void Painter::end() {
     cairo_pop_group_to_source(priv->cr);
-    cairo_surface_flush(priv->surf);
+    cairo_paint(priv->cr);
+    
+    if (priv->flush_surface) {
+        priv->flush_surface(priv);
+    }
+    else {
+        // Default flush op
+        cairo_surface_flush(priv->surf);
+    }
 
     //
     // if (priv->target_info.sw) {
@@ -1004,7 +1096,7 @@ void Brush::set_gradient(const LinearGradient& c) {
         end.x
     );
     priv->type = BrushType::LinearGradient;
-    priv->data = c;
+    // priv->data = c;
 
     for (auto [offset, color] : c.stops()) {
         cairo_pattern_add_color_stop_rgba(
@@ -1021,7 +1113,7 @@ void Brush::set_gradient(const RadialGradient &c) {
     begin_mut();
     cairo_pattern_destroy(priv->pat);
     priv->type = BrushType::RadialGradient;
-    priv->data = c;
+    // priv->data = c;
 
     // TODO .... Find the way to slove radius_x and radius_y
     // All elems should be normalized from [0 => 1.0]
@@ -1246,6 +1338,54 @@ void  Font::set_family(u8string_view family) {
 void  Font::set_bold(bool v) {
     pango_font_description_set_weight(FONT_CAST(priv), v ? PANGO_WEIGHT_BOLD : PANGO_WEIGHT_NORMAL);
 }
+
+// PainterPath
+PainterPath::PainterPath() {
+    priv = nullptr;
+}
+PainterPath::PainterPath(PainterPath &&p) {
+    priv = p.priv;
+    p.priv = nullptr;
+}
+PainterPath::~PainterPath() {
+    cairo_path_destroy(PATH_CAST(priv));
+}
+void PainterPath::open() {
+    cairo_save(mem_cr);
+    cairo_new_path(mem_cr);
+}
+void PainterPath::close() {
+    PATH_CAST(priv) = cairo_copy_path(mem_cr);
+
+    cairo_restore(mem_cr);
+}
+void PainterPath::move_to(float x, float y) {
+    cairo_move_to(mem_cr, x, y);
+}
+void PainterPath::line_to(float x, float y) {
+    cairo_line_to(mem_cr, x, y);
+}
+void PainterPath::quad_to(float x1, float y1, float x2, float y2) {
+    cairo_curve_to(mem_cr, x1, y1, x1, y1, x2, y2);
+}
+void PainterPath::bezier_to(float x1, float y1, float x2, float y2, float x3, float y3) {
+    cairo_curve_to(mem_cr, x1, y1, x2, y2, x3, y3);
+}
+void PainterPath::close_path() {
+    cairo_close_path(mem_cr);
+}
+
+PainterPath &PainterPath::operator =(PainterPath &&p) {
+    cairo_path_destroy(PATH_CAST(priv));
+
+    priv = p.priv;
+    p.priv = nullptr;
+
+    return *this;
+}
+
+
+
 BTK_NS_END
 
 #undef FONT_CAST

@@ -111,6 +111,9 @@
 namespace {
 
 template <typename T>
+class Ref;
+
+template <typename T>
 class Refable {
     public:
         void ref() {
@@ -127,6 +130,10 @@ class Refable {
         int  refcount() const {
             return _refcount;
         }
+
+        // Helper for Make a instance
+        template <typename ...Args>
+        static Ref<T> New(Args &&... args);
     private:
         int _refcount = 0;
 };
@@ -232,6 +239,14 @@ class Ref {
     private:
         T *ptr = nullptr;
 };
+
+// Helper for Make a instance
+template <typename T>
+template <typename ...Args>
+inline Ref<T> Refable<T>::New(Args &&... args) {
+    return Ref<T>(new T(std::forward<Args>(args)...));
+}
+
 
 // Helper to calc the size
 template <size_t V1, size_t V2, bool cond = (V1 > V2)>

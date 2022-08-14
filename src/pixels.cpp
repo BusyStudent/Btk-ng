@@ -231,37 +231,6 @@ PixBuffer PixBuffer::FromFile(u8string_view path) {
     }
     return PixBuffer();
 #else
-    return PixBuffer();
-#endif
-
-}
-PixBuffer PixBuffer::FromMem(cpointer_t data, size_t n) {
-
-#if defined(_WIN32)
-    auto wic = static_cast<IWICImagingFactory*>(Win32::WicFactory());
-
-    ComPtr<IWICBitmapDecoder> decoder;
-    ComPtr<IStream>           stream;
-    HRESULT hr;
-
-    stream = SHCreateMemStream(static_cast<const BYTE*>(data), n);
-
-    if (stream) {
-        return PixBuffer();
-    }
-
-    hr = wic->CreateDecoderFromStream(
-        stream.Get(),
-        nullptr,
-        WICDecodeMetadataCacheOnDemand,
-        &decoder
-    );
-
-    if (SUCCEEDED(hr)) {
-        return wic_run_codecs(decoder.Get());
-    }
-    return PixBuffer();
-#else
     int w, h, comp;
     auto data = stbi_load(u8string(path).c_str(),&w, &h, &comp, STBI_rgb_alpha);
     if (!data) {
@@ -300,10 +269,44 @@ PixBuffer PixBuffer::FromMem(cpointer_t data, size_t n) {
 #endif
 
 }
+PixBuffer PixBuffer::FromMem(cpointer_t data, size_t n) {
+
+#if defined(_WIN32)
+    auto wic = static_cast<IWICImagingFactory*>(Win32::WicFactory());
+
+    ComPtr<IWICBitmapDecoder> decoder;
+    ComPtr<IStream>           stream;
+    HRESULT hr;
+
+    stream = SHCreateMemStream(static_cast<const BYTE*>(data), n);
+
+    if (stream) {
+        return PixBuffer();
+    }
+
+    hr = wic->CreateDecoderFromStream(
+        stream.Get(),
+        nullptr,
+        WICDecodeMetadataCacheOnDemand,
+        &decoder
+    );
+
+    if (SUCCEEDED(hr)) {
+        return wic_run_codecs(decoder.Get());
+    }
+    return PixBuffer();
+#else
+    return PixBuffer();
+#endif
+
+}
 
 
 BTK_NS_END
 
+
+
+#if defined(_WIN32)
 // WIC Implementation
 namespace {
     class IBtkBitmap : public IWICBitmapSource {
@@ -534,3 +537,4 @@ namespace {
         return new IBtkBitmap(bf);
     }
 }
+#endif
