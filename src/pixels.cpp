@@ -40,13 +40,12 @@ PixBuffer::PixBuffer() {
     _owned = false;
 }
 PixBuffer::PixBuffer(PixFormat fmt, int w, int h) {
-    int bpp = fmt == PixFormat::RGBA32 ? 32 : 24;
-    int byte = fmt == PixFormat::RGBA32 ? 4 : 3;
+    _init_format(fmt);
+    int byte = (_bpp + 7) / 8;
 
     _width = w;
     _height = h;
     _pitch = w * byte;
-    _bpp = bpp;
     _owned = true;
     _pixels = Btk_malloc(w * h * byte);
 
@@ -57,21 +56,15 @@ PixBuffer::PixBuffer(PixFormat fmt, int w, int h) {
     _refcount = new int(1);
 }
 PixBuffer::PixBuffer(PixFormat fmt, void *p, int w, int h) {
-    int bpp = fmt == PixFormat::RGBA32 ? 32 : 24;
-    int byte = fmt == PixFormat::RGBA32 ? 4 : 3;
+    _init_format(fmt);
+    int byte = (_bpp + 7) / 8;
 
     _width = w;
     _height = h;
     _pitch = w * byte;
-    _bpp = bpp;
     _owned = false;
     _pixels = p;
 
-    // Set RGBA mask (little endian)
-    _amask = 0xFF000000;
-    _gmask = 0x00FF0000;
-    _bmask = 0x0000FF00;
-    _rmask = 0x000000FF;
 
     // Alloc refcount
     _refcount = new int(1);
@@ -107,12 +100,33 @@ void PixBuffer::clear() {
     Btk_memset(this, 0, sizeof(PixBuffer));
 }
 
+// Utils for setting the pixel data
 uint32_t PixBuffer::pixel_at(int x, int y) const {
     uint8_t bytes_per_pixel = this->bytes_per_pixel();
     const uint8_t *buf = static_cast<const uint8_t*>(_pixels) + (y * _pitch) + (x * bytes_per_pixel);
     uint32_t pix = 0;
     Btk_memcpy(&pix, buf, bytes_per_pixel);
     return pix;
+}
+Color   PixBuffer::color_at(int x, int y) const {
+    uint32_t pix = pixel_at(x, y);
+    Color c;
+    c.r = (pix & _rmask) >> _rshift;
+    c.g = (pix & _gmask) >> _gshift;
+    c.b = (pix & _bmask) >> _bshift;
+    c.a = (pix & _amask) >> _ashift;
+    return c;
+}
+void   PixBuffer::set_color(int x, int y, Color c) {
+    uint32_t pix = 0;
+    pix |= (c.r << _rshift);
+    pix |= (c.g << _gshift);
+    pix |= (c.b << _bshift);
+    pix |= (c.a << _ashift);
+
+    uint8_t bytes_per_pixel = this->bytes_per_pixel();
+    uint8_t *buf = static_cast<uint8_t*>(_pixels) + (y * _pitch) + (x * bytes_per_pixel);
+    Btk_memcpy(buf, &pix, bytes_per_pixel);
 }
 
 PixBuffer PixBuffer::clone() const {
@@ -128,21 +142,13 @@ PixBuffer PixBuffer::resize(int w, int h) const {
 #if defined(_WIN32)
     auto wic = static_cast<IWICImagingFactory*>(Win32::WicFactory());
     ComPtr<IWICBitmapScaler> scaler;
-    wic->CreateBitmapScaler(&scaler);
+    ComPtr<IWICBitmapSource> source;
 
-    // Copy our bitmap to a WIC bitmap
-    ComPtr<IWICBitmap> wic_bitmap;
-    wic->CreateBitmapFromMemory(
-        _width, _height,
-        GUID_WICPixelFormat32bppPRGBA, 
-        _pitch, 
-        _pitch * _height, 
-        static_cast<BYTE*>(_pixels),
-        &wic_bitmap
-    );
+    wic->CreateBitmapScaler(&scaler);
+    source = wic_wrap(this);
 
     // Scale the bitmap to the new size
-    scaler->Initialize(wic_bitmap.Get(), w, h, WICBitmapInterpolationModeHighQualityCubic);
+    scaler->Initialize(source.Get(), w, h, WICBitmapInterpolationModeHighQualityCubic);
 
     // Create a new PixBuffer
     PixBuffer buf(w, h);
@@ -158,6 +164,19 @@ PixBuffer PixBuffer::resize(int w, int h) const {
 #else
     return PixBuffer();
 #endif
+}
+
+PixBuffer PixBuffer::convert(PixFormat fmt) const {
+    PixBuffer dst(fmt, _width, _height);
+
+    // For each pixel convert to the new format
+    for (int y = 0; y < _height; y++) {
+        for (int x = 0; x < _width; x++) {
+            dst.set_color(x, y, color_at(x, y));
+        }
+    }
+    
+    return dst;
 }
 
 // Write to
@@ -299,6 +318,37 @@ PixBuffer PixBuffer::FromMem(cpointer_t data, size_t n) {
     return PixBuffer();
 #endif
 
+}
+
+void PixBuffer::_init_format(PixFormat fmt) {
+    if (fmt == PixFormat::RGBA32) {
+        // Little endian ABGR
+        _rmask = 0x000000FF;
+        _gmask = 0x0000FF00;
+        _bmask = 0x00FF0000;
+        _amask = 0xFF000000;
+
+        _rshift = 0;
+        _gshift = 8;
+        _bshift = 16;
+        _ashift = 24;
+
+        _bpp = 32;
+    }
+    else if(fmt == PixFormat::RGB24) {
+        // RR GG BB
+        _rmask = 0xFF00000000;
+        _gmask = 0x00FF000000;
+        _bmask = 0x0000FF0000;
+        _amask = 0x0000000000;
+
+        _rshift = 24;
+        _gshift = 16;
+        _bshift = 8;
+        _ashift = 0;
+
+        _bpp = 24;
+    }
 }
 
 
@@ -513,12 +563,34 @@ namespace {
         }
 
         // Write pixels to frame
-        hr = frame->WritePixels(
-            height,
-            pitch, 
-            pitch * height, 
-            (BYTE *)buffer->pixels()
-        );
+        if (pf != GUID_WICPixelFormat32bppRGBA) {
+            ComPtr<IWICFormatConverter> converter;
+            IBtkBitmap bmp(buffer);
+
+            hr = wic->CreateFormatConverter(converter.GetAddressOf());
+            if (FAILED(hr)) {
+                // Failed to create converter
+                return false;
+            }
+            hr = converter->Initialize(
+                &bmp,
+                GUID_WICPixelFormat32bppRGBA,
+                WICBitmapDitherTypeNone,
+                nullptr,
+                0.0,
+                WICBitmapPaletteTypeCustom
+            );
+            hr = frame->WriteSource(converter.Get(), nullptr);
+        }
+        else {
+            // Same format, just copy
+            hr = frame->WritePixels(
+                height,
+                pitch, 
+                pitch * height, 
+                (BYTE *)buffer->pixels()
+            );
+        }
 
         if (FAILED(hr)) {
             // Failed to write pixels
@@ -531,6 +603,13 @@ namespace {
             // Failed to commit frame
             return false;
         }
+
+        hr = encoder->Commit();
+        if (FAILED(hr)) {
+            // Failed to commit encoder
+            return false;
+        }
+
         return true;
     }
     IWICBitmapSource *wic_wrap(const PixBuffer *bf) {

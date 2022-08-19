@@ -224,6 +224,18 @@ void Timer::set_interval(uint32_t ms) {
         _id = add_timer(_type, _interval);
     }
 }
+void Timer::set_type(timertype_t t) {
+    _type = t;
+    if (_id == 0) {
+        return;
+    }
+    // Update timer
+    del_timer(_id);
+    _id = 0;
+    if (_interval > 0) {
+        _id = add_timer(_type, _interval);
+    }
+}
 void Timer::set_repeat(bool repeat) {
     _repeat = repeat;
 }

@@ -12,6 +12,11 @@
 #include <wrl.h>
 #include <map>
 
+// D2D1 Extra
+#include <d2d1_1.h>
+#include <d2d1effects.h>
+
+
 #if defined(_MSC_VER)
 #pragma comment(lib, "windowscodecs.lib")
 #pragma comment(lib, "dwrite.lib")
@@ -65,9 +70,9 @@ namespace {
         );
     }
 
-    auto btkfmt_to_d2d(Btk::PixFormat b) -> DXGI_FORMAT {
+    auto btkfmt_to_d2d(PixFormat b) -> DXGI_FORMAT {
         switch (b) {
-            case Btk::PixFormat::RGBA32 : {
+            case PixFormat::RGBA32 : {
                 return DXGI_FORMAT_R8G8B8A8_UNORM;
             }
             default : {
@@ -171,6 +176,7 @@ class TextureImpl : public Trackable {
         void painter_destroyed();
 
         ComPtr<ID2D1Bitmap> bitmap;
+        ComPtr<ID2D1Effect> effect;
 };
 
 class FontImpl : public Refable <FontImpl> {
@@ -187,8 +193,14 @@ class FontImpl : public Refable <FontImpl> {
 
 class PenImpl : public Refable<PenImpl> {
     public:
+        ID2D1StrokeStyle *lazy_eval();
 
+        LineJoin                 join = LineJoin::Miter;
+        LineCap                  cap  = LineCap::Flat;
+        std::vector<FLOAT>       dashes;
         ComPtr<ID2D1StrokeStyle> style;
+        float                    dash_offset = 0.0f;
+        float                    miter_limit = 10.0f;
 };
 
 class TextLayoutImpl : public Refable <TextLayoutImpl> {
@@ -231,6 +243,7 @@ class PainterImpl {
         void set_antialias(bool enable);
         void set_brush(BrushImpl *b);
         void set_font(FontImpl *f);
+        void set_pen(PenImpl *p);
 
         void begin();
         void end();
@@ -291,6 +304,7 @@ class PainterImpl {
         auto alloc_texture(int w, int h, PixFormat fmt) -> TextureImpl *;
 
         ComPtr<ID2D1RenderTarget> target;
+        ComPtr<ID2D1DeviceContext> context; //< Could be null if unsupported
 
         // Cached brushs
         struct {
@@ -503,6 +517,11 @@ void PainterImpl::initialize() {
     //     nullptr,
     //     state.stroke_style.GetAddressOf()
     // );
+
+    // Get device context if useable
+    if (target_opt.hwnd_target) {
+        target.As(&context);
+    }
 }
 auto PainterImpl::get_brush(const D2D1_RECT_F &r) -> ID2D1Brush* {
     if (!state.brush) {
@@ -888,6 +907,14 @@ void PainterImpl::set_brush(BrushImpl *brush) {
 void PainterImpl::set_font(FontImpl *font) {
     state.text_format = font->lazy_eval();
 }
+void PainterImpl::set_pen(PenImpl *pen) {
+    if (pen) {
+        state.stroke_style = pen->lazy_eval();
+    }
+    else {
+        state.stroke_style = nullptr;
+    }
+}
 void PainterImpl::set_text_align(Alignment align) {
     state.text_align = align;
 }
@@ -896,28 +923,33 @@ void PainterImpl::set_text_align(Alignment align) {
 // TODO : Add support for brush
 void PainterImpl::draw_rect(float x, float y, float w, float h) {
     auto rect = D2D1::RectF(x, y, x + w, y + h);
+    auto style = state.stroke_style.Get();
     auto brush = get_brush(rect);
-    target->DrawRectangle(rect, brush, state.stroke_width);
+    target->DrawRectangle(rect, brush, state.stroke_width, style);
 }
 void PainterImpl::draw_line(float x1, float y1, float x2, float y2) {
     auto rect = bounds_from_line(x1, y1, x2, y2);
+    auto style = state.stroke_style.Get();
     auto brush = get_brush(rect);
-    target->DrawLine(D2D1::Point2F(x1, y1), D2D1::Point2F(x2, y2), brush, state.stroke_width);
+    target->DrawLine(D2D1::Point2F(x1, y1), D2D1::Point2F(x2, y2), brush, state.stroke_width, style);
 }
 void PainterImpl::draw_circle(float x, float y, float r) {
     auto rect = bounds_from_circle(x, y, r);
+    auto style = state.stroke_style.Get();
     auto brush = get_brush(rect);
-    target->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x, y), r, r), brush, state.stroke_width);
+    target->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x, y), r, r), brush, state.stroke_width, style);
 }
 void PainterImpl::draw_ellipse(float x, float y, float xr, float yr) {
     auto rect = bounds_from_ellipse(x, y, xr, yr);
+    auto style = state.stroke_style.Get();
     auto brush = get_brush(rect);
-    target->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x, y), xr, yr), brush, state.stroke_width);
+    target->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x, y), xr, yr), brush, state.stroke_width, style);
 }
 void PainterImpl::draw_rounded_rect(float x, float y, float w, float h, float r) {
     auto rect = D2D1::RectF(x, y, x + w, y + h);
+    auto style = state.stroke_style.Get();
     auto brush = get_brush(rect);
-    target->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x, y, x + w, y + h), r, r), brush, state.stroke_width);
+    target->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x, y, x + w, y + h), r, r), brush, state.stroke_width, style);
 }
 void PainterImpl::draw_image(TextureImpl *tex,  const FRect *_dst, const FRect *_src) {
     ID2D1Bitmap *bitmap = tex->bitmap.Get();
@@ -1044,6 +1076,7 @@ void PainterImpl::draw_text(IDWriteTextLayout *layout, float x, float y) {
     target->DrawTextLayout(D2D1::Point2F(x, y), layout, brush);
 }
 void PainterImpl::draw_path(PainterPathImpl *p) {
+    auto style = state.stroke_style.Get();
     auto path = p->path.Get();
     auto &mat = p->mat;
 
@@ -1055,7 +1088,7 @@ void PainterImpl::draw_path(PainterPathImpl *p) {
 
     auto brush = get_brush(rect);
 
-    target->DrawGeometry(path, brush, state.stroke_width);
+    target->DrawGeometry(path, brush, state.stroke_width, style);
 }
 
 void PainterImpl::fill_rect(float x, float y, float w, float h) {
@@ -1267,11 +1300,48 @@ auto TextLayoutImpl::lazy_eval() -> IDWriteTextLayout * {
         );
 
         if (FAILED(hr)) {
-            D2D_WARN("TextLayoutImpl::lazy_eval : Failed to create text layout");
+            D2D_WARN("TextLayoutImpl::lazy_eval : Failed to create text layout\n");
         }
     }
     return layout.Get();
 }
+
+// PenImpl
+auto PenImpl::lazy_eval() -> ID2D1StrokeStyle *{
+    if (style == nullptr) {
+        D2D1_CAP_STYLE d2d_cap;
+        D2D1_LINE_JOIN d2d_join;
+        switch (cap) {
+            case LineCap::Flat: d2d_cap = D2D1_CAP_STYLE_FLAT; break;
+            case LineCap::Round: d2d_cap = D2D1_CAP_STYLE_ROUND; break;
+            case LineCap::Square: d2d_cap = D2D1_CAP_STYLE_SQUARE; break;
+        }
+        switch (join) {
+            case LineJoin::Miter: d2d_join = D2D1_LINE_JOIN_MITER; break;
+            case LineJoin::Round: d2d_join = D2D1_LINE_JOIN_ROUND; break;
+            case LineJoin::Bevel: d2d_join = D2D1_LINE_JOIN_BEVEL; break;
+        }
+
+        HRESULT hr = d2d_factory->CreateStrokeStyle(
+            D2D1::StrokeStyleProperties(
+                d2d_cap,
+                d2d_cap,
+                d2d_cap,
+                d2d_join,
+                miter_limit,
+                D2D1_DASH_STYLE_CUSTOM,
+                dash_offset
+            ),
+            dashes.data(),
+            dashes.size(),
+            style.GetAddressOf()
+        );
+        if (FAILED(hr)) {
+            D2D_WARN("PenImpl::lazy_eval : Failed to create stroke style\n");
+        }
+    }
+    return style.Get();
+};
 
 
 
@@ -1307,6 +1377,14 @@ void Painter::set_antialias(bool enable) {
 }
 void Painter::set_font(const Font &font) {
     priv->set_font(font.priv);
+}
+void Painter::set_pen(const Pen *pen) {
+    if (pen) {
+        priv->set_pen(pen->priv);
+    }
+    else {
+        priv->set_pen(nullptr);
+    }
 }
 void Painter::set_brush(const Brush &brush) {
     priv->set_brush(brush.priv);
@@ -1546,6 +1624,18 @@ void  Font::set_bold(bool bold) {
         priv->weight = DWRITE_FONT_WEIGHT_BOLD;
     }
 }
+void  Font::set_italic(bool italic) {
+    begin_mut();
+    priv->format.Reset();
+    // Clear done
+
+    if (italic) {
+        priv->style = DWRITE_FONT_STYLE_ITALIC;
+    }
+    else {
+        priv->style = DWRITE_FONT_STYLE_NORMAL;
+    }
+}
 void  Font::set_family(u8string_view family) {
     begin_mut();
     priv->format.Reset();
@@ -1651,7 +1741,7 @@ bool TextLayout::hit_test_range(size_t text, size_t len, float org_x, float org_
             DWRITE_HIT_TEST_METRICS m;
 
             hr = layout->HitTestTextRange(text, len, org_x, org_y, &m, 1, &count);
-            if (FAILED(hr)) {
+            if (FAILED(hr) && hr != E_NOT_SUFFICIENT_BUFFER) {
                 D2D_WARN("HitTestTextRange failed %d", hr);
                 return false;
             }
@@ -1681,6 +1771,7 @@ bool TextLayout::hit_test_range(size_t text, size_t len, float org_x, float org_
                     (*res)[i].inside = true;
                 }
             }
+            _freea(hit_res);
             return true;
         }
     }
@@ -1803,6 +1894,20 @@ void PainterPath::close_path() {
     priv->sink->EndFigure(D2D1_FIGURE_END_CLOSED);
     priv->is_figure_open = false;
 }
+FRect PainterPath::bounding_box() const {
+    if (priv) {
+        D2D1_RECT_F bbox;
+        HRESULT hr = priv->path->GetBounds(
+            nullptr,
+            &bbox
+        );
+        if (FAILED(hr)) {
+            D2D_WARN("GetBounds failed %d", hr);
+            BTK_THROW(std::runtime_error("GetBounds failed"));
+        }
+        return FRect(bbox.left, bbox.top, bbox.right - bbox.left, bbox.bottom - bbox.top);
+    }
+}
 
 PainterPath &PainterPath::operator =(PainterPath &&p) {
     delete priv;
@@ -1810,6 +1915,38 @@ PainterPath &PainterPath::operator =(PainterPath &&p) {
     p.priv = nullptr;
     return *this;
 }
+
+// Pen
+COW_IMPL(Pen);
+Pen::Pen() {
+    priv = nullptr;
+}
+void Pen::set_dash_pattern(const float *dahes, size_t n) {
+    begin_mut();
+    priv->style.Reset();
+    priv->dashes.assign(dahes, dahes + n);
+}
+void Pen::set_dash_offset(float offset) {
+    begin_mut();
+    priv->style.Reset();
+    priv->dash_offset = offset;
+}
+void Pen::set_miter_limit(float limit) {
+    begin_mut();
+    priv->style.Reset();
+    priv->miter_limit = limit;
+}
+void Pen::set_line_join(LineJoin join) {
+    begin_mut();
+    priv->style.Reset();
+    priv->join = join;
+}
+void Pen::set_line_cap(LineCap cap) {
+    begin_mut();
+    priv->style.Reset();
+    priv->cap = cap;
+}
+
 
 // Exposed factory
 namespace Win32 {

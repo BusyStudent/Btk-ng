@@ -171,8 +171,13 @@ void StyleBreeze(Style *style) {
     // Button default size
     style->button_width = 88;
     style->button_height = 32;
-    // Buffer radius
+    // Button radius
     style->button_radius = 0;
+
+    style->radio_button_circle_pad = 4;
+    style->radio_button_circle_inner_pad = 4;
+    style->radio_button_circle_r = 8;
+    style->radio_button_text_pad = 4;
 
     // Progress bar
     style->progressbar_width = 100;
@@ -181,6 +186,10 @@ void StyleBreeze(Style *style) {
     // Slider
     style->slider_height = 20;
     style->slider_width  = 20;
+    // style->slider_bar_height = 10;
+    // style->slider_bar_width  = 10;
+
+    style->margin = 2.0f;
 
     // Set font family and size
 // #if defined(_WIN32)

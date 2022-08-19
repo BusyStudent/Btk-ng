@@ -62,6 +62,7 @@ class BTKAPI Timer : public Object {
         ~Timer();
 
         void set_interval(uint32_t interval);
+        void set_type(timertype_t type);
         void set_repeat(bool repeat);
         void start();
         void stop();

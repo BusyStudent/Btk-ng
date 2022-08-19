@@ -120,6 +120,8 @@ class VkContext : public GraphicsContext {
 class FbContext : public GraphicsContext {
     public:
         virtual pointer_t get_pixels_address() = 0;
+        virtual PixFormat get_pixels_format() = 0;
+        virtual Size      get_size() = 0;
 };
 
 class AbstractWindow : public Any {
@@ -163,11 +165,18 @@ class AbstractWindow : public Any {
         // virtual Painter    painter_create() = 0;
 };
 
+class AbstractDialog : public Any {
+    public:
+        virtual int  run() = 0;
+        virtual void add_action(Any *) = 0;
+};
+
 
 #if 1
 
 extern GraphicsDriverInfo Win32DriverInfo;
 extern GraphicsDriverInfo SDLDriverInfo;
+extern GraphicsDriverInfo XcbDriverInfo;
 
 #endif
 

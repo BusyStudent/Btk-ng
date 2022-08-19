@@ -104,6 +104,10 @@ class PointImpl {
         PointImpl<Elem> cast() const {
             return PointImpl<Elem>(static_cast<Elem>(x), static_cast<Elem>(y));
         }
+        template <typename Elem>
+        operator PointImpl<Elem>() const {
+            return PointImpl<Elem>(static_cast<Elem>(x), static_cast<Elem>(y));
+        }
 };
 
 template <typename T>
@@ -260,6 +264,12 @@ class RectImpl {
         bool operator !=(const RectImpl &r) const {
             return !compare(r);
         }
+
+        // Auto cast
+        template <typename Elem>
+        operator RectImpl<Elem>() const {
+            return cast<Elem>();
+        }
 };
 
 template <typename T>
@@ -341,6 +351,10 @@ class Matrix3x2Impl {
             m[0][0] = m11; m[0][1] = m12;
             m[1][0] = m21; m[1][1] = m22;
             return true;
+        }
+        bool invertible() const {
+            T det = m[0][0] * m[1][1] - m[0][1] * m[1][0];
+            return det != 0;
         }
 
         Matrix3x2Impl operator *(const Matrix3x2Impl &m) const {

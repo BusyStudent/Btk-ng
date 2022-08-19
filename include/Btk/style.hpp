@@ -28,6 +28,10 @@ class Style {
         int   button_height; //< Default button height
         float button_radius; //< Default button radius
 
+        int   radio_button_circle_pad;
+        int   radio_button_circle_r; //< Default radio button box width
+        int   radio_button_circle_inner_pad;
+        int   radio_button_text_pad;
         // ProgressBar
         int   progressbar_width; //< Default progressbar width
         int   progressbar_height; //< Default progressbar height
@@ -37,7 +41,7 @@ class Style {
         int   slider_height; //< Default slider height
 
         // Margin
-        int   margin; //< Default margin
+        float margin; //< Default margin
 
         // Icon 
         float icon_width; //< Default icon width

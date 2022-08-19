@@ -182,6 +182,9 @@ class BTKAPI PixBuffer {
         static PixBuffer FromMem(cpointer_t data, size_t size);
         static PixBuffer FromStream(IOStream *stream);
     private:
+        // Format initalization
+        void _init_format(PixFormat fmt);
+
         pointer_t _pixels = nullptr;
         int       _width = 0;
         int       _height = 0;
@@ -190,13 +193,28 @@ class BTKAPI PixBuffer {
         // Format
         uint8_t  _bpp   : 7; //< Bits per pixel
         uint8_t  _owned : 1; //< If true, the PixBuffer owns the pixels
+
+        // Mask / Shift
         uint32_t _rmask = 0;
         uint32_t _gmask = 0;
         uint32_t _bmask = 0;
         uint32_t _amask = 0;
 
+        uint32_t _rshift = 0;
+        uint32_t _gshift = 0;
+        uint32_t _bshift = 0;
+        uint32_t _ashift = 0;
+
         // Refcounting for COW
         int      *_refcount = nullptr;
+};
+
+/**
+ * @brief Image, It can has many frames
+ * 
+ */
+class BTKAPI Image {
+    //         
 };
 
 
@@ -237,6 +255,22 @@ constexpr inline GLColor lerp(GLColor a, GLColor b, float t) noexcept {
         lerp(a.a, b.a, t)
     };
 }
+
+constexpr inline bool operator ==(const Color &a, const Color &b) noexcept {
+    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+}
+constexpr inline bool operator !=(const Color &a, const Color &b) noexcept {
+    return a.r != b.r || a.g != b.g || a.b != b.b || a.a != b.a;
+}
+constexpr inline bool operator ==(const GLColor &a, const GLColor &b) noexcept {
+    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+}
+constexpr inline bool operator !=(const GLColor &a, const GLColor &b) noexcept {
+    return a.r != b.r || a.g != b.g || a.b != b.b || a.a != b.a;
+}
+
+
+// PixBuffer inline functions
 
 inline PixBuffer::PixBuffer(int w, int h) : 
     PixBuffer(PixFormat::RGBA32, w, h)

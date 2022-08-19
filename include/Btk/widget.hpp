@@ -7,6 +7,7 @@
 #include <Btk/defs.hpp>
 #include <Btk/rect.hpp>
 
+#include <bitset>
 #include <list>
 
 
@@ -16,6 +17,7 @@ class KeyEvent;
 class DragEvent;
 class MouseEvent;
 class WheelEvent;
+class FocusEvent;
 class PaintEvent;
 class ResizeEvent;
 class MotionEvent;
@@ -38,6 +40,9 @@ enum class WindowFlags : uint32_t {
 enum class FocusPolicy : uint8_t {
     None = 0,       //< Widget does not accept focus.
     Mouse = 1 << 0, //< Widget accepts focus by mouse click.
+};
+enum class WidgetAttr  : uint8_t {
+    DeleteOnClose = 0,
 };
 
 BTK_FLAGS_OPERATOR(WindowFlags, uint32_t);
@@ -65,8 +70,8 @@ class BTKAPI Widget : public Object {
         void move(int x, int y);
 
         void resize(int width, int height);
-        void resize(const Point &p) {
-            resize(p.x, p.y);
+        void resize(const Size &p) {
+            resize(p.w, p.h);
         }
 
         // Querys
@@ -97,6 +102,8 @@ class BTKAPI Widget : public Object {
             return rect().size();
         }
 
+        Size    adjust_size() const;
+
         // Size Hints
         virtual Size size_hint() const;
 
@@ -116,9 +123,13 @@ class BTKAPI Widget : public Object {
         virtual bool drag_end     (DragEvent &) { return false; }
         virtual bool drag_motion  (DragEvent &) { return false; }
 
+        virtual bool focus_gained (FocusEvent &) { return false; }
+        virtual bool focus_lost   (FocusEvent &) { return false; }
+
         virtual bool textinput_event(TextInputEvent &) { return false; }
         virtual bool resize_event   (ResizeEvent &)    { return false; }
         virtual bool paint_event    (PaintEvent &)     { return false; }
+        virtual bool change_event   (Event &)          { return false; }
         // virtual bool drop_event   (DropEvent &) { return false; }
 
         // Get window associated with widget
@@ -132,12 +143,15 @@ class BTKAPI Widget : public Object {
         void       remove_child(Widget *child);
 
         void       set_parent(Widget *parent);
+        // Paint child widgets
+        void       paint_children(PaintEvent &);
 
         // Locate child widget by point
         Widget    *child_at(int x, int y) const;
         Widget    *child_at(const Point &p) const {
             return child_at(p.x, p.y);
         }
+        Widget    *child_at(u8string_view name) const;
 
 
         // Configure window
@@ -157,32 +171,35 @@ class BTKAPI Widget : public Object {
 
         // Configure properties
         void set_focus_policy(FocusPolicy policy);
+        void set_style(Style *style);
         void set_font(const Font &font);
     private:
         void window_init(); //< Create window if not created yet.
         void window_destroy(); //< Destroy window if created.
 
-        UIContext  *_context    = nullptr;//< Pointer to UIContext
-        Widget     *_parent     = nullptr;//< Parent widget
-        Style      *_style      = nullptr;//< Pointer to style
-        WindowFlags _flags      = WindowFlags::Resizable;//< Window flags
-        FocusPolicy _focus      = FocusPolicy::None;//< Focus policy
-        std::list<Widget *>           _children;//< Child widgets
-        std::list<Widget *>::iterator _in_child_iter = {};//< Child iterator
+        UIContext  *_context    = nullptr; //< Pointer to UIContext
+        Widget     *_parent     = nullptr; //< Parent widget
+        Style      *_style      = nullptr; //< Pointer to style
+        WindowFlags _flags      = WindowFlags::Resizable; //< Window flags
+        FocusPolicy _focus      = FocusPolicy::None; //< Focus policy
+        std::list<Widget *>           _children; //< Child widgets
+        std::list<Widget *>::iterator _in_child_iter = {}; //< Child iterator
 
-        Rect        _rect = {0, 0, 0, 0};//< Rectangle
-        Font        _font    = {};//< Font
+        Rect        _rect = {0, 0, 0, 0}; //< Rectangle
+        Font        _font    = {}; //< Font
 
-        window_t    _win     = {};//< Window handle
-        Painter     _painter = {};//< Painter
-        uint8_t     _painter_inited  = false;//< Is painter inited ?
+        window_t    _win     = {}; //< Window handle
+        Painter     _painter = {}; //< Painter
+        uint8_t     _painter_inited  = false; //< Is painter inited ?
+
+        u8string    _name    = {}; //< Widget name
 
         // Attributes
-        uint8_t     _accept_drop = false;//< Is drop accepted ?
-        uint8_t     _visible     = true;//< Visibility
-        uint8_t     _enabled     = true;//< Enabled
-        uint8_t     _drag_reject = false;//< Is drag rejected ?
-        uint8_t     _pressed     = false;//< Is pressed ?
+        uint8_t     _accept_drop = false; //< Is drop accepted ?
+        uint8_t     _visible     = true;  //< Visibility
+        uint8_t     _enabled     = true;  //< Enabled
+        uint8_t     _drag_reject = false; //< Is drag rejected ?
+        uint8_t     _pressed     = false; //< Is pressed ?
 
         // Event Dispatch (private)
         Widget      *mouse_current_widget = nullptr;//< Current widget under mouse
@@ -213,6 +230,7 @@ class BTKAPI AbstractButton : public Widget {
         BTK_EXPOSE_SIGNAL(_howered);
         BTK_EXPOSE_SIGNAL(_clicked);
     protected:
+
         u8string _text;
         Brush    _icon; //< Button icon (if any)
         bool     _flat = false;
@@ -222,22 +240,40 @@ class BTKAPI AbstractButton : public Widget {
 
 };
 
-class BTKAPI CheckButton : public AbstractButton {
-    public:
-        CheckButton();
-        ~CheckButton();
+// class BTKAPI CheckButton : public AbstractButton {
+//     public:
+//         CheckButton(Widget *parent = nullptr);
+//         ~CheckButton();
 
-        void set_checked(bool checked);
-        bool is_checked() const;
-};
+//         void set_checked(bool checked);
+//         bool checked() const;
+// };
 
 class BTKAPI RadioButton : public AbstractButton {
     public:
-        RadioButton();
+        RadioButton(Widget *parent = nullptr);
         ~RadioButton();
 
-        void set_checked(bool checked);
-        bool is_checked() const;
+        void set_checked(bool checked) {
+            _checked = checked;
+            repaint();
+        }
+        bool checked() const {
+            return _checked;
+        }
+
+        // Event handlers
+        bool paint_event(PaintEvent &event) override;
+        bool mouse_press(MouseEvent &event) override;
+        bool mouse_release(MouseEvent &event) override;
+        bool mouse_enter(MotionEvent &event) override;
+        bool mouse_leave(MotionEvent &event) override;
+
+        Size size_hint() const override;
+    private:
+        bool _checked = false;
+        bool _pressed = false;
+        bool _entered = false;
 };
 class BTKAPI Button      : public AbstractButton {
     public:
@@ -260,13 +296,14 @@ class BTKAPI Button      : public AbstractButton {
 // Label
 class BTKAPI Label : public Widget {
     public:
-        Label(Widget *parent, u8string_view txt);
+        Label(Widget *parent = nullptr, u8string_view txt = {});
         Label(u8string_view txt) : Label(nullptr, txt) {}
         ~Label();
 
         void set_text(u8string_view txt);
 
         bool paint_event(PaintEvent &event) override;
+        bool change_event(Event     &event) override;
         Size size_hint() const override; //< Return to text size
     private:
         TextLayout _layout;
@@ -292,7 +329,8 @@ class BTKAPI TextEdit : public Widget {
         bool has_selection() const;
 
         // Event handlers
-        bool handle(Event &event) override;
+        bool mouse_enter(MotionEvent &event) override;
+        bool mouse_leave(MotionEvent &event) override;
         bool mouse_press(MouseEvent &event) override;
         bool key_press(KeyEvent &event) override;
 
@@ -300,8 +338,13 @@ class BTKAPI TextEdit : public Widget {
         bool drag_motion(DragEvent &event) override;
         bool drag_end(DragEvent &event) override;
 
+        bool focus_gained(FocusEvent &event) override;
+        bool focus_lost(FocusEvent &event) override;
+
+        bool timer_event(TimerEvent &event) override;
         bool paint_event(PaintEvent &event) override;
         bool textinput_event(TextInputEvent &event) override;
+        bool change_event(Event &) override;
 
         u8string_view text() const {
             return _text;
@@ -343,6 +386,8 @@ class BTKAPI TextEdit : public Widget {
         bool     _has_sel   = false; //< Has selection ?
         bool     _has_focus = false; //< Has focus ?
         bool     _show_cursor = false; //< Show cursor ?
+        bool     _entered = false; //< Mouse entered ?
+        timerid_t _timerid = 0;
 
         Signal<void()> _text_changed;
         Signal<void()> _enter_pressed;
@@ -388,18 +433,47 @@ class BTKAPI Slider : public Widget {
         Slider(Widget *parent = nullptr);
         ~Slider();
 
-        void set_range(uint64_t min, uint64_t max);
-        void set_value(uint64_t value);
+        void set_range(int64_t min, int64_t max);
+        void set_value(int64_t value);
 
         void set_page_step(uint64_t step);
         void set_line_step(uint64_t step);
         void set_tracking(bool tracking);
 
-        // bool paint_event(PaintEvent &) override;
+        bool paint_event(PaintEvent &) override;
+
+        bool mouse_press(MouseEvent &event) override;
+        bool mouse_release(MouseEvent &event) override;
+        bool mouse_enter(MotionEvent &event) override;
+        bool mouse_leave(MotionEvent &event) override;
+        bool mouse_wheel(WheelEvent &event) override;
+
+        bool drag_begin(DragEvent &event) override;
+        bool drag_motion(DragEvent &event) override;
+        bool drag_end(DragEvent &event) override;
+
+        Size size_hint() const override;
+
+        int64_t value() const noexcept {
+            return _value;
+        }
+
+        BTK_EXPOSE_SIGNAL(_value_changed);
+        BTK_EXPOSE_SIGNAL(_range_changed);
     private:
+        FRect content_rect() const;
+        FRect bar_rect()     const;
+
+        bool    _dragging = false;
+        bool    _pressed = false;
+        bool    _hovered = false;
+
         int64_t _min = 0;
         int64_t _max = 100;
         int64_t _value = 0;
+
+        uint64_t _page_step = 10;
+        uint64_t _line_step = 1;
 
         Orientation _orientation = Horizontal;
 
@@ -435,16 +509,60 @@ class ImageView : public Widget {
 class LayoutItem {
     public:
         virtual ~LayoutItem() = default;
+        // virtual void set_rect(const FRect &rect) = 0;
+        // virtual Size size_hint() const = 0;
+
+};
+class WidgetItem : public LayoutItem {
+    public:
+
+};
+class SpacerItem : public LayoutItem {
+    public:
+
 };
 
-class Layout : public Trackable {
+class Layout     : public LayoutItem, public Trackable {
     public:
+        Layout(Widget *parent = nullptr);
+        ~Layout();
+
         void attach(Widget *widget);
+        void add_widget(Widget *widget);
+        void add_layout(Layout *layout);
     private:
-        Widget *_widget = nullptr; //< Attached widget
+        void run_hook(Event &event);
+        void run_layout();
+
+        FMargin                _margin = {0.0f} ; //< Content margin
+        Widget                *_widget = nullptr; //< Attached widget
         std::list<LayoutItem*> _items; //< Layout items
 
         bool _hooked = false; //< Hooked to widget ? (default = false)
+        bool _dirty  = false; //< Dirty ? (default = false)
+};
+
+
+// Dialog
+class Dialog : public Widget {
+    public:
+};
+
+// ScrollArea
+class AbstractScrollArea : public Widget {
+    public:
+        AbstractScrollArea(Widget *parent = nullptr);
+        ~AbstractScrollArea();
+};
+class ScrollArea : public AbstractScrollArea {
+    public:
+        ScrollArea(Widget *parent = nullptr);
+        ~ScrollArea();
+};
+
+// ListView MVC
+class ItemModel {
+
 };
 
 

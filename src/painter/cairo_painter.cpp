@@ -840,67 +840,88 @@ Size TextLayout::size() const {
 bool TextLayout::hit_test(float x, float y, TextHitResult *result) const {
     if (priv) {
         auto lay = priv->lazy_eval();
-        auto iter = pango_layout_get_iter(lay);
+        // auto iter = pango_layout_get_iter(lay);
 
-        size_t n = 0;
-        bool inchar = false;
-        bool inside = false;
-        bool trailing = false;
-        // TODO : Process Vertical, Use pango get cursor pos to calc trailing
-        PangoRectangle chext;
-        PangoRectangle clu_ink;
-        PangoRectangle clu_logical;
-        FRect rect; //< Out logical rect
+        // size_t n = 0;
+        // bool inchar = false;
+        // bool inside = false;
+        // bool trailing = false;
+        // // TODO : Process Vertical, Use pango get cursor pos to calc trailing
+        // PangoRectangle chext;
+        // PangoRectangle clu_ink;
+        // PangoRectangle clu_logical;
+        // FRect rect; //< Out logical rect
 
-        do {
-            pango_layout_iter_get_char_extents(iter, &chext);
-            pango_layout_iter_get_cluster_extents(iter, &clu_ink, &clu_logical);
+        // do {
+        //     pango_layout_iter_get_char_extents(iter, &chext);
+        //     pango_layout_iter_get_cluster_extents(iter, &clu_ink, &clu_logical);
 
-            // Translate to our rect
-            rect.x = float(chext.x) / float(PANGO_SCALE);
-            rect.y = float(chext.y) / float(PANGO_SCALE);
-            rect.w = float(chext.width) / float(PANGO_SCALE);
-            rect.h = float(chext.height) / float(PANGO_SCALE);
+        //     // Translate to our rect
+        //     rect.x = float(chext.x) / float(PANGO_SCALE);
+        //     rect.y = float(chext.y) / float(PANGO_SCALE);
+        //     rect.w = float(chext.width) / float(PANGO_SCALE);
+        //     rect.h = float(chext.height) / float(PANGO_SCALE);
 
-            // Check if x is in insde char
-            inchar = (x >= rect.x && x <= rect.x + rect.w);
-            trailing = (x >= rect.x + rect.w / 2.0); 
+        //     // Check if x is in insde char
+        //     inchar = (x >= rect.x && x <= rect.x + rect.w);
+        //     trailing = (x >= rect.x + rect.w / 2.0); 
 
-            if (y >= rect.y && y <= rect.y + rect.w && inchar) {
-                // Perfect inside
-                inside = true;
-                break;
-            }
-            if (x < rect.x) {
-                // Before
-                break;
-            }
-            if (inchar && pango_layout_iter_at_last_line(iter)) {
-                // TODO : If upstair , may be there has a bug
-                // Last line inchar, Got it
-                break;
-            }
+        //     if (y >= rect.y && y <= rect.y + rect.w && inchar) {
+        //         // Perfect inside
+        //         inside = true;
+        //         break;
+        //     }
+        //     if (x < rect.x) {
+        //         // Before
+        //         break;
+        //     }
+        //     if (inchar && pango_layout_iter_at_last_line(iter)) {
+        //         // TODO : If upstair , may be there has a bug
+        //         // Last line inchar, Got it
+        //         break;
+        //     }
 
-            n += 1;
-        }
-        while(pango_layout_iter_next_char(iter));
+        //     n += 1;
+        // }
+        // while(pango_layout_iter_next_char(iter));
 
-        pango_layout_iter_free(iter);
+        // pango_layout_iter_free(iter);
 
-        // What about use this ?
-        // pango_layout_xy_to_index(lay, x, y, );
+        // // What about use this ?
+        // // pango_layout_xy_to_index(lay, x, y, );
 
+        // if (result) {
+        //     result->text = n;
+        //     result->length = 1;
+
+        //     result->inside = inside;
+        //     result->trailing = trailing;
+
+        //     result->box.x = rect.x;
+        //     result->box.y = rect.y;
+        //     result->box.w = rect.w;
+        //     result->box.h = rect.w;
+        // }
+        // return true;
+
+        // Use pango to get the cursor pos
+        int x_pos, y_pos;
+        int index;
+        int trailing;
+        bool inside = pango_layout_xy_to_index(lay, x * PANGO_SCALE, y * PANGO_SCALE, &index, &trailing);
+        // auto ch = pango_layout_get_text(lay, index, 1);
         if (result) {
-            result->text = n;
+            result->text = trailing;
             result->length = 1;
-
             result->inside = inside;
             result->trailing = trailing;
-
-            result->box.x = rect.x;
-            result->box.y = rect.y;
-            result->box.w = rect.w;
-            result->box.h = rect.w;
+            // Get the rect
+            PangoRectangle rect;
+            pango_layout_index_to_pos(lay, index, &rect);
+            result->box.x = float(rect.x) / float(PANGO_SCALE);
+            result->box.y = float(rect.y) / float(PANGO_SCALE);
+            result->box.w = float(rect.width) / float(PANGO_SCALE);
+            result->box.h = float(rect.height) / float(PANGO_SCALE);
         }
         return true;
     }
@@ -1374,7 +1395,13 @@ void PainterPath::bezier_to(float x1, float y1, float x2, float y2, float x3, fl
 void PainterPath::close_path() {
     cairo_close_path(mem_cr);
 }
-
+FRect PainterPath::bounding_box() const {
+    double x1, y1, x2, y2;
+    cairo_new_path(mem_cr);
+    cairo_append_path(mem_cr, PATH_CAST(priv));
+    cairo_path_extents(mem_cr, &x1, &y1, &x2, &y2);
+    return FRect(x1, y1, x2 - x1, y2 - y1);
+}
 PainterPath &PainterPath::operator =(PainterPath &&p) {
     cairo_path_destroy(PATH_CAST(priv));
 

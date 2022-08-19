@@ -116,6 +116,28 @@ class SDLDriver : public GraphicsDriver {
     friend class SDLGraphicsContext;
 };
 
+class SDLGLContext : public GLContext {
+    public:
+        SDLGLContext(SDL_Window *win);
+        ~SDLGLContext();
+
+        void begin() override;
+        void end() override;
+        void swap_buffers() override;
+
+        bool      initialize(const GLFormat &) override;
+        bool      set_swap_interval(int v) override;
+        Size      get_drawable_size() override;
+        pointer_t get_proc_address(const char_t *name) override;
+    private:    
+        SDL_Window    *win = nullptr;
+        SDL_GLContext  ctxt = nullptr;
+
+        SDL_Window    *prev_win = nullptr;
+        SDL_GLContext  prev_ctxt = nullptr;
+};
+
+
 // Driver
 
 SDLDriver::SDLDriver() {
@@ -174,6 +196,24 @@ int SDLDriver::sdl_event_filter(SDL_Event *event) {
             MouseEvent tr_event(type, event->button.x, event->button.y, event->button.clicks);
             tr_event.set_widget(win->widget);
             tr_event.set_timestamp(time);
+
+            switch (event->button.button) {
+                case SDL_BUTTON_LEFT :
+                    tr_event.set_button(MouseButton::Left);
+                    break;
+                case SDL_BUTTON_MIDDLE :
+                    tr_event.set_button(MouseButton::Middle);
+                    break;
+                case SDL_BUTTON_RIGHT :
+                    tr_event.set_button(MouseButton::Right);
+                    break;
+                case SDL_BUTTON_X1 :
+                    tr_event.set_button(MouseButton::X1);
+                    break;
+                case SDL_BUTTON_X2 :
+                    tr_event.set_button(MouseButton::X2);
+                    break;
+            }
 
             win->widget->handle(tr_event);
             break;
@@ -327,6 +367,10 @@ window_t SDLDriver::window_create(const char_t * title, int width, int height,Wi
     if ((flags & WindowFlags::Resizable) == WindowFlags::Resizable) {
         sdl_flags |= SDL_WINDOW_RESIZABLE;
     }
+
+#if defined(__gnu_linux__)
+    sdl_flags |= SDL_WINDOW_OPENGL;
+#endif
 
     SDL_Window *win = SDL_CreateWindow(
         title,
@@ -540,7 +584,7 @@ pointer_t SDLWindow::native_handle(int what) {
 any_t   SDLWindow::gc_create(const char_t *what) {
     // Create GC
     if (SDL_strcasecmp(what, "opengl") == 0) {
-        return nullptr;
+        return new SDLGLContext(win);
     }
     if (SDL_strcasecmp(what, "vulkan") == 0) {
         return nullptr;
@@ -558,6 +602,63 @@ uint32_t SDLWindow::id() const {
     return SDL_GetWindowID(win);
 }
 
+SDLGLContext::SDLGLContext(SDL_Window *win) : win(win) {}
+SDLGLContext::~SDLGLContext() {
+    if (ctxt) {
+        SDL_GL_DeleteContext(ctxt);
+    }
+}
+
+bool SDLGLContext::initialize(const GLFormat &format) {
+    SDL_GL_SetAttribute(SDL_GL_RED_SIZE, format.red_size);
+    SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, format.green_size);
+    SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, format.blue_size);
+    SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, format.alpha_size);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, format.depth_size);
+    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, format.stencil_size);
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, format.sample_buffers);
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, format.samples);
+
+    ctxt = SDL_GL_CreateContext(win);
+    if (!ctxt) {
+        return false;
+    }
+    return true;
+}
+void SDLGLContext::begin() {
+    prev_ctxt = SDL_GL_GetCurrentContext();
+    if (prev_ctxt != ctxt) {
+        prev_win = SDL_GL_GetCurrentWindow();
+        SDL_GL_MakeCurrent(win, ctxt);
+    }
+    else {
+        prev_win = nullptr;
+    }
+}
+void SDLGLContext::end() {
+    if (prev_win) {
+        SDL_GL_MakeCurrent(prev_win, prev_ctxt);
+    }
+}
+void SDLGLContext::swap_buffers() {
+    SDL_GL_SwapWindow(win);
+}
+bool SDLGLContext::set_swap_interval(int interval) {
+    return SDL_GL_SetSwapInterval(interval) == 0;
+}
+Size SDLGLContext::get_drawable_size() {
+    begin();
+    Size s;
+    SDL_GL_GetDrawableSize(win, &s.w, &s.h);
+    end();
+    return s;
+}
+pointer_t SDLGLContext::get_proc_address(const char_t *name) {
+    begin();
+    pointer_t ret = SDL_GL_GetProcAddress(name);
+    end();
+    return ret;
+}
 
 BTK_NS_END2()
 

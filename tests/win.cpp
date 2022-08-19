@@ -47,6 +47,9 @@ class Canvas : public Widget {
             path.bezier_to(700, 800, 0, 0, 122, 236);
             path.close_path();
             path.close();
+
+            dash_pen.set_dash_pattern({4.0f, 4.0f});
+            dash_pen.set_line_cap(LineCap::Round);
         }
 
         bool paint_event(PaintEvent &e) override {
@@ -97,8 +100,12 @@ class Canvas : public Widget {
 
             gc.set_stroke_width(stroke_width);
             gc.set_brush(linear_brush);
+            gc.set_pen(dash_pen);
             gc.draw_path(path);
             gc.set_stroke_width(1);
+
+            // Reset pen
+            gc.set_pen(nullptr);
 
             return true;
         }
@@ -110,7 +117,7 @@ class Canvas : public Widget {
         }
         bool mouse_wheel(WheelEvent &e) override {
             
-            if (e.x() > 0) {
+            if (e.y() > 0) {
                 stroke_width += 1;
             }
             else {
@@ -151,6 +158,7 @@ class Canvas : public Widget {
         Brush       brush;
         Brush       linear_brush;
         Brush       radial_brush;
+        Pen         dash_pen;
 
         TextLayout  txt_layout;
         PainterPath path;
@@ -328,6 +336,10 @@ int main () {
     Button u(&widget);
     ProgressBar p(&widget);
     ProgressBar q(&widget);
+    Slider      s(&widget);
+    RadioButton rb(&widget);
+    Label       label(&widget);
+
     Timer            timer;
     w.set_text("Increment😀");
 
@@ -391,11 +403,30 @@ int main () {
     timer.set_interval(10);
     timer.set_repeat(true);
 
-    Label lab(&widget," Timer Progress: ");
+    Label lab(&widget, " Timer Progress: ");
     lab.move(100 - lab.width(), 120);
 
-    Label lab2(&widget," ProgressBar: ");
+    Label lab2(&widget, " ProgressBar: ");
     lab2.move(100 - lab.width(), 100);
+
+    auto lfont = label.font();
+    lfont.set_size(20);
+    lfont.set_bold(true);
+    label.set_font(lfont);
+    label.set_text("All useable widgets");
+    label.move(100, 70);
+    label.resize(label.adjust_size());
+
+    // Move The Slider
+    s.move(100, 170);
+    s.resize(200, 20);
+    s.signal_value_changed().connect([&]() {
+        p.set_value(s.value());
+    });
+
+    rb.move(100, 190);
+    rb.set_text("This is a radio button");
+    rb.resize(200, 32);
 
     Canvas c;
     c.show();
@@ -411,12 +442,9 @@ int main () {
     view.show();
 
     // Test Text input
-    Widget   troot;
-    TextEdit tedit(&troot);
-    tedit.resize(200, 40);
-    tedit.move(10, 10);
-    troot.resize(220, 60);
-    troot.show();
+    TextEdit tedit(&widget);
+    tedit.resize(200, 32);
+    tedit.move(200, 0);
 
     // Test Hit test
     Editer   editer;
@@ -426,7 +454,7 @@ int main () {
     tedit.set_placeholder("Please enter text");
 
     tedit.signal_enter_pressed().connect([&]() {
-        troot.set_window_title(tedit.text());
+        widget.set_window_title(tedit.text());
     });
 
     auto tft = tedit.font();

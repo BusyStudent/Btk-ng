@@ -110,12 +110,45 @@
 
 namespace {
 
+class WeakData {
+    public:
+        int   _refcount = 0;
+        bool  _die      = false;
+
+        void ref() {
+            ++_refcount;
+        }
+        void unref() {
+            if (--_refcount == 0) {
+                delete this;
+            }
+        }
+};
+
+template <typename T>
+class WeakRef;
 template <typename T>
 class Ref;
 
 template <typename T>
 class Refable {
     public:
+        // Constructor
+        // Copy doesnot inhert refcount
+        Refable() = default;
+        Refable(const Refable &) : Refable() {}
+        Refable(Refable &&) : Refable() {}
+        ~Refable() {
+            // Destroy weak refs
+            if (_weak) {
+                _weak->_die = true;
+                _weak->unref();
+
+                _weak = nullptr;
+            }
+        }
+
+
         void ref() {
             ++_refcount;
         }
@@ -131,13 +164,25 @@ class Refable {
             return _refcount;
         }
 
+        auto weakref() -> WeakData *{
+            if (!_weak) {
+                _weak = new WeakData();
+                _weak->ref();
+            }
+            return _weak;
+        }
+
         // Helper for Make a instance
         template <typename ...Args>
         static Ref<T> New(Args &&... args);
     private:
-        int _refcount = 0;
+        WeakData *_weak = nullptr; //< For weak reference
+        int       _refcount = 0;
+    template <typename U>
+    friend class WeakRef;
 };
 
+// Strong reference
 template <typename T>
 class Ref {
     public:
@@ -239,6 +284,93 @@ class Ref {
     private:
         T *ptr = nullptr;
 };
+
+// Weaks Reference
+template <typename T>
+class WeakRef {
+    public:
+        WeakRef() : ptr(nullptr) {};
+        WeakRef(T *ptr) : ptr(ptr) {
+            do_ref();
+        }
+        WeakRef(const Ref<T> &r) : WeakRef(r.get()) {}
+        WeakRef(const WeakRef &other) : WeakRef(other.ptr) {}
+        WeakRef(WeakRef &&other) : ptr(other.ptr), weak(other.weak) {
+            other.weak = nullptr;
+            other.ptr = nullptr;
+        }
+        ~WeakRef() {
+            do_unref();
+        }
+
+        WeakRef &operator =(const WeakRef &other) {
+            if (ptr != other.ptr) {
+                do_unref();
+                ptr = other.ptr;
+                do_ref();
+            }
+            return *this;
+        }
+        WeakRef &operator =(WeakRef &&other) {
+            if (ptr != other.ptr) {
+                do_unref();
+                ptr = other.ptr;
+                weak = other.weak;
+                other.weak = nullptr;
+                other.ptr = nullptr;
+            }
+            return *this;
+        }
+        WeakRef &operator =(T *other) {
+            if (ptr != other) {
+                do_unref();
+                ptr = other;
+                do_ref();
+            }
+            return *this;
+        }
+        WeakRef &operator =(std::nullptr_t) {
+            do_unref();
+            ptr = nullptr;
+            return *this;
+        }
+
+        bool empty() const {
+            return ptr == nullptr;
+        }
+        bool expired() const {
+            return weak == nullptr || weak->_die;
+        }
+
+        Ref<T> lock() {
+            if (!expired()) {
+                return Ref<T>(ptr);
+            }
+            return Ref<T>();
+        }
+    private:
+        void do_ref() {
+            if (!ptr) {
+                return;
+            }
+            weak = ptr->weakref();
+            weak->ref();
+        }
+        void do_unref() {
+            if (!ptr) {
+                return;
+            }
+            if (weak) {
+                weak->unref();
+                weak = nullptr;
+                ptr  = nullptr;
+            }
+        }
+
+        T        *ptr  = nullptr;
+        WeakData *weak = nullptr;
+};
+
 
 // Helper for Make a instance
 template <typename T>

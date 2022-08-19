@@ -48,6 +48,16 @@ enum class FontStyle : uint8_t {
     Bold   = 1 << 0,
     Italic = 1 << 1,
 };
+enum class LineJoin : uint8_t {
+    Miter,
+    Bevel,
+    Round,
+};
+enum class LineCap : uint8_t {
+    Flat,
+    Round,
+    Square,
+};
 
 BTK_FLAGS_OPERATOR(FontStyle, uint8_t);
 
@@ -323,6 +333,9 @@ class BTKAPI PainterPath {
 
         void close_path();
 
+        // Query
+        FRect bounding_box() const;
+
         PainterPath &operator =(PainterPath &&);
     private:
         PainterPathImpl *priv;
@@ -351,6 +364,7 @@ class BTKAPI Font {
         bool  empty() const;
         void  set_size(float size);
         void  set_bold(bool bold);
+        void  set_italic(bool italic);
         void  set_family(u8string_view family);
 
         static Font FromFile(u8string_view fname, float size);
@@ -362,7 +376,7 @@ class BTKAPI Font {
     friend class Painter;
 };
 
-class Pen {
+class BTKAPI Pen {
     public:
         Pen();
         Pen(const Pen &);
@@ -382,7 +396,13 @@ class Pen {
         void set_dash_pattern(float pattern) {
             set_dash_pattern(&pattern, 1);
         }
+        void set_dash_offset(float offset);
+        void set_miter_limit(float limit);
+        void set_line_join(LineJoin join);
+        void set_line_cap(LineCap cap);
     private:
+        void begin_mut();
+
         PenImpl *priv;
     friend class Painter;
 };
@@ -399,6 +419,9 @@ class BTKAPI Painter {
         void set_color(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255);
         void set_brush(const Brush &);
         void set_font(const  Font  &);
+        //< Pass nullptr to disable pen
+        void set_pen(const Pen *); 
+        void set_pen(const Pen &);
         void set_stroke_width(float width);
         void set_text_align(align_t align);
         void set_antialias(bool enable);
@@ -476,10 +499,16 @@ class BTKAPI Painter {
         static Painter FromXcb(void * dpy, void * win);
         static Painter FromPixBuffer(PixBuffer &);
 
+        // Getters
+        static bool HasFeature(PainterFeature f);
+
         // Initialize painter internal state
         static void Init();
         static void Shutdown();
     private:
+        // Internal Constructor
+        Painter(PainterImpl *p) : priv(p) {}
+
         PainterImpl *priv; // Private implementation
 };
 
@@ -502,6 +531,9 @@ inline void Painter::set_color(Color c) {
 }
 inline void Painter::set_color(Color::Enum e) {
     set_color(GLColor(e));
+}
+inline void Painter::set_pen(const Pen &p) {
+    set_pen(&p);
 }
 
 inline void Painter::draw_rect(const FRect &r) {

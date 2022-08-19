@@ -36,7 +36,7 @@ target("btk")
         add_files("src/painter/d2d_painter.cpp")
 
         -- Add windows specific libraries
-        add_links("user32", "shlwapi", "shell32")
+        add_links("user32", "shlwapi", "shell32", "imm32", "gdi32")
         add_links("windowscodecs", "d2d1", "dwrite")
     else
         -- Make default driver

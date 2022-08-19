@@ -6,6 +6,15 @@
 
 BTK_NS_BEGIN
 
+// Enum for Mouse Button
+enum class MouseButton : int {
+    Left,
+    Middle,
+    Right,
+    X1,
+    X2
+};
+
 class Event {
     public:
         enum Type : uint32_t {
@@ -44,6 +53,8 @@ class Event {
             DropText    = WidgetEvent + 26, //< Drop
             DropFile    = WidgetEvent + 27, //< Drop file
             DropEnd     = WidgetEvent + 28, //< Drop end
+            StyleChanged= WidgetEvent + 29, //< Style changed
+            FontChanged = WidgetEvent + 30, //< Font changed
 
             WidgetEnd ,
 
@@ -216,16 +227,25 @@ class MouseEvent : public WidgetEvent {
         int y() const {
             return _y;
         }
-        int button() const;
-
         Point position() const {
             return Point(_x, _y);
+        }
+        MouseButton button() const {
+            return _button;
+        }
+
+        void set_button(MouseButton b) {
+            _button = b;
+        }
+        void set_position(int x, int y) {
+            _x = x;
+            _y = y;
         }
     private:
         int _x; //< Mouse x position
         int _y; //< Mouse y position
-        int _button; //< Mouse button
         uint8_t _clicks; //< Number of clicks
+        MouseButton _button; //< Mouse button
 };
 class WheelEvent : public WidgetEvent {
     public:
@@ -308,6 +328,10 @@ class ReparentEvent : public WidgetEvent {
     private:
         Widget *_old;
         Widget *_new;
+};
+class FocusEvent : public WidgetEvent {
+    public:
+        FocusEvent(Type type) : WidgetEvent(type) {}
 };
 class DropEvent : public WidgetEvent {
     public:
@@ -401,5 +425,7 @@ union EventCollections {
     QuitEvent quit;
     KeyEvent key;
 };
+
+BTKAPI EventType RegisterEvent();
 
 BTK_NS_END

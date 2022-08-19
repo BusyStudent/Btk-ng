@@ -1,5 +1,7 @@
 // Import google test and the string class
 #include <gtest/gtest.h>
+#include <Btk/painter.hpp>
+#include <Btk/context.hpp>
 #include <Btk/string.hpp>
 #include <Btk/pixels.hpp>
 #include <Btk/rect.hpp>
@@ -46,10 +48,10 @@ TEST(MathTest, RectUnited) {
     ASSERT_EQ(ret, should);
 
     // Float version
-    Rect rf = Rect(0.0f, 0.0f, 100.0f, 100.0f);
-    Rect r2f = Rect(50.0f, 50.0f, 100.0f, 100.0f);
+    FRect rf = FRect(0.0f, 0.0f, 100.0f, 100.0f);
+    FRect r2f = FRect(50.0f, 50.0f, 100.0f, 100.0f);
     auto retf = rf.united(r2f);
-    Rect shouldf = Rect(0.0f, 0.0f, 150.0f, 150.0f);
+    FRect shouldf = FRect(0.0f, 0.0f, 150.0f, 150.0f);
     ASSERT_EQ(retf, shouldf);
 }
 TEST(MathTest, RectItersected) {
@@ -97,6 +99,37 @@ TEST(MathTest, Lerp) {
     constexpr Color c2(Color::Green);
 
     constexpr Color c3 = lerp(c, c2, 0.5);
+}
+
+TEST(PixBufferTest, SetColor) {
+    PixBuffer buf(500, 500);
+
+    Color cbegin(Color::Red);
+    Color cend(Color::Green);
+
+    // Begin Gradient from red to green
+    float dis = std::sqrt(500 * 500 + 500 * 500);
+    for (int i = 0; i < 500; i++) {
+        for (int j = 0; j < 500; j++) {
+            float dist = std::sqrt(i * i + j * j);
+            auto c = lerp(cbegin, cend, dist / dis);
+            buf.set_color(i, j, c);
+        }
+    }
+
+    UIContext ctxt;
+    ImageView v;
+    v.set_image(buf);
+    v.set_keep_aspect_ratio(true);
+    v.show();
+
+    Widget w;
+    RadioButton s(&w);
+    // s.set_value(50);
+    s.set_text("Hello");
+    w.show();
+
+    ctxt.run();
 }
 
 

@@ -10,18 +10,23 @@
 #include <wrl.h>
 
 #if defined(_MSC_VER)
-#pragma comment(linker,"\"/manifestdependency:type='win32' \
-    name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
-    processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
-#pragma comment(lib, "shell32.lib")
-#pragma comment(lib, "user32.lib")
-#pragma comment(lib, "gdi32.lib")
-#pragma comment(lib, "imm32.lib")
-// Import backtrace on MSVC (for debugging)
-#if !defined(NDEBUG)
-#pragma comment(lib, "advapi32.lib")
-#include "libs/StackWalker.cpp"
-#endif
+    #pragma comment(linker,"\"/manifestdependency:type='win32' \
+        name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
+        processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
+    #pragma comment(lib, "shell32.lib")
+    #pragma comment(lib, "user32.lib")
+    #pragma comment(lib, "gdi32.lib")
+    #pragma comment(lib, "imm32.lib")
+    // Import backtrace on MSVC (for debugging)
+    #if !defined(NDEBUG)
+        #pragma comment(lib, "advapi32.lib")
+        #include "libs/StackWalker.cpp"
+    #endif
+#elif defined(__GNUC__)
+    // GCC
+    #include <dbgeng.h>
+    #include <unwind.h>
+    #include <cxxabi.h>
 #endif
 
 #undef min
@@ -111,10 +116,12 @@ class Win32Window : public AbstractWindow {
         widget_t     widget = {};
         Win32Window *parent = {}; //< For embedding
 
+        bool         erase_background = false;
         bool         mouse_enter = false;
         bool         has_menu  = false;
         Modifier     mod_state = Modifier::None; //< Current keyboard modifiers state
         DWORD        win_style = 0; //< Window style
+        DWORD        win_ex_style = 0; //< Window extended style
 
         HMENU        menu = {}; //< Menu handle
         
@@ -419,6 +426,86 @@ Win32Driver::Win32Driver() {
 
         // Show MessageBox
         MessageBoxA(nullptr, output.c_str(), "Unhandled Exception", MB_ICONERROR);
+#elif   defined(__GNUC__)
+        // Call unwind_backtrace to walk the stack
+        std::vector<void*> stack;
+
+        auto unavail = [](void *, void *) {
+            return false;
+        };
+
+#if     __has_include(<unwind.h>)
+        _Unwind_Backtrace([](_Unwind_Context *ctx, void *p) {
+            auto &stack = *static_cast<std::vector<void*>*>(p);
+            auto ip = _Unwind_GetIP(ctx);
+            if (ip) {
+                stack.push_back(ip);
+            }
+            return _URC_NO_REASON;
+        }, &stack);
+#else
+        // Get the stack pointer
+        stack.resize(200);
+        WORD ret = RtlCaptureStackBackTrace(0, stack.size(), stack.data(), nullptr);
+        stack.resize(ret);
+#endif
+
+        // Try loading the dbgengine
+        HMODULE dbgengine = LoadLibraryA("dbgengine.dll");
+        auto crt = (decltype(DebugCreate)*)GetProcAddress(dbgengine, "DebugCreate");
+        if (dbgengine == INVALID_HANDLE_VALUE) {
+            fputs("Failed to load dbgengine.dll\n", stderr);
+            fputs("Callstack is not available.\n", stderr);
+
+            MessageBoxA(nullptr, "Exception occured.\nCallstack is not available.", "Unhandled Exception", MB_ICONERROR);
+            return EXCEPTION_CONTINUE_SEARCH;
+        }
+
+        ComPtr<IDebugClient> client;
+        ComPtr<IDebugControl> control;
+        ComPtr<IDebugSymbols> symbols;
+
+        HRESULT hr = crt(__uuidof(IDebugClient), reinterpret_cast<void**>(client.GetAddressOf()));
+        if (FAILED(hr)) {
+            //?
+            return EXCEPTION_CONTINUE_SEARCH;
+        }
+        hr = client->QueryInterface(__uuidof(IDebugControl), reinterpret_cast<void**>(control.GetAddressOf()));
+        hr = control->WaitForEvent(DEBUG_WAIT_DEFAULT, INFINITE);
+        hr = client->AttachProcess(
+            0,
+            GetCurrentProcessId(),
+            DEBUG_ATTACH_NONINVASIVE | DEBUG_ATTACH_NONINVASIVE_NO_SUSPEND
+        );
+
+        // Get the symbols
+        hr = client->QueryInterface(__uuidof(IDebugSymbols), reinterpret_cast<void**>(symbols.GetAddressOf()));
+        if (FAILED(hr)) {
+            //?
+            return EXCEPTION_CONTINUE_SEARCH;
+        }
+
+        // Output
+        fputs("-- Callstack summary --\n", stderr);
+        fputs("--- Begin Callstack ---\n", stderr);
+
+        char name[1024] = {};
+        ULONG name_len;
+
+        int n = 0;
+        for (auto addr : stack) {
+            if (symbols->GetNameByOffset((ULONG64)addr, name, sizeof(name), &name_len, 0) == S_OK) {
+                name[name_len] = '\0';
+            }
+            else {
+                strcpy(name, "???");
+            }
+            fprintf(stderr, "#%d %p at %s\n", n, addr, name);
+
+            n += 1;
+        }
+
+        fputs("--- End Callstack ---\n", stderr);
 #else
         MessageBoxA(nullptr, "Exception" ,  "Unhandled Exception", MB_ICONERROR);
 #endif
@@ -486,13 +573,22 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             [[fallthrough]];
         }
         case WM_PAINT : {
-            WidgetEvent event(Event::Paint);
+            PaintEvent event;
             event.set_widget(win->widget);
             event.set_timestamp(GetTicks());
 
             widget->handle(event);
             // Draw children
             return DefWindowProcW(hwnd, msg, wparam, lparam);
+        }
+        case WM_ERASEBKGND : {
+            // Default diaable
+            // For avoid flickering, we disable the background erase.
+            WIN_LOG("WM_ERASEBKGND\n");
+            if (win->erase_background) {
+                return DefWindowProcW(hwnd, msg, wparam, lparam);
+            }
+            return 1;
         }
         case WM_SIZE : {
             ResizeEvent event;
@@ -604,10 +700,12 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             int y = 0;
 
             if (msg == WM_MOUSEWHEEL) {
-                x = GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA;
+                WIN_LOG("WM_MOUSEWHEEL\n");
+                y = GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA;
             }
             else {
-                y = GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA;
+                WIN_LOG("WM_HMOUSEWHEEL\n");
+                x = GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA;
             }
 
             WIN_LOG("Mouse wheel %d, %d\n", x, y);
@@ -628,6 +726,12 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
                 point.x, point.y,
                 wparam
             );
+            if (msg == WM_LBUTTONDOWN) {
+                event.set_button(MouseButton::Left);
+            }
+            else {
+                event.set_button(MouseButton::Right);
+            }
             event.set_widget(win->widget);
             event.set_timestamp(GetTicks());
             widget->handle(event);
@@ -639,6 +743,12 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         case WM_RBUTTONUP : {
             auto pos = MAKEPOINTS(lparam);
             MouseEvent event(Event::MouseRelease, pos.x, pos.y, wparam);
+            if (msg == WM_LBUTTONUP) {
+                event.set_button(MouseButton::Left);
+            }
+            else {
+                event.set_button(MouseButton::Right);
+            }
             event.set_widget(win->widget);
             event.set_timestamp(GetTicks());
             widget->handle(event);
@@ -819,7 +929,7 @@ window_t Win32Driver::window_create(const char_t *title, int width, int height, 
     rect.top = 0;
     rect.bottom = height;
     rect.right = width;
-    if (!AdjustWindowRectExForDpi(&rect, style, FALSE, style, dpi)) {
+    if (!AdjustWindowRectExForDpi(&rect, style, FALSE, 0, dpi)) {
         WIN_LOG("Bad adjust");
     }
 
@@ -1362,7 +1472,7 @@ RECT Win32Window::adjust_rect(int x, int y, int w, int h) {
     rect.top  = y;
     rect.right = x + w;
     rect.bottom = y + h;
-    AdjustWindowRectExForDpi(&rect, win_style, has_menu, 0, GetDpiForWindow(hwnd));
+    AdjustWindowRectExForDpi(&rect, win_style, has_menu, win_ex_style, GetDpiForWindow(hwnd));
     return rect;
 }
 

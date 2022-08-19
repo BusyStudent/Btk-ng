@@ -122,14 +122,7 @@ bool Widget::handle(Event &event) {
             ret = paint_event(event.as<PaintEvent>());
 
             // Paint children second (foreground)
-            // From bottom to top
-            for(auto iter = _children.rbegin(); iter != _children.rend(); ++iter) {
-                auto w = *iter;
-                if (!w->_visible || w->_rect.empty()) {
-                    continue;
-                }
-                w->handle(event);
-            }
+            paint_children(event.as<PaintEvent>());
 
             if (_win) {
                 _painter.end();
@@ -268,6 +261,8 @@ bool Widget::handle(Event &event) {
                 if (!_drag_reject && !dragging_widget) {
                     // Try start it
                     DragEvent event(Event::DragBegin, motion.x(), motion.y());
+                    event.set_rel(motion.xrel(), motion.yrel());
+
                     bool v = handle(event);
                     // Check widget has founded or self accept it
                     if (!dragging_widget && !v) {
@@ -285,6 +280,7 @@ bool Widget::handle(Event &event) {
                     }
                 }
                 DragEvent event(DragEvent::DragMotion, motion.x(), motion.y());
+                event.set_rel(motion.xrel(), motion.yrel());
                 if (dragging_widget) {
                     dragging_widget->handle(event);
                 }
@@ -390,6 +386,9 @@ bool Widget::handle(Event &event) {
             }
             return textinput_event(event.as<TextInputEvent>());
         }
+        case Event::FocusGained : {
+            return focus_gained(event.as<FocusEvent>());
+        }
         case Event::FocusLost : {
             if (focused_widget) {
                 if (focused_widget->handle(event)) {
@@ -398,7 +397,11 @@ bool Widget::handle(Event &event) {
                 }
                 focused_widget = nullptr;
             }
-            break;
+            return focus_lost(event.as<FocusEvent>());
+        }
+        case Event::StyleChanged :
+        case Event::FontChanged : {
+            return change_event(event);
         }
         default: {
             break;
@@ -457,6 +460,18 @@ auto   Widget::font() const -> const Font & {
 }
 
 // Size Hint
+Size Widget::adjust_size() const {
+    auto ret = size_hint();
+    if (ret.is_valid()) {
+        return ret;
+    }
+    // Unit all children
+    Rect r = {0, 0, 0, 0};
+    for (auto &child : _children) {
+        r = r.united(child->rect());
+    }
+    return r.size();
+}
 Size Widget::size_hint() const {
     return Size(0, 0);
 }
@@ -542,6 +557,16 @@ void Widget::set_parent(Widget *w) {
     }
     if (w) {
         w->add_child(this);
+    }
+}
+void Widget::paint_children(PaintEvent &event) {
+    // From bottom to top
+    for(auto iter = _children.rbegin(); iter != _children.rend(); ++iter) {
+        auto w = *iter;
+        if (!w->_visible || w->_rect.empty()) {
+            continue;
+        }
+        w->handle(event);
     }
 }
 
@@ -651,6 +676,13 @@ void Widget::set_focus_policy(FocusPolicy policy) {
 }
 void Widget::set_font(const Font &font) {
     _font = font;
+    Event event(Event::FontChanged);
+    handle(event);
+}
+void Widget::set_style(Style *s) {
+    _style = s;
+    Event event(Event::StyleChanged);
+    handle(event);
 }
 
 // Window Internal
@@ -659,9 +691,9 @@ void Widget::window_init() {
         return;
     }
     Size size = _rect.size();
-    // Try to use size hint
+    // Try to use adjust size
     if (size.w <= 0 || size.h <= 0) {
-        size = size_hint();
+        size = adjust_size();
     }
     // Still no size, use default
     if (size.w <= 0 || size.h <= 0) {

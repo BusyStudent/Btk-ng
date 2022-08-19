@@ -8,10 +8,7 @@
 
 BTK_NS_BEGIN
 
-Button::Button(Widget *parent) {
-    if (parent != nullptr) {
-        parent->add_child(this);
-    }
+Button::Button(Widget *parent) : AbstractButton(parent) {
     auto style = this->style();
     resize(style->button_width, style->button_height);
 }
@@ -85,16 +82,20 @@ bool Button::paint_event(PaintEvent &event) {
     return true;
 }
 bool Button::mouse_press(MouseEvent &event) {
-    _pressed = true;
+    if (event.button() == MouseButton::Left) {
+        _pressed = true;
 
-    repaint();
+        repaint();
+    }
     return true;
 }
 bool Button::mouse_release(MouseEvent &event) {
-    _pressed = false;
-    _clicked.emit();
-
-    repaint();
+    if (_pressed) {
+        _clicked.emit();
+        _pressed = false;
+        
+        repaint();
+    }
     return true;
 }
 bool Button::mouse_enter(MotionEvent &event) {
@@ -115,6 +116,94 @@ Size Button::size_hint() const {
     return Size(style->button_width, style->button_height);
 }
 
+RadioButton::RadioButton(Widget *p) : AbstractButton(p) {
+    resize(size_hint());
+}
+RadioButton::~RadioButton() {
+
+}
+bool RadioButton::paint_event(PaintEvent &) {
+    auto style = this->style();
+    auto &gc  = this->painter();
+
+    auto border = rect().apply_margin(style->margin);
+
+    // Clac the center circle (Left, Middle)
+    float cx = border.x + style->radio_button_circle_pad + style->radio_button_circle_r / 2;
+    float cy = border.y + border.h / 2;
+
+    gc.set_antialias(true);
+
+    // Draw background
+    gc.set_color(style->background);
+    gc.fill_circle(cx, cy, style->radio_button_circle_r);
+    if (_checked) {
+        // Draw inner box
+        gc.set_color(style->highlight);
+        gc.fill_circle(cx, cy, style->radio_button_circle_r);
+        gc.set_color(style->background);
+        gc.fill_circle(cx, cy, style->radio_button_circle_r - style->radio_button_circle_inner_pad);
+    }
+    else {
+        // We didnot draw border at checked
+        if (_entered) {
+            gc.set_color(style->highlight);
+        }
+        else {
+            gc.set_color(style->border);
+        }
+        gc.draw_circle(cx, cy, style->radio_button_circle_r);
+    }
+
+    // Draw text if exist
+    if (!_text.empty()) {
+        gc.push_scissor(border);
+        gc.set_font(font());
+        gc.set_text_align(Alignment::Left | Alignment::Middle);
+        gc.set_color(style->text);
+        gc.draw_text(
+            _text,
+            cx + style->radio_button_circle_r + style->radio_button_text_pad,
+            cy
+        );
+
+        gc.pop_scissor();
+    }
+
+    return true;
+}
+bool RadioButton::mouse_press(MouseEvent &event) {
+    _pressed = true;
+
+    repaint();
+    return true;
+}
+bool RadioButton::mouse_release(MouseEvent &event) {
+    _pressed = false;
+    if (!_checked) {
+        _checked = true;
+        _clicked.emit();
+    }
+    repaint();
+    return true;
+}
+bool RadioButton::mouse_enter(MotionEvent &event) {
+    _entered = true;
+    _howered.emit();
+    repaint();
+    return true;
+}
+bool RadioButton::mouse_leave(MotionEvent &event) {
+    _entered = false;
+    _pressed = false;
+    repaint();
+    return true;
+}
+Size RadioButton::size_hint() const {
+    auto style = this->style();
+    return Size(style->button_width, style->button_height);
+}
+
 // TextEdit
 TextEdit::TextEdit(Widget *parent,u8string_view s) : Widget(parent) {
     set_focus_policy(FocusPolicy::Mouse);
@@ -129,33 +218,49 @@ TextEdit::TextEdit(Widget *parent,u8string_view s) : Widget(parent) {
 }
 TextEdit::~TextEdit() {}
 
-bool TextEdit::handle(Event &e) {
-    if (Widget::handle(e)) {
-        return true;
-    }
-    switch (e.type()) {
-        case Event::FocusGained : {
-            start_textinput();
-            set_textinput_rect(rect());
+bool TextEdit::focus_gained(FocusEvent &) {
+    start_textinput();
+    set_textinput_rect(rect());
 
-            _has_focus = true;
-            _show_cursor = true;
-            repaint();
-            return true;
-        }
-        case Event::FocusLost : {
-            stop_textinput();
+    _has_focus = true;
+    _show_cursor = true;
+    repaint();
 
-            _has_focus = false;
-            _show_cursor = false;
+    _timerid = add_timer(500);
+    return true;
+}
+bool TextEdit::focus_lost(FocusEvent &) {
+    _has_focus = false;
+    _show_cursor = false;
+    clear_sel();
+
+    del_timer(_timerid);
+    _timerid = 0;
+
+    repaint();
+    return true;
+}
+bool TextEdit::timer_event(TimerEvent &event) {
+    if (event.timerid() == _timerid) {
+        _show_cursor = !_show_cursor;
+        if (!has_selection()) {
             repaint();
-            return true;
         }
     }
-    return false;
+    return true;
+}
+bool TextEdit::mouse_enter(MotionEvent &) {
+    _entered = true;
+    repaint();
+    return true;
+}
+bool TextEdit::mouse_leave(MotionEvent &) {
+    _entered = false;
+    repaint();
+    return true;
 }
 bool TextEdit::mouse_press(MouseEvent &event) {
-    if (_text.empty()) {
+    if (_text.empty() || event.button() != MouseButton::Left) {
         return true;
     }
 
@@ -259,6 +364,7 @@ bool TextEdit::key_press(KeyEvent &event) {
             [[fallthrough]];
         }
         default : {
+            // Forwards to parent
             return false;
         }
     }
@@ -295,6 +401,12 @@ bool TextEdit::drag_motion(DragEvent &event) {
     _sel_begin = _cursor_pos;
     repaint();
 
+    return true;
+}
+bool TextEdit::change_event(Event &event) {
+    if (event.type() == Event::FontChanged) {
+        _lay.set_font(font());
+    }
     return true;
 }
 void TextEdit::do_paste(u8string_view txt) {
@@ -359,7 +471,7 @@ bool TextEdit::paint_event(PaintEvent &) {
     // Border and background
     p.set_color(style->background);
     p.fill_rect(border);
-    if (_has_focus) {
+    if (_has_focus || _entered) {
         p.set_color(style->highlight);
     }
     else {
@@ -392,7 +504,35 @@ bool TextEdit::paint_event(PaintEvent &) {
         p.draw_text(_placeholder, _txt_pos.x, _txt_pos.y);
     }
 
-    if (_show_cursor) {
+    if (has_selection()) {
+        // Draw selection
+        auto [w, h] = _lay.size();
+        auto [start,end] = sel_range();
+        TextHitResults result;
+        FRect sel_rect;
+        // Get selection box begin
+        _lay.hit_test_range(0, start, _txt_pos.x, _txt_pos.y - h / 2, &result);
+
+        sel_rect.x = result.back().box.x + result.back().box.w;
+        sel_rect.y = result.back().box.y;
+
+        // Get selection box end
+        _lay.hit_test_range(0, end, _txt_pos.x, _txt_pos.y - h / 2, &result);
+
+        sel_rect.w = result.back().box.x + result.back().box.w - sel_rect.x;
+        sel_rect.h = result.back().box.h;
+
+        // Draw highlight box
+        p.set_color(style->highlight);
+        p.fill_rect(sel_rect);
+
+        // Draw text again to cover selection
+        p.push_scissor(sel_rect);
+        p.set_color(style->highlight_text);
+        p.draw_text(_lay, _txt_pos.x, _txt_pos.y);
+        p.pop_scissor();
+    }
+    else if (_show_cursor) {
         // Draw cursor
         if (_cursor_pos == 0 && _text.empty()) {
             float h = font().size();
@@ -425,35 +565,6 @@ bool TextEdit::paint_event(PaintEvent &) {
                     cursor_x, cursor_y + cursor_h
                 );
             }
-
-            if (has_selection()) {
-                // Draw selection
-                auto [start,end] = sel_range();
-                FRect sel_rect;
-                // Get selection box begin
-                _lay.hit_test_range(0, start, _txt_pos.x, _txt_pos.y - h / 2, &result);
-
-                sel_rect.x = result.back().box.x + result.back().box.w;
-                sel_rect.y = result.back().box.y;
-
-                // Get selection box end
-                _lay.hit_test_range(0, end, _txt_pos.x, _txt_pos.y - h / 2, &result);
-
-                sel_rect.w = result.back().box.x + result.back().box.w - sel_rect.x;
-                sel_rect.h = result.back().box.h;
-
-                // Draw highlight box
-                p.set_color(style->highlight);
-                p.fill_rect(sel_rect);
-
-                // Draw text again to cover selection
-                p.push_scissor(sel_rect);
-                p.set_color(style->highlight_text);
-                p.draw_text(_lay, _txt_pos.x, _txt_pos.y);
-                p.pop_scissor();
-            }
-            
-
         }
     }
 
@@ -523,6 +634,12 @@ bool Label::paint_event(PaintEvent &) {
     );
     painter.pop_scissor();
 
+    return true;
+}
+bool Label::change_event(Event &event) {
+    if (event.type() == Event::FontChanged) {
+        _layout.set_font(font());
+    }
     return true;
 }
 Size Label::size_hint() const {
@@ -710,11 +827,237 @@ bool ProgressBar::paint_event(PaintEvent &) {
 }
 
 // Slider
+// TODO : This widget is hardcoded, so we have to think how to make it more flexible.
 Slider::Slider(Widget *p) : Widget(p) {
-
+    resize(size_hint());
 }
 Slider::~Slider() {
 
+}
+Size Slider::size_hint() const {
+    auto s = style();
+    if (_orientation == Horizontal) {
+        return Size(100, s->slider_height);
+    }
+    else {
+        return Size(s->slider_width, 100);
+    }
+}
+void Slider::set_value(int64_t value) {
+    value = clamp(value, _min, _max);
+    _value = value;
+    _value_changed.emit();
+    repaint();
+}
+void Slider::set_range(int64_t min, int64_t max) {
+    _min = min;
+    _max = max;
+    _value = clamp(_value, _min, _max);
+    _range_changed.emit();
+    _value_changed.emit();
+    repaint();
+}
+bool Slider::paint_event(PaintEvent &) {
+    auto content = content_rect();
+    auto bar     = bar_rect();
+    auto s       = style();
+    auto &p = painter();
+
+    p.set_antialias(false);
+
+    // Fill the content rect
+    p.set_color(s->background);
+    p.fill_rect(content);
+    p.set_color(s->border);
+    p.draw_rect(content);
+
+    // Fill the content rect by the value
+    p.set_color(s->highlight);
+    if (_orientation == Horizontal) {
+        content.w = (content.w * _value) / (_max - _min);
+    }
+    else {
+        content.h = (content.h * _value) / (_max - _min);
+    }
+    p.fill_rect(content);
+
+    // Draw the bar
+    if (_pressed) {
+        p.set_color(s->highlight);
+    }
+    else {
+        p.set_color(s->background);
+    }
+    p.fill_rect(bar);
+
+    if (_hovered) {
+        p.set_color(s->highlight);
+    }
+    else {
+        p.set_color(s->border);
+    }
+    p.draw_rect(bar);
+
+    return true;
+}
+bool Slider::mouse_press(MouseEvent &event) {
+    if (event.button() == MouseButton::Left) {
+        _pressed = true;
+
+        // Calc the value
+        auto rect = content_rect();
+        double v;
+
+        if (_orientation == Horizontal) {
+            v = (event.x() - rect.x) * (_max - _min) / rect.w;
+        }
+        else {
+            v = (event.y() - rect.y) * (_max - _min) / rect.h;
+        }
+
+        set_value(std::round(v));
+    }
+    return true;
+}
+bool Slider::mouse_release(MouseEvent &event) {
+    _pressed = false;
+    repaint();
+    return true;
+}
+bool Slider::mouse_enter(MotionEvent &event) {
+    _hovered = true;
+    repaint();
+    return true;
+}
+bool Slider::mouse_leave(MotionEvent &event) {
+    if (!_dragging) {
+        // Is dragging, we don't reset the pressed state
+        _pressed = false;
+    }
+    _hovered = false;
+    repaint();
+    return true;
+}
+bool Slider::mouse_wheel(WheelEvent &event) {
+    set_value(_value + event.y());
+    return true;
+}
+
+bool Slider::drag_begin(DragEvent &event) {
+    if (_pressed) {
+        _dragging = true;
+        repaint();
+        return true;
+    }
+    return false;
+}
+bool Slider::drag_motion(DragEvent &event) {
+    // Update the value by it
+    
+    auto    rect = content_rect();
+    double  new_value = _value;
+
+    if (_orientation == Horizontal) {
+        new_value += (event.xrel() / rect.w) * (_max - _min) + _min;
+    }
+    else {
+        new_value += (event.yrel() / rect.h) * (_max - _min) + _min;
+    }
+    set_value(std::round(new_value));
+
+    return true;
+}
+bool Slider::drag_end(DragEvent &event) {
+    _dragging = false;
+    _pressed  = false;
+    repaint();
+    return true;
+}
+
+FRect Slider::content_rect() const {
+    auto r = rect().apply_margin(style()->margin);
+
+    FPoint center;
+    center.x = r.x + r.w / 2;
+    center.y = r.y + r.h / 2;
+
+    // Get the size of the bar
+    float w = 5;
+    float h = 5;
+
+    if (_orientation == Horizontal) {
+        r.y = center.y - h / 2;
+        r.h = h;
+    }
+    else {
+        r.x = center.x - w / 2;
+        r.w = w;
+    }
+    return r;
+}
+FRect Slider::bar_rect() const {
+    // Calc the bar rectangle
+    FRect prev = content_rect();
+    FRect r = prev;
+    if (_orientation == Horizontal) {
+        r.w = 7;
+        r.h = 18;
+        r.x = r.x + (prev.w * _value) / (_max - _min);
+        r.y = r.y - r.h / 2 + prev.h / 2; //< Center the bar
+    }
+    else {
+        r.h = 7;
+        r.w = 18;
+        r.y = r.y + (prev.h * _value) / (_max - _min);
+        r.x = r.x - r.w / 2 + prev.w / 2; //< Center the bar
+    }
+    return r;
+}
+
+// Layout
+Layout::Layout(Widget *p) {
+    if (p) {
+        attach(p);
+    }
+}
+Layout::~Layout() {
+    if (_widget) {
+        attach(nullptr);
+    }
+}
+void Layout::attach(Widget *w) {
+    auto hook = [](Object *, Event &event, void *self) -> bool {
+        static_cast<Layout *>(self)->run_hook(event);
+        return false; //< nodiscard
+    };
+    if (_hooked) {
+        // Detach the hook from the previous widget
+        _widget->del_event_filter(hook, this);
+    }
+    _widget = w;
+
+    if (_widget != nullptr) {
+        _widget->add_event_filter(hook, this);
+        _hooked = true;
+    }
+}
+void Layout::run_layout() {
+    if (!_dirty) {
+        return;
+    }
+
+    // Run it
+
+
+    _dirty = false;
+}
+void Layout::run_hook(Event &event) {
+    switch (event.type()) {
+        case Event::Resized : {
+            _dirty = true;
+            break;
+        }
+    }
 }
 
 
