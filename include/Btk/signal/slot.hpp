@@ -8,12 +8,6 @@
 
 #include "call.hpp"
 
-#if defined(_MSC_VER)
-#define not !
-
-#endif
-
-
 BTK_NS_BEGIN
 
 // class _SlotBase {
@@ -455,7 +449,7 @@ class _ClassSlot:public _Slot<RetT,Args...>{
                 static_cast<_ClassSlot*>(self)
             );
             //Call from object
-            if(not from_object){
+            if(!from_object){
                 //< lock the object
                 // Btk::lock_guard<Trackable> locker(*(ptr->object));
                 
@@ -510,7 +504,7 @@ class _GenericCallInvoker:public std::tuple<Class*,Args...>,_GenericCallBase{
         if(deleted){
             return;
         }
-        if(not object()->try_lock()){
+        if(!object()->try_lock()){
             //< Failed to lock,The object is cleanuping
             return;
         }
@@ -733,10 +727,10 @@ class BTKAPI SignalBase:public Trackable{
             return empty();
         }
         bool operator !=(std::nullptr_t) const{
-            return not empty();
+            return !empty();
         }
         operator bool() const{
-            return not empty();
+            return !empty();
         }
         /**
          * @brief Debug for dump

@@ -61,6 +61,14 @@ if has_config("tests") then
         add_files("tests/win.cpp")
     target_end()
 
+    target("anim")
+        set_kind("binary")
+        add_deps("btk")
+
+        add_includedirs("include")
+        add_files("tests/anim.cpp")
+    target_end()
+
     -- Add string test
     target("test")
         set_kind("binary")

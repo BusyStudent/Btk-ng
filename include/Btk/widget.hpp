@@ -35,6 +35,7 @@ enum class WindowFlags : uint32_t {
     Minimized  = 1 << 5,
     OpenGL     = 1 << 6,
     Vulkan     = 1 << 7,
+    AcceptDrop = 1 << 8,
 };
 // Enum for widget.
 enum class FocusPolicy : uint8_t {
@@ -159,8 +160,11 @@ class BTKAPI Widget : public Object {
         void set_window_size(int width, int height);
         void set_window_position(int x, int y);
         void set_window_icon(const PixBuffer &icon);
-        void set_window_flags(WindowFlags flags);
-        
+        bool set_window_flags(WindowFlags flags);
+        bool set_window_borderless(bool v);
+        bool set_resizable(bool v);
+        bool set_fullscreen(bool v);
+
         // Mouse
         void capture_mouse(bool capture = true);
 
@@ -198,6 +202,7 @@ class BTKAPI Widget : public Object {
         uint8_t     _accept_drop = false; //< Is drop accepted ?
         uint8_t     _visible     = true;  //< Visibility
         uint8_t     _enabled     = true;  //< Enabled
+        uint8_t     _focused     = false; //< Has focused ?
         uint8_t     _drag_reject = false; //< Is drag rejected ?
         uint8_t     _pressed     = false; //< Is pressed ?
 

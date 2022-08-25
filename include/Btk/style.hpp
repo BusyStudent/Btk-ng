@@ -6,6 +6,41 @@
 
 BTK_NS_BEGIN
 
+class BTKAPI Palette {
+    public:
+        Palette();
+        Palette(const Palette &);
+        ~Palette();
+
+        enum Group : uint8_t {
+            Active,
+            Inactive,
+            Disable,
+            MaxGroup
+        };
+        enum Role  : uint8_t {
+            Window,
+            Button,
+            Input,
+            Hightlight,
+
+            Text,
+            PlaceholderText,
+            HightlightedText,
+
+            MaxRole,
+        };
+
+        Color color_at(Group gp, Role r) const;
+        Brush brush_at(Group gp, Role r) const;
+    private:
+        void begin_mut();
+
+        struct Priv {
+            Brush brushs[MaxGroup][MaxRole];
+        } *priv = nullptr;
+};
+
 class Style {
     public:
         Color text;

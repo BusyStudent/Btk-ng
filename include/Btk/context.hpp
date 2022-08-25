@@ -19,7 +19,7 @@
         text, \
     };
 
-// All Abstract Interfaces methods name by xxx_op()
+// All Abstract Interfaces methods to control instance name by xxx_op()
 
 
 BTK_NS_BEGIN
@@ -126,6 +126,13 @@ class FbContext : public GraphicsContext {
 
 class AbstractWindow : public Any {
     public:
+        enum ShowFlag : int {
+            Hide,
+            Show,
+            Restore,
+            Maximize,
+            Minimize,
+        };
         enum Query : int {
             NativeHandle,
             Hwnd,
@@ -134,13 +141,6 @@ class AbstractWindow : public Any {
             XDisplay,    //< Xlib Display
             XWindow,     //< Window
         };
-        enum Attr : int {
-            AcceptDrop,
-            Fullscreen,
-            Maximized,
-            Minimized,
-            Resizable,
-        };
 
         virtual Size       size() const = 0;
         virtual Point      position() const = 0;
@@ -148,7 +148,7 @@ class AbstractWindow : public Any {
         // virtual void       grab() = 0;
         virtual void       close() = 0; //< Send close event to window
         virtual void       repaint() = 0;
-        virtual void       show(bool show_flag) = 0;
+        virtual void       show(int show_flag) = 0;
         virtual void       move  (int x, int y) = 0;
         virtual void       resize(int width, int height) = 0;
         virtual void       set_title(const char_t * title) = 0;
@@ -156,7 +156,9 @@ class AbstractWindow : public Any {
         virtual void       set_textinput_rect(const Rect &rect) = 0;
         virtual void       capture_mouse(bool capture) = 0;
         virtual void       start_textinput(bool start) = 0;
-        // virtual bool       set_attribute(int attr, ...) = 0;
+
+        // Flags control
+        virtual bool       set_flags(WindowFlags flags) = 0;
 
         virtual pointer_t  native_handle(int what) = 0;
         virtual widget_t   bind_widget(widget_t widget) = 0;
@@ -335,13 +337,18 @@ class BTKAPI UIContext : public Trackable {
         bool      timer_del(Object *obj,timerid_t id) {
             return driver->timer_del(obj, id);
         }
+
+        // Configure
+        
+        void      set_font(const Font &f) {
+            style.font = f;
+        }
     private:
         PainterInitializer painter_init;
         GraphicsDriver *driver = nullptr;
         EventQueue queue;//< For collecting events
         std::unordered_set<Widget *> widgets;
         Style style;
-    friend class WidgetImpl;
     friend class Widget;
     friend class EventLoop;
 };

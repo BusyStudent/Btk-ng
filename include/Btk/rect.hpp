@@ -438,4 +438,22 @@ std::ostream &operator <<(std::ostream &os, const Matrix3x2Impl<T> &m) {
     return os << "Matrix3x2(" << m.m[0][0] << ", " << m.m[0][1] << ", " << m.m[1][0] << ", " << m.m[1][1] << ", " << m.m[2][0] << ", " << m.m[2][1] << ")";
 }
 
+// Lerp template
+template <typename T>
+constexpr SizeImpl<T> lerp(const SizeImpl<T> &a, const SizeImpl<T> &b, float t) noexcept {
+    return SizeImpl(
+        lerp(a.w, b.w, t),
+        lerp(a.h, b.h, t)
+    );
+}
+template <typename T>
+constexpr RectImpl<T> lerp(const RectImpl<T> &a, const RectImpl<T> &b, float t) noexcept {
+    return RectImpl(
+        lerp(a.x, b.x, t),
+        lerp(a.y, b.y, t),
+        lerp(a.w, b.w, t),
+        lerp(a.h, b.h, t)
+    );
+}
+
 BTK_NS_END

@@ -51,7 +51,7 @@ class SDLDriver ;
 class SDLFont   ;
 class SDLWindow : public AbstractWindow {
     public:
-        SDLWindow(SDL_Window *w, SDLDriver *dr) : win(w), driver(dr) {}
+        SDLWindow(SDL_Window *w, SDLDriver *dr, WindowFlags f) : win(w), driver(dr), flags(f) {}
         ~SDLWindow();
 
         // Overrides from WindowContext
@@ -60,7 +60,7 @@ class SDLWindow : public AbstractWindow {
         void       close() override;
         void       raise() override;
         void       resize(int w, int h) override;
-        void       show(bool v) override;
+        void       show(int v) override;
         void       move(int x, int y) override;
         void       set_title(const char_t *title) override;
         void       set_icon(const PixBuffer &buffer) override;
@@ -69,6 +69,9 @@ class SDLWindow : public AbstractWindow {
         void       capture_mouse(bool v) override;
         void       set_textinput_rect(const Rect &r) override;
         void       start_textinput(bool v) override;
+
+        // Flags control
+        bool       set_flags(WindowFlags flags) override;
 
         pointer_t  native_handle(int what) override;
         widget_t   bind_widget(widget_t w) override;
@@ -79,6 +82,7 @@ class SDLWindow : public AbstractWindow {
         SDL_Window *win = nullptr;
         SDLDriver  *driver = nullptr;
         Widget     *widget = nullptr;
+        WindowFlags flags  = {};
     friend class SDLDriver;
 };
 
@@ -380,7 +384,7 @@ window_t SDLDriver::window_create(const char_t * title, int width, int height,Wi
         height,
         sdl_flags | SDL_WINDOW_HIDDEN
     );
-    auto ret = new SDLWindow(win, this);
+    auto ret = new SDLWindow(win, this, flags);
     window_add(ret);
     return ret;
 }
@@ -488,12 +492,14 @@ void SDLWindow::move(int x, int y) {
 void SDLWindow::resize(int w, int h) {
     SDL_SetWindowSize(win, w, h);
 }
-void SDLWindow::show(bool v) {
-    if (v) {
-        SDL_ShowWindow(win);
-    }
-    else {
-        SDL_HideWindow(win);
+void SDLWindow::show(int v) {
+    switch (v) {
+        default : [[fallthrough]]
+        case Show : SDL_ShowWindow(win); break;
+        case Hide : SDL_HideWindow(win); break;
+        case Restore  : SDL_RestoreWindow(win); break;
+        case Maximize : SDL_MaximizeWindow(win); break;
+        case Minimize : SDL_MinimizeWindow(win); break;
     }
 }
 void SDLWindow::raise() {
@@ -551,6 +557,35 @@ void SDLWindow::start_textinput(bool v) {
 void SDLWindow::set_textinput_rect(const Rect &r) {
     SDL_SetTextInputRect((SDL_Rect*) &r);
 }
+bool SDLWindow::set_flags(WindowFlags new_flags) {
+    auto bit_changed = [=](WindowFlags what) {
+        return (flags & what) != (new_flags & what);
+    };
+    int err = 0;
+
+    if (bit_changed(WindowFlags::Resizable)) {
+        SDL_SetWindowResizable(win, SDL_bool(new_flags & WindowFlags::Resizable));
+    }
+    if (bit_changed(WindowFlags::Fullscreen)) {
+        if (bool(new_flags & WindowFlags::Fullscreen)) {
+            err |= SDL_SetWindowFullscreen(win, SDL_WINDOW_FULLSCREEN);
+        }
+        else {
+            err |= SDL_SetWindowFullscreen(win, 0);
+        }
+    }
+    if (bit_changed(WindowFlags::Borderless)) {
+        if (bool(new_flags & WindowFlags::Borderless)) {
+            SDL_SetWindowBordered(win, SDL_FALSE);
+        }
+        else {
+            SDL_SetWindowBordered(win, SDL_TRUE);
+        }
+    }
+
+    flags = new_flags;
+    return err == 0;
+}
 widget_t SDLWindow::bind_widget(widget_t widget) {
     widget_t ret = this->widget;
     this->widget = widget;
@@ -567,6 +602,9 @@ pointer_t SDLWindow::native_handle(int what) {
 #if defined(_WIN32)
     if (what == NativeHandle || what == Hwnd) {
         return info.info.win.window;
+    }
+    if (what == Hdc) {
+        return info.info.win.hdc;
     }
 #elif defined(__gnu_linux__)
     if (what == NativeHandle || what == XWindow) {

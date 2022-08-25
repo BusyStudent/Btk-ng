@@ -91,7 +91,7 @@ class Win32Window : public AbstractWindow {
         void       close() override;
         void       raise() override;
         void       resize(int w, int h) override;
-        void       show(bool v) override;
+        void       show(int v) override;
         void       move(int x, int y) override;
         void       set_title(const char_t *title) override;
         void       set_icon(const PixBuffer &buffer) override;
@@ -101,6 +101,7 @@ class Win32Window : public AbstractWindow {
         void       start_textinput(bool v) override;
         void       set_textinput_rect(const Rect &r) override;
 
+        bool       set_flags(WindowFlags attr) override;
 
         pointer_t  native_handle(int what) override;
         widget_t   bind_widget(widget_t w) override;
@@ -112,6 +113,7 @@ class Win32Window : public AbstractWindow {
         RECT       adjust_rect(int x, int y, int w, int h);
 
         HWND         hwnd   = {};
+        WindowFlags  flags  = {};
         Win32Driver *driver = {};
         widget_t     widget = {};
         Win32Window *parent = {}; //< For embedding
@@ -137,6 +139,10 @@ class Win32Window : public AbstractWindow {
         bool         textinput_enabled = false; //< Text input enabled
 
         HIMC         imcontext = {}; //< Default IME context
+
+        DWORD           prev_style = 0;
+        DWORD           prev_ex_style = 0;
+        WINDOWPLACEMENT prev_placement;
 };
 
 class Win32Driver : public GraphicsDriver {
@@ -963,6 +969,7 @@ window_t Win32Driver::window_create(const char_t *title, int width, int height, 
 
     auto win = new Win32Window(hwnd, this);
     win->win_style = style;
+    win->flags     = flags;
     return win;
 }
 void  Win32Driver::window_add(Win32Window *win) {
@@ -1012,7 +1019,6 @@ u8string Win32Driver::clipboard_get() {
     }
     return text;
 }
-// TODO: Timers
 timerid_t Win32Driver::timer_add(Object *object, timertype_t t, uint32_t ms) {
     timerid_t id;
     timerid_t offset = 0;
@@ -1166,15 +1172,25 @@ void Win32Window::move(int x, int y) {
         FALSE
     );
 }
-void Win32Window::show(bool v) {
+void Win32Window::show(int v) {
     if (v) {
         // Check if the window is on device.
         if (driver->windows.find(hwnd) == driver->windows.end()) {
             driver->window_add(this);
         }
     }
+    int cmd;
+    switch (v) {
+        case Hide : cmd = SW_HIDE; break;
+        case Show : cmd = SW_SHOW; break;
+        case Restore  : cmd = SW_RESTORE; break;
+        case Maximize : cmd = SW_MAXIMIZE; break;
+        case Minimize : cmd = SW_MINIMIZE; break;
 
-    ShowWindow(hwnd, v ? SW_SHOW : SW_HIDE);
+        default : WIN_LOG("Bad Show flag") cmd = SW_SHOW; break;
+    }
+
+    ShowWindow(hwnd, cmd);
 }
 void Win32Window::set_title(const char_t * title) {
     wchar_t *wtitle = nullptr;
@@ -1226,6 +1242,76 @@ void     Win32Window::capture_mouse(bool v) {
     else {
         ReleaseCapture();
     }
+}
+bool     Win32Window::set_flags(WindowFlags new_flags) {
+    auto bit_changed = [=](WindowFlags what) {
+        return (flags & what) != (new_flags & what);
+    };
+
+    int err = 0;
+
+    if (bit_changed(WindowFlags::AcceptDrop)) {
+        DragAcceptFiles(hwnd, bool(new_flags & WindowFlags::AcceptDrop));
+    }
+    if (bit_changed(WindowFlags::Resizable)) {
+        DWORD style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+        if (bool(new_flags & WindowFlags::Resizable)) {
+            style |= (WS_SIZEBOX | WS_MAXIMIZEBOX);
+        }
+        else {
+            style ^= (WS_SIZEBOX | WS_MAXIMIZEBOX);
+        }
+        SetWindowLongPtrW(hwnd, GWL_STYLE, style);
+        win_style = style;
+    }
+    if (bit_changed(WindowFlags::Fullscreen)) {
+        // Using the way of https://devblogs.microsoft.com/oldnewthing/20100412-00/?p=14353
+        bool value = bool(new_flags & WindowFlags::Fullscreen);
+        if (value) {
+            MONITORINFO info;
+            info.cbSize = sizeof(info);
+
+            if (
+                GetWindowPlacement(hwnd, &prev_placement) && 
+                GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY), &info)
+            ) {
+                // Save style
+                prev_style    = GetWindowLongPtrW(hwnd, GWL_STYLE);
+                prev_ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+
+                // Change style
+                win_style ^= WS_OVERLAPPEDWINDOW;
+                SetWindowLongPtrW(hwnd, GWL_STYLE, win_style);
+                SetWindowPos(
+                    hwnd,
+                    HWND_TOPMOST,
+                    info.rcMonitor.left,
+                    info.rcMonitor.top,
+                    info.rcMonitor.right  - info.rcMonitor.left,
+                    info.rcMonitor.bottom - info.rcMonitor.top,
+                    SWP_NOOWNERZORDER | SWP_FRAMECHANGED
+                );
+            }
+            else {
+                // Err
+                err = 1;
+            }
+        }
+        else {
+            // Reset back
+            win_style  = prev_style;
+            win_style |= WS_OVERLAPPEDWINDOW;
+            SetWindowLongPtrW(hwnd, GWL_STYLE, win_style);
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, prev_ex_style);
+            SetWindowPlacement(hwnd, &prev_placement);
+            SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                SWP_NOOWNERZORDER | SWP_FRAMECHANGED
+            );
+        }
+    }
+    flags = new_flags;
+    return err == 0;
 }
 void     Win32Window::set_textinput_rect(const Rect &rect) {
     auto imc = ImmGetContext(hwnd);

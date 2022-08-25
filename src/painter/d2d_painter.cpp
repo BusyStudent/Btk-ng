@@ -16,10 +16,14 @@
 #include <d2d1_1.h>
 #include <d2d1effects.h>
 
+// DXGI / D3D11
+#include <d3d11.h>
+#include <dxgi.h>
 
 #if defined(_MSC_VER)
 #pragma comment(lib, "windowscodecs.lib")
 #pragma comment(lib, "dwrite.lib")
+#pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d2d1.lib")
 #endif
 
@@ -130,6 +134,46 @@ namespace {
         }
 
         return D2D1::RectF(*x, *y, *x + metrics.width, *y + metrics.height);
+    }
+    HDC d2d_lock_bitmap(ID2D1Bitmap *bitmap) {
+        // Try cast to ID2D1Bitmap1
+        ComPtr<IDXGISurface1> surface1;
+        ComPtr<IDXGISurface> surface;
+        ComPtr<ID2D1Bitmap1> bitmap1;
+
+        if (FAILED(bitmap->QueryInterface(bitmap1.GetAddressOf()))) {
+            return nullptr;
+        }
+        if (FAILED(bitmap1->GetSurface(surface.GetAddressOf()))) {
+            return nullptr;
+        }
+        if (FAILED(surface.As(&surface1))) {
+            return nullptr;
+        }
+
+        // Get DC
+        HDC dc;
+        if (FAILED(surface1->GetDC(FALSE, &dc))) {
+            return nullptr;
+        }
+        return dc;
+    }
+    void d2d_unlock_bitmap(ID2D1Bitmap *bitmap, HDC dc) {
+        // Try cast to ID2D1Bitmap1
+        ComPtr<IDXGISurface1> surface1;
+        ComPtr<IDXGISurface> surface;
+        ComPtr<ID2D1Bitmap1> bitmap1;
+
+        if (FAILED(bitmap->QueryInterface(bitmap1.GetAddressOf()))) {
+            return;
+        }
+        if (FAILED(bitmap1->GetSurface(surface.GetAddressOf()))) {
+            return;
+        }
+        if (FAILED(surface.As(&surface1))) {
+            return;
+        }
+        surface1->ReleaseDC(nullptr);
     }
 }
 
@@ -303,6 +347,16 @@ class PainterImpl {
         // Factorys
         auto alloc_texture(int w, int h, PixFormat fmt) -> TextureImpl *;
 
+#if defined(BTK_DIRECT2D_ON_D3D11)
+        // D3D11 Members with D2D1
+        ComPtr<ID3D11Device> d3d_device;
+        ComPtr<ID3D11DeviceContext> d3d_context;
+        ComPtr<IDXGISwapChain> d3d_swapchain;
+        ComPtr<ID3D11RenderTargetView> d3d_rendertarget;
+        ComPtr<ID3D11Texture2D> d3d_backbuffer;
+        ComPtr<ID2D1Device> d2d_device;
+#endif
+
         ComPtr<ID2D1RenderTarget> target;
         ComPtr<ID2D1DeviceContext> context; //< Could be null if unsupported
 
@@ -328,6 +382,7 @@ class PainterImpl {
         struct {
             uint8_t bitmap_target : 1;
             uint8_t hwnd_target : 1;
+            uint8_t d3d_target : 1;
             uint8_t dc_target : 1;
         } target_opt;
 
@@ -349,25 +404,112 @@ inline PainterImpl::PainterImpl(HWND hwnd) {
 
     HRESULT hr;
 
-    // Create a render target
+#if defined(BTK_DIRECT2D_ON_D3D11)
+    DXGI_SWAP_CHAIN_DESC desc = {};
+    RECT rect;
+
+    GetClientRect(hwnd, &rect);
+    
+    desc.BufferDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.BufferDesc.Width = rect.right - rect.left;
+    desc.BufferDesc.Height = rect.bottom - rect.top;
+    desc.BufferDesc.RefreshRate.Denominator = 1;
+    desc.BufferDesc.RefreshRate.Numerator = 60;
+
+    desc.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+    desc.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+    // Sample
+    desc.SampleDesc.Count = 1;
+    desc.SampleDesc.Quality = 0;
+
+    desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    desc.BufferCount = 2;
+    desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+    // Output
+    desc.OutputWindow = hwnd;
+    desc.Windowed = TRUE;
+    desc.Flags = 0;
+
+    UINT dev_flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+    
+#if !defined(NDEBUG) && defined(_MSC_VER)
+    dev_flags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif
+
+    hr = D3D11CreateDeviceAndSwapChain(
+        nullptr,
+        D3D_DRIVER_TYPE_HARDWARE,
+        nullptr,
+        dev_flags,
+        nullptr,
+        0,
+        D3D11_SDK_VERSION,
+        &desc,
+        &d3d_swapchain,
+        &d3d_device,
+        nullptr,
+        &d3d_context
+    );
+
+    if (FAILED(hr)) {
+        BTK_THROW(std::runtime_error("Failed to create D3D11 device"));
+    }
+
+    ComPtr<IDXGIDevice> dxgi_device;
+    ComPtr<ID2D1Factory1> factory1;
+    hr = d3d_device.As(&dxgi_device);
+    hr = d2d_factory->QueryInterface(IID_PPV_ARGS(&factory1));
+    
+    if (FAILED(hr)) {
+
+    }
+
+    hr = factory1->CreateDevice(dxgi_device.Get(), &d2d_device);
+
+    if (FAILED(hr)) {
+        BTK_THROW(std::runtime_error("Failed to create D2D device"));
+    }
+
+    hr = d2d_device->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, &context);
+    hr = context.As(&target);
+
+    // Set Target
+    ComPtr<IDXGISurface> dxgi_backbuffer;
+    hr = d3d_swapchain->GetBuffer(0, IID_PPV_ARGS(&d3d_backbuffer));
+    hr = d3d_swapchain->GetBuffer(0, IID_PPV_ARGS(&dxgi_backbuffer));
+
+    // Create target
+    ComPtr<ID2D1Bitmap1> bitmap;
+    hr = context->CreateBitmapFromDxgiSurface(
+        dxgi_backbuffer.Get(), 
+        D2D1::BitmapProperties1(
+            D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+            D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE)
+        ),
+        &bitmap
+    );
+    context->SetTarget(bitmap.Get());
+#else
+    // Create a render target (legacy)
     hr = d2d_factory->CreateHwndRenderTarget(
         D2D1::RenderTargetProperties(),
         D2D1::HwndRenderTargetProperties(hwnd),
         reinterpret_cast<ID2D1HwndRenderTarget**>(target.GetAddressOf())
     );
     do_hr(hr);
-
-    initialize();
+#endif
 
     // Set target options
     ZeroMemory(&target_opt, sizeof(target_opt));
     target_opt.hwnd_target = true;
+    target_opt.d3d_target = true; //< Only valid on Direct2D on D3D11
 
     ZeroMemory(&target_info, sizeof(target_info));
     target_info.hwnd = hwnd;
-}
-PainterImpl::PainterImpl(HDC hdc) {
 
+    initialize();
+}
+inline PainterImpl::PainterImpl(HDC hdc) {
     HRESULT hr;
 
     // Create DC Target
@@ -387,8 +529,10 @@ PainterImpl::PainterImpl(HDC hdc) {
 
     ZeroMemory(&target_info, sizeof(target_info));
     target_info.hdc = hdc;
+
+    initialize();
 }
-PainterImpl::PainterImpl(PixBuffer &bf) {
+inline PainterImpl::PainterImpl(PixBuffer &bf) {
     // Make a temporary bitmap and render target
     ComPtr<IWICBitmap> bitmap;
     HRESULT hr;
@@ -418,7 +562,7 @@ PainterImpl::PainterImpl(PixBuffer &bf) {
     target_info.bitmap.bf = &bf;
     target_info.bitmap.wic_bitmap = bitmap.Detach();
 }
-PainterImpl::~PainterImpl() {
+inline PainterImpl::~PainterImpl() {
     signal_cleanup.emit();
 
     // Release bitmap if any
@@ -426,7 +570,7 @@ PainterImpl::~PainterImpl() {
         target_info.bitmap.wic_bitmap->Release();
     }
 }
-void PainterImpl::Init() {
+inline void PainterImpl::Init() {
     // Check if already initialized
     if (d2d_factory) {
         // Add refcount
@@ -477,7 +621,7 @@ void PainterImpl::Init() {
         abort();
     }
 }
-void PainterImpl::Shutdown() {
+inline void PainterImpl::Shutdown() {
     ULONG refcount = d2d_factory->Release();
     wic_factory->Release();
     dwrite_factory->Release();
@@ -491,7 +635,7 @@ void PainterImpl::Shutdown() {
     }
 }
 // Internal helpers
-void PainterImpl::do_hr(HRESULT hr) {
+inline void PainterImpl::do_hr(HRESULT hr) {
     if (hr == D2DERR_RECREATE_TARGET) {
         signal_cleanup.emit();
     }
@@ -499,11 +643,11 @@ void PainterImpl::do_hr(HRESULT hr) {
         abort();
     }
 }
-void PainterImpl::do_recreate() {
+inline void PainterImpl::do_recreate() {
     // TODO : Recreate render target
     signal_cleanup.emit();
 }
-void PainterImpl::initialize() {
+inline void PainterImpl::initialize() {
     HRESULT hr;
     // Make cached brushs
     hr = target->CreateSolidColorBrush(D2D1::ColorF(0, 0, 0, 1), brushs.solid.GetAddressOf());
@@ -523,7 +667,7 @@ void PainterImpl::initialize() {
         target.As(&context);
     }
 }
-auto PainterImpl::get_brush(const D2D1_RECT_F &r) -> ID2D1Brush* {
+inline auto PainterImpl::get_brush(const D2D1_RECT_F &r) -> ID2D1Brush* {
     if (!state.brush) {
         // User did not set brush, use color
         static_cast<void>(r);
@@ -840,18 +984,25 @@ auto PainterImpl::get_brush(const D2D1_RECT_F &r) -> ID2D1Brush* {
 }
 
 // Begin / End
-void PainterImpl::begin() {
+inline void PainterImpl::begin() {
     target->BeginDraw();
 
     // Reset transform
     target->SetTransform(D2D1::Matrix3x2F::Identity());
 }
-void PainterImpl::end() {
+inline void PainterImpl::end() {
     assert(state.n_clip_rects == 0);
 
     target->EndDraw();
 
-    if (target_opt.bitmap_target) {
+#if defined(BTK_DIRECT2D_ON_D3D11)
+    if (target_opt.d3d_target) {
+        d3d_swapchain->Present(1, 0);
+    }
+#else
+    if (0) {}
+#endif
+    else if (target_opt.bitmap_target) {
         // We need to copy the bitmap to pixbuffer
         IWICBitmap *bitmap = target_info.bitmap.wic_bitmap;
         PixBuffer  *buffer = target_info.bitmap.bf;
@@ -879,12 +1030,12 @@ void PainterImpl::end() {
         Btk_memcpy(buffer->pixels(), data, size);
     }
 }
-void PainterImpl::clear() {
+inline void PainterImpl::clear() {
     target->Clear(state.color);
 }
 
 // Configure
-void PainterImpl::set_colorf(float r, float g, float b, float a) {
+inline void PainterImpl::set_colorf(float r, float g, float b, float a) {
     state.color = D2D1::ColorF(r, g, b, a);
 
     brushs.solid->SetColor(state.color);
@@ -892,22 +1043,22 @@ void PainterImpl::set_colorf(float r, float g, float b, float a) {
     // Clear logical brush
     state.brush.reset();
 }
-void PainterImpl::set_color(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+inline void PainterImpl::set_color(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
     set_colorf(r / 255.0f, g / 255.0f, b / 255.0f, a / 255.0f);
 }
-void PainterImpl::set_stroke_width(float width) {
+inline void PainterImpl::set_stroke_width(float width) {
     state.stroke_width = width;
 }
-void PainterImpl::set_antialias(bool enable) {
+inline void PainterImpl::set_antialias(bool enable) {
     target->SetAntialiasMode(enable ? D2D1_ANTIALIAS_MODE_PER_PRIMITIVE : D2D1_ANTIALIAS_MODE_ALIASED);
 }
-void PainterImpl::set_brush(BrushImpl *brush) {
+inline void PainterImpl::set_brush(BrushImpl *brush) {
     state.brush = brush;
 }
-void PainterImpl::set_font(FontImpl *font) {
+inline void PainterImpl::set_font(FontImpl *font) {
     state.text_format = font->lazy_eval();
 }
-void PainterImpl::set_pen(PenImpl *pen) {
+inline void PainterImpl::set_pen(PenImpl *pen) {
     if (pen) {
         state.stroke_style = pen->lazy_eval();
     }
@@ -915,43 +1066,42 @@ void PainterImpl::set_pen(PenImpl *pen) {
         state.stroke_style = nullptr;
     }
 }
-void PainterImpl::set_text_align(Alignment align) {
+inline void PainterImpl::set_text_align(Alignment align) {
     state.text_align = align;
 }
 
 // Draw / fill 
-// TODO : Add support for brush
-void PainterImpl::draw_rect(float x, float y, float w, float h) {
+inline void PainterImpl::draw_rect(float x, float y, float w, float h) {
     auto rect = D2D1::RectF(x, y, x + w, y + h);
     auto style = state.stroke_style.Get();
     auto brush = get_brush(rect);
     target->DrawRectangle(rect, brush, state.stroke_width, style);
 }
-void PainterImpl::draw_line(float x1, float y1, float x2, float y2) {
+inline void PainterImpl::draw_line(float x1, float y1, float x2, float y2) {
     auto rect = bounds_from_line(x1, y1, x2, y2);
     auto style = state.stroke_style.Get();
     auto brush = get_brush(rect);
     target->DrawLine(D2D1::Point2F(x1, y1), D2D1::Point2F(x2, y2), brush, state.stroke_width, style);
 }
-void PainterImpl::draw_circle(float x, float y, float r) {
+inline void PainterImpl::draw_circle(float x, float y, float r) {
     auto rect = bounds_from_circle(x, y, r);
     auto style = state.stroke_style.Get();
     auto brush = get_brush(rect);
     target->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x, y), r, r), brush, state.stroke_width, style);
 }
-void PainterImpl::draw_ellipse(float x, float y, float xr, float yr) {
+inline void PainterImpl::draw_ellipse(float x, float y, float xr, float yr) {
     auto rect = bounds_from_ellipse(x, y, xr, yr);
     auto style = state.stroke_style.Get();
     auto brush = get_brush(rect);
     target->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(x, y), xr, yr), brush, state.stroke_width, style);
 }
-void PainterImpl::draw_rounded_rect(float x, float y, float w, float h, float r) {
+inline void PainterImpl::draw_rounded_rect(float x, float y, float w, float h, float r) {
     auto rect = D2D1::RectF(x, y, x + w, y + h);
     auto style = state.stroke_style.Get();
     auto brush = get_brush(rect);
     target->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x, y, x + w, y + h), r, r), brush, state.stroke_width, style);
 }
-void PainterImpl::draw_image(TextureImpl *tex,  const FRect *_dst, const FRect *_src) {
+inline void PainterImpl::draw_image(TextureImpl *tex,  const FRect *_dst, const FRect *_src) {
     ID2D1Bitmap *bitmap = tex->bitmap.Get();
     FRect src;
     FRect dst;
@@ -1009,13 +1159,13 @@ void PainterImpl::draw_image(TextureImpl *tex,  const FRect *_dst, const FRect *
 
     target->DrawBitmap(bitmap, &d2d_dst, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &d2d_src);
 }
-void PainterImpl::draw_lines(const FPoint *fp, size_t n) {
+inline void PainterImpl::draw_lines(const FPoint *fp, size_t n) {
     // TODO : Optimize this
     for (size_t i = 0; i < n - 1; i++) {
         draw_line(fp[i].x, fp[i].y, fp[i + 1].x, fp[i + 1].y);
     }
 }
-void PainterImpl::draw_text(u8string_view txt, float x, float y) {
+inline void PainterImpl::draw_text(u8string_view txt, float x, float y) {
     if (state.text_format == nullptr) {
         D2D_WARN("PainterImpl::draw_text : No font was set\n");
         return;
@@ -1037,7 +1187,7 @@ void PainterImpl::draw_text(u8string_view txt, float x, float y) {
     // layout->SetFlowDirection(DWRITE_FLOW_DIRECTION_LEFT_TO_RIGHT);
     draw_text(layout.Get(), x, y);
 }
-void PainterImpl::draw_text(IDWriteTextLayout *layout, float x, float y) {
+inline void PainterImpl::draw_text(IDWriteTextLayout *layout, float x, float y) {
     // Get layout size
     // DWRITE_TEXT_METRICS metrics;
     // layout->GetMetrics(&metrics);
@@ -1075,7 +1225,7 @@ void PainterImpl::draw_text(IDWriteTextLayout *layout, float x, float y) {
 
     target->DrawTextLayout(D2D1::Point2F(x, y), layout, brush);
 }
-void PainterImpl::draw_path(PainterPathImpl *p) {
+inline void PainterImpl::draw_path(PainterPathImpl *p) {
     auto style = state.stroke_style.Get();
     auto path = p->path.Get();
     auto &mat = p->mat;
@@ -1091,28 +1241,28 @@ void PainterImpl::draw_path(PainterPathImpl *p) {
     target->DrawGeometry(path, brush, state.stroke_width, style);
 }
 
-void PainterImpl::fill_rect(float x, float y, float w, float h) {
+inline void PainterImpl::fill_rect(float x, float y, float w, float h) {
     auto rect = D2D1::RectF(x, y, x + w, y + h);
     auto brush = get_brush(rect);
     target->FillRectangle(rect, brush);
 }
-void PainterImpl::fill_circle(float x, float y, float r) {
+inline void PainterImpl::fill_circle(float x, float y, float r) {
     auto rect = bounds_from_circle(x, y, r);
     auto brush = get_brush(rect);
     target->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x, y), r, r), brush);
 }
-void PainterImpl::fill_ellipse(float x, float y, float xr, float yr) {
+inline void PainterImpl::fill_ellipse(float x, float y, float xr, float yr) {
     auto rect = bounds_from_ellipse(x, y, xr, yr);
     auto brush = get_brush(rect);
     target->FillEllipse(D2D1::Ellipse(D2D1::Point2F(x, y), xr, yr), brush);
 }
-void PainterImpl::fill_rounded_rect(float x, float y, float w, float h, float r) {
+inline void PainterImpl::fill_rounded_rect(float x, float y, float w, float h, float r) {
     auto rect = D2D1::RectF(x, y, x + w, y + h);
     auto brush = get_brush(rect);
     target->FillRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x, y, x + w, y + h), r, r), brush);
 }
 
-void PainterImpl::fill_path(PainterPathImpl *p) {
+inline void PainterImpl::fill_path(PainterPathImpl *p) {
     auto path = p->path.Get();
     auto &mat = p->mat;
     
@@ -1127,17 +1277,17 @@ void PainterImpl::fill_path(PainterPathImpl *p) {
 
 // Scissor
 // TODO : 
-void PainterImpl::push_scissor(float x, float y, float w, float h) {
+inline void PainterImpl::push_scissor(float x, float y, float w, float h) {
     target->PushAxisAlignedClip(D2D1::RectF(x, y, x + w, y + h), target->GetAntialiasMode());
     state.n_clip_rects += 1;
 }
-void PainterImpl::pop_scissor() {
+inline void PainterImpl::pop_scissor() {
     target->PopAxisAlignedClip();
     state.n_clip_rects -= 1;
 }
 
 // Transform
-void PainterImpl::transform(const FMatrix &m) {
+inline void PainterImpl::transform(const FMatrix &m) {
     D2D1::Matrix3x2F pmat;
     D2D1::Matrix3x2F mat;
     mat.m11 = m[0][0];
@@ -1150,41 +1300,41 @@ void PainterImpl::transform(const FMatrix &m) {
     target->GetTransform(&pmat);
     target->SetTransform(mat * pmat);
 }
-void PainterImpl::translate(float x, float y) {
+inline void PainterImpl::translate(float x, float y) {
     D2D1::Matrix3x2F mat;
     target->GetTransform(&mat);
     target->SetTransform(D2D1::Matrix3x2F::Translation(x, y) * mat);
 }
-void PainterImpl::scale(float x, float y) {
+inline void PainterImpl::scale(float x, float y) {
     D2D1::Matrix3x2F mat;
     target->GetTransform(&mat);
     target->SetTransform(D2D1::Matrix3x2F::Scale(x, y) * mat);
 }
-void PainterImpl::rotate(float angle) {
+inline void PainterImpl::rotate(float angle) {
     D2D1::Matrix3x2F mat;
     target->GetTransform(&mat);
     target->SetTransform(D2D1::Matrix3x2F::Rotation(angle) * mat);
 }
-void PainterImpl::skew_x(float angle) {
+inline void PainterImpl::skew_x(float angle) {
     D2D1::Matrix3x2F mat;
     target->GetTransform(&mat);
     target->SetTransform(D2D1::Matrix3x2F::Skew(angle, 0) * mat);
 }
-void PainterImpl::skew_y(float angle) {
+inline void PainterImpl::skew_y(float angle) {
     D2D1::Matrix3x2F mat;
     target->GetTransform(&mat);
     target->SetTransform(D2D1::Matrix3x2F::Skew(0, angle) * mat);
 }
-void PainterImpl::reset_transform() {
+inline void PainterImpl::reset_transform() {
     target->SetTransform(D2D1::Matrix3x2F::Identity());
 }
-auto PainterImpl::transform_matrix() -> FMatrix {
+inline auto PainterImpl::transform_matrix() -> FMatrix {
     D2D1::Matrix3x2F mat;
     target->GetTransform(&mat);
     return FMatrix(mat.m11, mat.m12, mat.m21, mat.m22, mat.dx, mat.dy);
 }
 // Texture
-auto PainterImpl::create_texture(PixFormat fmt, int w, int h) -> TextureImpl *{
+inline auto PainterImpl::create_texture(PixFormat fmt, int w, int h) -> TextureImpl *{
     auto dxgi_fmt = btkfmt_to_d2d(fmt);
 
     ComPtr<ID2D1Bitmap> bitmap;
@@ -1212,14 +1362,38 @@ auto PainterImpl::create_texture(PixFormat fmt, int w, int h) -> TextureImpl *{
     return tex;
 }
 // Notify
-void PainterImpl::notify_resize(int w, int h) {
-    if (target_opt.hwnd_target) {
+inline void PainterImpl::notify_resize(int w, int h) {
+
+#if defined(BTK_DIRECT2D_ON_D3D11)
+    if (target_opt.d3d_target) {
+        // Unbind from old target
+        context->SetTarget(nullptr);
+        d3d_backbuffer.Reset();
+
+        ComPtr<IDXGISurface> surface;
+        ComPtr<ID2D1Bitmap1> bitmap;
+        HRESULT hr = d3d_swapchain->ResizeBuffers(0, w, h, DXGI_FORMAT_B8G8R8A8_UNORM, 0);
+        hr = d3d_swapchain->GetBuffer(0, IID_PPV_ARGS(&surface));
+        hr = context->CreateBitmapFromDxgiSurface(
+            surface.Get(),
+            D2D1::BitmapProperties1(
+                D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+                D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)
+            ),
+            bitmap.GetAddressOf()
+        );
+        context->SetTarget(bitmap.Get());
+    }
+#else
+    if (0) {}
+#endif
+    else if (target_opt.hwnd_target) {
         static_cast<ID2D1HwndRenderTarget*>(target.Get())->Resize(D2D1::SizeU(w, h));
     }
 }
 
 // BrushImpl
-void BrushImpl::painter_destroyed(PainterImpl *p) {
+inline void BrushImpl::painter_destroyed(PainterImpl *p) {
     auto iter = brushes.find(p);
     assert(iter != brushes.end());
     // Disconnect connection from painter
@@ -1227,27 +1401,27 @@ void BrushImpl::painter_destroyed(PainterImpl *p) {
     // Remove brush
     brushes.erase(iter);
 }
-void BrushImpl::set_color(const GLColor &c) {
+inline void BrushImpl::set_color(const GLColor &c) {
     reset_cache();
     data = c;
     btype = BrushType::Solid;
 }
-void BrushImpl::set_image(const PixBuffer &img) {
+inline void BrushImpl::set_image(const PixBuffer &img) {
     reset_cache();
     data = img;
     btype = BrushType::Texture;
 }
-void BrushImpl::set_gradient(const LinearGradient & g) {
+inline void BrushImpl::set_gradient(const LinearGradient & g) {
     reset_cache();
     data = g;
     btype = BrushType::LinearGradient;
 }
-void BrushImpl::set_gradient(const RadialGradient & g) {
+inline void BrushImpl::set_gradient(const RadialGradient & g) {
     reset_cache();
     data = g;
     btype = BrushType::RadialGradient;
 }
-void BrushImpl::reset_cache() {
+inline void BrushImpl::reset_cache() {
     for (auto &p : brushes) {
         // Disconnect all connections
         p.second.first.disconnect();
@@ -1256,7 +1430,7 @@ void BrushImpl::reset_cache() {
 }
 
 // FontImpl
-auto FontImpl::lazy_eval() -> IDWriteTextFormat * {
+inline auto FontImpl::lazy_eval() -> IDWriteTextFormat * {
     if (format == nullptr) {
         // Empty , create one
         HRESULT hr = dwrite_factory->CreateTextFormat(
@@ -1278,12 +1452,12 @@ auto FontImpl::lazy_eval() -> IDWriteTextFormat * {
 }
 
 // TextureImpl
-void TextureImpl::painter_destroyed() {
+inline void TextureImpl::painter_destroyed() {
     bitmap.Reset();
 }
 
 // TextLayout
-auto TextLayoutImpl::lazy_eval() -> IDWriteTextLayout * {
+inline auto TextLayoutImpl::lazy_eval() -> IDWriteTextLayout * {
     if (layout == nullptr) {
         // Create one
         assert(font);
@@ -1307,7 +1481,7 @@ auto TextLayoutImpl::lazy_eval() -> IDWriteTextLayout * {
 }
 
 // PenImpl
-auto PenImpl::lazy_eval() -> ID2D1StrokeStyle *{
+inline auto PenImpl::lazy_eval() -> ID2D1StrokeStyle *{
     if (style == nullptr) {
         D2D1_CAP_STYLE d2d_cap;
         D2D1_LINE_JOIN d2d_join;

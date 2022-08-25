@@ -146,6 +146,14 @@ class Canvas : public Widget {
             // repaint();
             return true;
         }
+        bool key_press(KeyEvent &event) override {
+            if (event.key() == Key::F11) {
+                fullscreen = !fullscreen;
+                set_fullscreen(fullscreen);
+                return true;
+            }
+            return false;
+        }
 
         int x = -1;
         int y = -1;
@@ -154,6 +162,7 @@ class Canvas : public Widget {
         int start_y = 0;
 
         float       stroke_width = 2.0f;
+        bool        fullscreen = false;
 
         Brush       brush;
         Brush       linear_brush;

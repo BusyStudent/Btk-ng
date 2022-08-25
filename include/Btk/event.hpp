@@ -2,6 +2,7 @@
 
 #include <Btk/detail/keyboard.hpp>
 #include <Btk/string.hpp>
+#include <Btk/rect.hpp>
 #include <Btk/defs.hpp>
 
 BTK_NS_BEGIN

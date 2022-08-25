@@ -87,6 +87,9 @@ void Widget::resize(int w, int h) {
     event.set_new_size(w, h);
     event.set_old_size(old_w, old_h);
     handle(event);
+
+    // We should repaint 
+    repaint();
 }
 void Widget::move(int x, int y) {
     int old_x = _rect.x;
@@ -96,6 +99,8 @@ void Widget::move(int x, int y) {
 
     MoveEvent event(x, y);
     handle(event);
+
+    repaint();
 }
 bool Widget::handle(Event &event) {
     // printf("Widget::handle(%d)\n", event.type());
@@ -387,6 +392,7 @@ bool Widget::handle(Event &event) {
             return textinput_event(event.as<TextInputEvent>());
         }
         case Event::FocusGained : {
+            _focused = true;
             return focus_gained(event.as<FocusEvent>());
         }
         case Event::FocusLost : {
@@ -397,6 +403,7 @@ bool Widget::handle(Event &event) {
                 }
                 focused_widget = nullptr;
             }
+            _focused = false;
             return focus_lost(event.as<FocusEvent>());
         }
         case Event::StyleChanged :
@@ -622,6 +629,43 @@ void Widget::set_window_icon(const PixBuffer &icon) {
         }
         _win->set_icon(icon);
     }
+}
+bool Widget::set_window_flags(WindowFlags f) {
+    if (is_window()) {
+        if (!_win) {
+            window_init();
+        }
+        _flags = f;
+        return _win->set_flags(_flags);
+    }
+    return false;
+}
+bool Widget::set_window_borderless(bool v) {
+    // if (is_window()) {
+    //     if (!_win) {
+    //         window_init();
+    //     }
+    //     _win->set_flags(win, varg_bool_t(v));
+    // }
+    return false;
+}
+bool Widget::set_fullscreen(bool v) {
+    if (v) {
+        _flags |= WindowFlags::Fullscreen;
+    }
+    else {
+        _flags ^= WindowFlags::Fullscreen;
+    }
+    return set_window_flags(_flags);
+}
+bool Widget::set_resizable(bool v) {
+    if (v) {
+        _flags |= WindowFlags::Resizable;
+    }
+    else {
+        _flags ^= WindowFlags::Resizable;
+    }
+    return set_window_flags(_flags);
 }
 
 // Mouse
