@@ -114,7 +114,7 @@ size_t  Utf8Locate(const char_t *str, const char_t *p) {
     size_t size = 0;
     while (str != p) {
         Utf8Next(str);
-        size += (str - prev);
+        size += 1;
         prev = str;
 
         if (str > p) {

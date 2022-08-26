@@ -27,8 +27,14 @@ target("btk")
     add_includedirs("src")
     add_includedirs("include")
 
+    -- Package
+    add_headerfiles("include/(Btk/plugins/*.hpp)")
+    add_headerfiles("include/(Btk/detail/*.hpp)")
+    add_headerfiles("include/(Btk/signal/*.hpp)")
+    add_headerfiles("include/(Btk/*.hpp)")
+
     -- Backends
-    if is_plat("windows") then
+    if is_host("windows") and not is_plat("cross") then
         -- Make default driver
         add_defines("BTK_DRIVER=Win32DriverInfo")
 
@@ -44,6 +50,9 @@ target("btk")
 
         add_files("src/backend/sdl2.cpp")
         add_files("src/painter/cairo_painter.cpp")
+
+        -- Add X11 Support
+        add_links("X11", "SDL2")
     end
 target_end()
 

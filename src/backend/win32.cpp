@@ -445,7 +445,7 @@ Win32Driver::Win32Driver() {
             auto &stack = *static_cast<std::vector<void*>*>(p);
             auto ip = _Unwind_GetIP(ctx);
             if (ip) {
-                stack.push_back(ip);
+                stack.push_back(reinterpret_cast<void*>(ip));
             }
             return _URC_NO_REASON;
         }, &stack);
@@ -1660,9 +1660,9 @@ void *Win32GLContext::get_proc_address(const char_t *name) {
         begin();
         auto proc = wglGetProcAddress(name);
         end();
-        return proc;
+        return reinterpret_cast<void*>(proc);
     }
-    return GetProcAddress(library, name);
+    return reinterpret_cast<void*>(GetProcAddress(library, name));
 }
 
 BTK_NS_END2()

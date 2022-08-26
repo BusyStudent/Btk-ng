@@ -17,3 +17,8 @@
 #elif defined(_MSC_VER)
 #define Btk_countl_zero(x) x ? __lzcnt(x) : 32
 #endif
+
+// MinGW, update WINVER
+#if   defined(_WIN32) && defined(__GNUC__)
+#define WINVER _WIN32_WINNT_WIN10
+#endif

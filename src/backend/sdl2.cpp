@@ -568,7 +568,7 @@ bool SDLWindow::set_flags(WindowFlags new_flags) {
     }
     if (bit_changed(WindowFlags::Fullscreen)) {
         if (bool(new_flags & WindowFlags::Fullscreen)) {
-            err |= SDL_SetWindowFullscreen(win, SDL_WINDOW_FULLSCREEN);
+            err |= SDL_SetWindowFullscreen(win, SDL_WINDOW_FULLSCREEN_DESKTOP);
         }
         else {
             err |= SDL_SetWindowFullscreen(win, 0);

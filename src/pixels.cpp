@@ -148,7 +148,8 @@ PixBuffer PixBuffer::resize(int w, int h) const {
     source = wic_wrap(this);
 
     // Scale the bitmap to the new size
-    scaler->Initialize(source.Get(), w, h, WICBitmapInterpolationModeHighQualityCubic);
+    // Emm, WICBitmapInterpolationModeHighQualityCubic is undefined in MinGW :(
+    scaler->Initialize(source.Get(), w, h, WICBitmapInterpolationModeCubic);
 
     // Create a new PixBuffer
     PixBuffer buf(w, h);

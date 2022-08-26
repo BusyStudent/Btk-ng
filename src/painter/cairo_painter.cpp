@@ -103,7 +103,7 @@ namespace {
 
 BTK_NS_BEGIN
 
-class TextLayoutImpl : public Refable<TextLayoutImpl>, Trackable {
+class TextLayoutImpl : public Refable<TextLayoutImpl>, public Trackable {
     public:
         PangoLayout *lazy_eval(cairo_t *ctxt = nullptr);
 
@@ -111,6 +111,7 @@ class TextLayoutImpl : public Refable<TextLayoutImpl>, Trackable {
         Font                  font;
         cairo_t              *cr = nullptr; //< Which cario ctxt belong
         u8string              text;
+        int64_t               text_len = -1;
 };
 class BrushImpl : public Refable<BrushImpl> {
     public:
@@ -135,6 +136,14 @@ class BrushImpl : public Refable<BrushImpl> {
 
 
         // std::variant<LinearGradient, RadialGradient, PixBuffer> data;
+};
+class PenImpl : public Refable<PenImpl> {
+    public:
+        std::vector<double> dashes;
+        double              dash_offset = 0;
+        double              miter_limit = 10.0;
+        cairo_line_join_t   join = CAIRO_LINE_JOIN_MITER;
+        cairo_line_cap_t    cap  = CAIRO_LINE_CAP_BUTT;
 };
 
 
@@ -162,6 +171,11 @@ class PainterImpl {
         Size (*get_surface_size)(PainterImpl *self) = nullptr;
         void (*set_surface_size)(PainterImpl *self, int w, int h) = nullptr;
         void (*flush_surface)(PainterImpl *self) = nullptr;
+
+        // Default value
+        cairo_line_join_t default_join;
+        cairo_line_cap_t  default_cap;
+        double            default_miter_limit;
 
         struct {
             uint8_t xlib : 1;
@@ -286,6 +300,11 @@ inline void PainterImpl::initialize() {
     layout = pango_cairo_create_layout(cr);
     // Set width to 1.0f
     cairo_set_line_width(cr, 1.0f);
+
+    // Get default value
+    default_miter_limit = cairo_get_miter_limit(cr);
+    default_join = cairo_get_line_join(cr);
+    default_cap  = cairo_get_line_cap(cr);
 }
 
 inline void PainterImpl::notify_resize(int w, int h) {
@@ -628,6 +647,22 @@ void Painter::set_font(const Font &f) {
     // Set Font
     pango_layout_set_font_description(priv->layout, font);
 }
+void Painter::set_pen(const Pen *p) {
+    if (p && p->priv) {
+        auto pen = p->priv;
+        cairo_set_dash(priv->cr, pen->dashes.data(), pen->dashes.size(), pen->dash_offset);
+        cairo_set_miter_limit(priv->cr, pen->miter_limit);
+        cairo_set_line_join(priv->cr, pen->join);
+        cairo_set_line_cap(priv->cr, pen->cap);
+    }
+    else {
+        // Reset to default
+        cairo_set_dash(priv->cr, nullptr, 0, 0);
+        cairo_set_line_cap(priv->cr, priv->default_cap);
+        cairo_set_line_join(priv->cr, priv->default_join);
+        cairo_set_miter_limit(priv->cr, priv->default_miter_limit);
+    }
+}
 void Painter::draw_text(u8string_view txt, float x, float y) {
 
     // Set string
@@ -748,10 +783,15 @@ void Painter::notify_resize(int w, int h) {
 }
 
 Painter Painter::FromWindow(AbstractWindow *w) {
-    return Painter::FromXlib(
-        w->native_handle(AbstractWindow::XDisplay), 
-        w->native_handle(AbstractWindow::XWindow)
-    );
+    pointer_t display = w->native_handle(AbstractWindow::XDisplay);
+    pointer_t window  = w->native_handle(AbstractWindow::XWindow);
+    if (display && window) {
+        return Painter::FromXlib(
+            display, 
+            window
+        );
+    }
+    BTK_THROW(std::runtime_error("Unsupported backend"));
 }
 Painter Painter::FromXlib(void *dpy, void *xwin) {
     Painter p;
@@ -820,6 +860,7 @@ void TextLayout::set_text(u8string_view txt) {
     priv->layout.reset();
 
     priv->text = txt;
+    priv->text_len = -1;
 }
 void TextLayout::set_font(const Font &f) {
     begin_mut();
@@ -840,78 +881,17 @@ Size TextLayout::size() const {
 bool TextLayout::hit_test(float x, float y, TextHitResult *result) const {
     if (priv) {
         auto lay = priv->lazy_eval();
-        // auto iter = pango_layout_get_iter(lay);
 
-        // size_t n = 0;
-        // bool inchar = false;
-        // bool inside = false;
-        // bool trailing = false;
-        // // TODO : Process Vertical, Use pango get cursor pos to calc trailing
-        // PangoRectangle chext;
-        // PangoRectangle clu_ink;
-        // PangoRectangle clu_logical;
-        // FRect rect; //< Out logical rect
-
-        // do {
-        //     pango_layout_iter_get_char_extents(iter, &chext);
-        //     pango_layout_iter_get_cluster_extents(iter, &clu_ink, &clu_logical);
-
-        //     // Translate to our rect
-        //     rect.x = float(chext.x) / float(PANGO_SCALE);
-        //     rect.y = float(chext.y) / float(PANGO_SCALE);
-        //     rect.w = float(chext.width) / float(PANGO_SCALE);
-        //     rect.h = float(chext.height) / float(PANGO_SCALE);
-
-        //     // Check if x is in insde char
-        //     inchar = (x >= rect.x && x <= rect.x + rect.w);
-        //     trailing = (x >= rect.x + rect.w / 2.0); 
-
-        //     if (y >= rect.y && y <= rect.y + rect.w && inchar) {
-        //         // Perfect inside
-        //         inside = true;
-        //         break;
-        //     }
-        //     if (x < rect.x) {
-        //         // Before
-        //         break;
-        //     }
-        //     if (inchar && pango_layout_iter_at_last_line(iter)) {
-        //         // TODO : If upstair , may be there has a bug
-        //         // Last line inchar, Got it
-        //         break;
-        //     }
-
-        //     n += 1;
-        // }
-        // while(pango_layout_iter_next_char(iter));
-
-        // pango_layout_iter_free(iter);
-
-        // // What about use this ?
-        // // pango_layout_xy_to_index(lay, x, y, );
-
-        // if (result) {
-        //     result->text = n;
-        //     result->length = 1;
-
-        //     result->inside = inside;
-        //     result->trailing = trailing;
-
-        //     result->box.x = rect.x;
-        //     result->box.y = rect.y;
-        //     result->box.w = rect.w;
-        //     result->box.h = rect.w;
-        // }
-        // return true;
 
         // Use pango to get the cursor pos
         int x_pos, y_pos;
         int index;
         int trailing;
         bool inside = pango_layout_xy_to_index(lay, x * PANGO_SCALE, y * PANGO_SCALE, &index, &trailing);
-        // auto ch = pango_layout_get_text(lay, index, 1);
+        auto ch = pango_layout_get_text(lay);
         if (result) {
-            result->text = trailing;
+            // Change this index to logical
+            result->text = Utf8Locate(ch, ch + index);
             result->length = 1;
             result->inside = inside;
             result->trailing = trailing;
@@ -971,118 +951,120 @@ bool TextLayout::hit_test_pos(size_t pos, float org_x, float org_y, TextHitResul
 }
 bool TextLayout::hit_test_range(size_t pos, size_t len, float org_x, float org_y, TextHitResults *res) const {
     if (priv) {
+        PangoRectangle rectangle;
+        PangoLayoutLine *cur_line;
         gboolean has_next;
+        FRect    box;
         auto lay = priv->lazy_eval();
-        auto iter = pango_layout_get_iter(lay);
 
-        size_t n    = 0;
-        do {
-            if (n == pos) {
-                break;
-            }
-            n += 1;
-            // Seek next
-            has_next = pango_layout_iter_next_char(iter);
-        }
-        while(has_next);
-
-        if (!has_next) {
-            // Invalid pos
-            if (res) {
-                res->resize(0);
-            }
-            return true;
-        }
-
-        // Got current position
         if (!res) {
-            // No res, no need to iter
             return true;
         }
-        // Resize to 0, and push result into it
         res->resize(0);
 
-        PangoLayoutLine *line = pango_layout_iter_get_line(iter);
-        PangoRectangle rect; //< The char extent
-        FRect box = {0.0f, 0.0f, 0.0f, 0.0f};
-        size_t line_beg = n;
+        if (priv->text_len == -1) {
+            priv->text_len = priv->text.length();
+        }
+        if (pos + len > priv->text_len) {
+            if (pos >= priv->text_len) {
+                // No char
+                return true;
+            }
+            len = priv->text_len - len;
+        }
 
-        // Process first char
-        pango_layout_iter_get_char_extents(iter, &rect);
-        // Get x, y, h
-        box.x = rect.x / PANGO_SCALE;
-        box.y = rect.y / PANGO_SCALE;
-        box.h = rect.height / PANGO_SCALE;
-        
-        do {
-            auto idx = pango_layout_iter_get_index(iter);
+        // Begin iteration
+        auto iter = pango_layout_get_iter(lay);
+        for (size_t i = 0;i < pos; i += 1) {
+            has_next = pango_layout_iter_next_char(iter);
+            assert(has_next);
+        }
+        // Get first char
+        pango_layout_index_to_pos(
+            lay,
+            pango_layout_iter_get_index(iter),
+            &rectangle
+        );
+        cur_line = pango_layout_iter_get_line_readonly(iter);
+        box.x = rectangle.x / PANGO_SCALE;
+        box.y = rectangle.y / PANGO_SCALE;
+        box.h = rectangle.height / PANGO_SCALE;
+        box.w = 0;
 
-            if (idx == line->start_index + line->length || n == pos + len) {
-                // Line End or Range end
-                pango_layout_iter_get_char_extents(iter, &rect);
-                box.w = (rect.x + rect.width) / PANGO_SCALE - box.x;
-                box.h = max<float>(box.h, rect.height / PANGO_SCALE);
+        size_t i;
+        for (i = 0; i < len; i ++) {
+            // Increase the box
+            pango_layout_index_to_pos(
+                lay,
+                pango_layout_iter_get_index(iter),
+                &rectangle
+            );
+
+            box.y = min(box.y, float(rectangle.y) / PANGO_SCALE);
+            box.h = max(box.h, float(rectangle.height / PANGO_SCALE));
+            box.w = max(box.w, float((rectangle.x + rectangle.width) / PANGO_SCALE) - box.x);
+
+            // Next char
+            has_next = pango_layout_iter_next_char(iter);
+            if (!has_next) {
+                i += 1;
+                break;
+            }
+
+            auto line = pango_layout_iter_get_line_readonly(iter);
+            if (line != cur_line) {
+                // Switch to next line
+                cur_line = line;
+                box.x = rectangle.x / PANGO_SCALE;
+                box.y = rectangle.y / PANGO_SCALE;
+                box.h = rectangle.height / PANGO_SCALE;
+                box.w = 0;
 
                 // Commit
-                TextHitResult r;
-                r.box = box;
-                r.inside = false;
-                r.trailing = false;
-                r.text = line_beg;
-                r.length = n - line_beg;
+                TextHitResult result;
+                result.text = pos;
+                result.length = i;
+                result.inside = true;
+                result.trailing = true;
+                result.box = box;
+                result.box.x += org_x;
+                result.box.y += org_y;
 
-                res->push_back(r);
-                
-                if (n == pos + len) {
-                    // Range end
-                    break;
-                }
+                pos += i;
 
+                res->push_back(result);
             }
-            else if (idx > line->start_index + line->length) {
-                // Next line
-
-                line = pango_layout_iter_get_line(iter);
-
-                line_beg = n;
-
-                pango_layout_iter_get_char_extents(iter, &rect);
-                // Get x, y, h
-                box.x = rect.x / PANGO_SCALE;
-                box.y = rect.y / PANGO_SCALE;
-                box.h = rect.height / PANGO_SCALE;
-            }
-            else {
-                // Adjust h
-                pango_layout_iter_get_char_extents(iter, &rect);
-                box.h = max<float>(box.h, rect.height / PANGO_SCALE);
-            }
-
-            // Forward
-            has_next = pango_layout_iter_next_char(iter);
-            n += 1;
         }
-        while(has_next);
-        // What should i do if no more char
-        // TODO : handle no encough char
-        if (!has_next) {
-            // No more char
-            n -= 1;
-            box.w = (rect.x + rect.width) / PANGO_SCALE - box.x;
-            box.h = max<float>(box.h, rect.height / PANGO_SCALE);
-
-            // Commit
-            TextHitResult r;
-            r.box = box;
-            r.inside = false;
-            r.trailing = false;
-            r.text = line_beg;
-            r.length = n - line_beg;
-
-            res->push_back(r);
-        }
-
         pango_layout_iter_free(iter);
+
+        // Commit
+        TextHitResult result;
+        result.text = pos;
+        result.length = i;
+        result.inside = true;
+        result.trailing = true;
+        result.box = box;
+        result.box.x += org_x;
+        result.box.y += org_y;
+
+        res->push_back(result);
+
+#if    !defined(NDEBUG)
+        BTK_LOG("TextLayout: string = '%s'\n", pango_layout_get_text(lay));
+        BTK_LOG("    Input params pos = %d, len = %d, org_x = %f, org_y = %f\n", int(pos), int(len), org_x, org_y);
+        int num = 0;
+        for (auto &result : *res) {
+            BTK_LOG("    Result[%d]: box = {%f, %f, %f, %f} text = %d, len = %d\n",
+                num,
+                result.box.x,
+                result.box.y,
+                result.box.w,
+                result.box.h,
+                int(result.text),
+                int(result.length) 
+            );
+        }
+#endif
         return true;
     }
     return false;
@@ -1359,6 +1341,9 @@ void  Font::set_family(u8string_view family) {
 void  Font::set_bold(bool v) {
     pango_font_description_set_weight(FONT_CAST(priv), v ? PANGO_WEIGHT_BOLD : PANGO_WEIGHT_NORMAL);
 }
+void  Font::set_italic(bool v) {
+    pango_font_description_set_style(FONT_CAST(priv), v ? PANGO_STYLE_ITALIC : PANGO_STYLE_NORMAL);
+}
 
 // PainterPath
 PainterPath::PainterPath() {
@@ -1411,6 +1396,43 @@ PainterPath &PainterPath::operator =(PainterPath &&p) {
     return *this;
 }
 
+// Pen
+COW_IMPL(Pen);
+Pen::Pen() {
+    priv = nullptr;
+}
+void Pen::set_dash_pattern(const float *pat, size_t n) {
+    begin_mut();
+    priv->dashes.clear();
+
+    for (size_t i = 0;i < n; i++) {
+        priv->dashes.push_back(pat[i]);
+    }
+}
+void Pen::set_dash_offset(float offset) {
+    begin_mut();
+    priv->dash_offset = offset;
+}
+void Pen::set_line_join(LineJoin j) {
+    begin_mut();
+    switch (j) {
+        case LineJoin::Miter : priv->join = CAIRO_LINE_JOIN_MITER; break;
+        case LineJoin::Bevel : priv->join = CAIRO_LINE_JOIN_BEVEL; break;
+        case LineJoin::Round : priv->join = CAIRO_LINE_JOIN_ROUND; break;
+    }
+}
+void Pen::set_line_cap(LineCap c) {
+    begin_mut();
+    switch (c) {
+        case LineCap::Flat   : priv->cap = CAIRO_LINE_CAP_BUTT; break;
+        case LineCap::Round  : priv->cap = CAIRO_LINE_CAP_ROUND; break;
+        case LineCap::Square : priv->cap = CAIRO_LINE_CAP_SQUARE; break;
+    }
+}
+void Pen::set_miter_limit(float limit) {
+    begin_mut();
+    priv->miter_limit = limit;
+}
 
 
 BTK_NS_END
