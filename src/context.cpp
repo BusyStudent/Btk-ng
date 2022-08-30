@@ -22,6 +22,8 @@ UIContext *GetUIContext() {
 }
 
 UIContext::UIContext(GraphicsDriver *driv) {
+    assert(!GetUIContext());
+
     driver = driv;
     StyleBreeze(&style);
     SetUIContext(this);

@@ -59,7 +59,6 @@ target_end()
 -- Enable google test if tests are enabled
 if has_config("tests") then
     add_requires("gtest")
-    add_packages("gtest")
 
     -- Add tests
     target("win")
@@ -81,6 +80,7 @@ if has_config("tests") then
     -- Add string test
     target("test")
         set_kind("binary")
+        add_packages("gtest")
         add_deps("btk")
 
         add_includedirs("include")

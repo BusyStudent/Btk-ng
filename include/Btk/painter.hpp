@@ -335,6 +335,7 @@ class BTKAPI PainterPath {
 
         // Query
         FRect bounding_box() const;
+        bool  contains(float x, float y) const;
 
         PainterPath &operator =(PainterPath &&);
     private:
@@ -425,6 +426,7 @@ class BTKAPI Painter {
         void set_stroke_width(float width);
         void set_text_align(align_t align);
         void set_antialias(bool enable);
+        void set_alpha(float alpha);
 
         void set_color(GLColor c);
         void set_color(Color   c);
@@ -449,6 +451,7 @@ class BTKAPI Painter {
         void draw_text(const TextLayout &lay, float x, float y);        
         void draw_text(u8string_view txt, float x, float y);
         void draw_path(const PainterPath &path);
+        
         // Fill
         void fill_rect(float x, float y, float w, float h);
         void fill_circle(float x, float y, float r);

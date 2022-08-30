@@ -1,5 +1,5 @@
 #include "build.hpp"
-#include "common.hpp"
+#include "common/utils.hpp"
 
 // Import library
 #include "libs/opengl_macro.hpp"
@@ -14,20 +14,117 @@
 #include <Btk/context.hpp>
 #include <unordered_map>
 #include <filesystem>
+#include <set>
 
 // Forward declaration for nanovg
+#define FONS_GLYPH_BITMAP_REQUIRED 1
+#define FONS_GLYPH_BITMAP_OPTIONAL 0
+
+#define FONS_ZERO_TOPLEFT          0
+#define FONS_INVALID              -1
+
+#define FONS_DROP(fn) \
+    template<typename ...Args> \
+    inline int fn(Args &&...args) { \
+        BTK_ASSERT(false && "Undefined fn : " #fn);\
+        return FONS_INVALID;\
+    }
+
 namespace {
-    struct fonsContext {
-        int unused;
+    struct FONScontext {
+        // hidden...
     };
-    struct fonsQuad {
-        float x, y, s0, t0, s1, t1;
+    struct FONSparams {
+        int width, height;
+        unsigned char flags;
+        void* userPtr;
+        int (*renderCreate)(void* uptr, int width, int height);
+        int (*renderResize)(void* uptr, int width, int height);
+        void (*renderUpdate)(void* uptr, int* rect, const unsigned char* data);
+        void (*renderDraw)(void* uptr, const float* verts, const float* tcoords, const unsigned int* colors, int nverts);
+        void (*renderDelete)(void* uptr);
+    };
+    struct FONStextIter {
+        float x, y, nextx, nexty, scale, spacing;
+        unsigned int codepoint;
+        
+        short isize, iblur;
+
+        Font *font;
+        int64_t prevGlyphIndex; //< I think int64 is better than int
+        const char* str;
+        const char* next;
+        const char* end;
+        int bitmapOption;
+    };
+    struct FONSquad {
+        float x0, y0, s0, t0;
+        float x1, y1, s1, t1;
     };
 
-    fonsContext *fonsCreateInternal(int flags);
-    void         fonsDeleteInternal(fonsContext *ctx);    
+    class GLFunctions {
+        public:
+            #define BTK_GL_PROCESS(pfn, name) \
+                pfn name = nullptr;
+            BTK_OPENGLES3_FUNCTIONS
+            #undef  BTK_GL_PROCESS
+
+            #define BTK_GL_PROCESS(pfn, name) \
+                name = reinterpret_cast<pfn>(ctxt->get_proc_address(#name)); \
+                if (!name) { \
+                    bad_fn(#name); \
+                }
+            void load (GLContext *ctxt) {
+                BTK_OPENGLES3_FUNCTIONS
+            }
+            #undef  BTK_GL_PROCESS
+
+
+            // Got nullptr on load
+            void bad_fn(const char *name) {
+                BTK_THROW(std::runtime_error(u8string::format(
+                    "Failed to load OpenGL function: %s", name
+                )));
+            }
+    };
+
+    FONScontext *fonsCreateInternal(FONSparams *param);
+    void         fonsDeleteInternal(FONScontext *ctx);
+
+    uint8_t     *fonsGetTextureData(FONScontext *s, int* width, int* height);
+    bool         fonsValidateTexture(FONScontext *s, int *dirty);
+
+    void         fonsExpandAtlas(FONScontext *s, int width, int height);
+    void         fonsResetAtlas(FONScontext *s, int width, int height);
+
+    void         fonsSetSpacing(FONScontext *s, float spacing);
+    void         fonsSetSize(FONScontext *s, float size);
+    void         fonsSetFont(FONScontext *s, int font);
+    void         fonsSetBlur(FONScontext *s, int blur);
+    void         fonsSetAlign(FONScontext *s, int align);
+
+    float        fonsTextBounds(FONScontext *s, float x, float y, const char* str, const char* end, float* bounds);
+    void         fonsLineBounds(FONScontext *s, float y, float* miny, float* maxy);
+    void         fonsVertMetrics(FONScontext *s, float* ascender, float* descender, float* lineh);
+
+    bool         fonsTextIterInit(FONScontext *s, FONStextIter* iter, float x, float y, const char* str, const char* end, int bitmapOption);
+    bool         fonsTextIterNext(FONScontext *s, FONStextIter* iter, FONSquad* quad);
+
+    FONS_DROP   (fonsAddFont);
+    FONS_DROP   (fonsAddFontMem);
+    FONS_DROP   (fonsAddFallbackFont);
+    FONS_DROP   (fonsAddFallbackFontId);
+    FONS_DROP   (fonsResetFallbackFont);
+    FONS_DROP   (fonsGetFontByName);
 }
 
+// Import nanovg
+#define  NVG_NO_STB
+#define  NANOVG_GL_IMPLEMENTATION
+#define  NANOVG_GLES3
+#include "libs/nanovg_gl.hpp"
+#include "libs/nanovg.hpp"
+#include "libs/nanovg.cpp"
 
 
 
@@ -78,6 +175,9 @@ class PhyBlob : public Refable<PhyBlob>, public UnCopyable {
         bool valid() const noexcept {
             return data != nullptr && size > 0;
         }
+        bool compare(const PhyBlob &b) const noexcept {
+            return Btk_memcmp(this, &b, sizeof(PhyBlob)) == 0;
+        }
 
         void    (*free)(PhyBlob *) = nullptr;
         pointer_t data = nullptr;
@@ -96,9 +196,11 @@ class PhyFont : public Refable<PhyFont>, public UnCopyable {
         // Set size
         void set_size(float xdpi, float ydpi, float size);
 
+        // Query
         int  num_of_faces() const noexcept { return face->num_faces; }
         int  face_index() const noexcept { return face->face_index & 0xFFFF; }
 
+        auto glyph_metrics(uint32_t idx) -> GlyphMetrics;
 
         Ref<PhyBlob>   blob = {};
         FT_Face        face = {};
@@ -107,7 +209,7 @@ class PhyFont : public Refable<PhyFont>, public UnCopyable {
 };
 
 // For cache Glyph
-class FontAtlas {
+class FontAtlas : public FONScontext, public UnCopyable {
     public:
         FontAtlas() = default;
         FontAtlas(int w, int h) : bitmap(w * h), width(w), height(h) {}
@@ -171,6 +273,11 @@ class FontContext : public FtInitilizer {
                     iter = fonts.erase(iter);
                     continue;
                 }
+                // Hit
+                auto f = iter->second.lock();
+                if (f->blob == b && f->face_index() == idx) {
+                    return f;
+                }
             }
 
             auto f = PhyFont::New(b);
@@ -198,36 +305,14 @@ class FontContext : public FtInitilizer {
         // For measure text without painter
         FontAtlas                                      atlas;
 };
-
-class GLFunctions {
+class PainterRuntime : public FontContext {
     public:
-        #define BTK_GL_PROCESS(pfn, name) \
-            pfn name = nullptr;
-        BTK_OPENGLES3_FUNCTIONS
-        #undef  BTK_GL_PROCESS
-
-        #define BTK_GL_PROCESS(pfn, name) \
-            name = reinterpret_cast<pfn>(ctxt->get_proc_address(#name)); \
-            if (!name) { \
-                bad_fn(#name); \
-            }
-        void load (GLContext *ctxt) {
-            BTK_OPENGLES3_FUNCTIONS
-        }
-        #undef  BTK_GL_PROCESS
-
-
-        // Got nullptr on load
-        void bad_fn(const char *name) {
-            BTK_THROW(std::runtime_error(u8string::format(
-                "Failed to load OpenGL function: %s", name
-            )));
-        }
+        std::set<GLContext *> shared_ctxt;
 };
 
 // Basic declation end
-static FontContext *fcontext    = nullptr;
-static int          fc_refcount = 0;
+static PainterRuntime *pt_runtime  = nullptr;
+static int             pt_refcount = 0;
 
 
 // Some helpers
@@ -297,12 +382,12 @@ PhyBlob::PhyBlob(u8string_view file) {
     fseek(fp, 0, SEEK_END);
     size = ftell(fp);
     fseek(fp, 0, SEEK_SET);
-    data = std::malloc(size);
+    data = Btk_malloc(size);
     fread(data, size, 1, fp);
     fclose(fp);
 
     free = [](PhyBlob *blob) {
-        std::free(blob->data);
+        Btk_free(blob->data);
     };
 }
 PhyBlob::~PhyBlob() {
@@ -334,6 +419,11 @@ class PainterPathImpl {
     public:
         std::vector<PainterPathNode> nodes;
 };
+
+class BrushImpl   : public Refable<BrushImpl>, public Trackable {
+    public:
+
+};
 class FontImpl    : public Refable<FontImpl> {
     public:
         u8string     name; //< Logical name, System will match with name
@@ -342,7 +432,14 @@ class FontImpl    : public Refable<FontImpl> {
         bool         bold;
 };
 
-class PainterImpl : public GLFunctions {
+class TextureImpl : public Trackable {
+    public:
+        PainterImpl *painter;
+        GLuint       image;
+        int          id;
+};
+
+class PainterImpl : public GLFunctions, public Trackable {
     public:
         PainterImpl(AbstractWindow *win);
         ~PainterImpl();
@@ -352,14 +449,18 @@ class PainterImpl : public GLFunctions {
         AbstractWindow *win = nullptr;
         GLColor         color = Color::Black;
         GLContext      *ctxt  = nullptr;
+        NVGcontext     *nvg_ctxt = nullptr;
 
-        GLint       max_texture_size;
+        GLint       max_texture_size[2];
 
         FontAtlas   atlas;
 };
 
 inline PainterImpl::PainterImpl(AbstractWindow *win) {
     ctxt = static_cast<GLContext*>(win->gc_create("opengl"));
+    if (ctxt == nullptr) {
+        BTK_THROW(std::runtime_error("Failed to create OpenGL context"));
+    }
     if (!ctxt->initialize(GLFormat())) {
         BTK_THROW(std::runtime_error("Failed to initialize OpenGL context"));
     }
@@ -368,9 +469,13 @@ inline PainterImpl::PainterImpl(AbstractWindow *win) {
     load(ctxt);
 
     // Query info
-    glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_texture_size);
+    glGetIntegerv(GL_MAX_TEXTURE_SIZE, max_texture_size);
+
+    // Init state
+    nvg_ctxt = nvgCreateGLES3(NVG_ANTIALIAS | NVG_STENCIL_STROKES, this);
 }
 inline PainterImpl::~PainterImpl() {
+    nvgDeleteGLES3(nvg_ctxt);
     delete ctxt;
 }
 inline void PainterImpl::clear() {
@@ -382,22 +487,32 @@ inline void PainterImpl::clear() {
 
 
 void Painter::Init() {
-    if (fc_refcount == 0) {
-        fcontext = new FontContext();
+    BTK_ONCE(BTK_LOG("NanoVG : This painter is experimental.\n"))
+
+    if (pt_refcount == 0) {
+        pt_runtime = new PainterRuntime();
     }
-    fc_refcount++;
+    pt_refcount++;
 }
 void Painter::Shutdown() {
-    if (--fc_refcount == 0) {
-        delete fcontext;
-        fcontext = nullptr;
+    if (--pt_refcount == 0) {
+        delete pt_runtime;
+        pt_runtime = nullptr;
     }
 }
 void Painter::begin() {
     priv->ctxt->begin();
+
+    auto [fb_w, fb_h] = priv->ctxt->get_drawable_size();
+    auto [w, h] = priv->win->size();
+
+    priv->glViewport(0, 0, fb_w, fb_h);
+
+    nvgBeginFrame(priv->nvg_ctxt, w, h, fb_w / w);
 }
 void Painter::end() {
-
+    // NVG Cleanup
+    nvgEndFrame(priv->nvg_ctxt);
     // GL Cleanup
     priv->ctxt->end();
     priv->ctxt->swap_buffers();
@@ -405,6 +520,97 @@ void Painter::end() {
 void Painter::clear() {
     priv->clear();
 }
+
+void Painter::set_antialias(bool v) {
+    nvgShapeAntiAlias(priv->nvg_ctxt, v);
+}
+void Painter::set_color(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+    priv->color = Color(r, g, b, a);
+    nvgStrokeColor(priv->nvg_ctxt, nvgRGBA(r, g, b, a));
+}
+void Painter::set_colorf(float r, float g, float b, float a) {
+    priv->color = GLColor(r, g, b, a);
+    nvgStrokeColor(priv->nvg_ctxt, nvgRGBAf(r, g, b, a));
+}
+void Painter::set_font(const Font &f) {
+
+}
+void Painter::set_brush(const Brush &b) {
+
+}
+void Painter::set_stroke_width(float w) {
+    nvgStrokeWidth(priv->nvg_ctxt, w);
+}
+
+// Draw / Fill
+
+void Painter::draw_rect(float x, float y, float w, float h) {
+    nvgBeginPath(priv->nvg_ctxt);
+    nvgRect(priv->nvg_ctxt, x, y, w, h);
+    nvgStroke(priv->nvg_ctxt);
+}
+void Painter::draw_circle(float x, float y, float r) {
+    nvgBeginPath(priv->nvg_ctxt);
+    nvgCircle(priv->nvg_ctxt, x, y, r);
+    nvgStroke(priv->nvg_ctxt);
+}
+void Painter::draw_ellipse(float x, float y, float rx, float ry) {
+    nvgBeginPath(priv->nvg_ctxt);
+    nvgEllipse(priv->nvg_ctxt, x, y, rx, ry);
+    nvgStroke(priv->nvg_ctxt);
+}
+void Painter::draw_rounded_rect(float x, float y, float w, float h, float r) {
+    nvgBeginPath(priv->nvg_ctxt);
+    nvgRoundedRect(priv->nvg_ctxt, x, y, w, h, r);
+    nvgStroke(priv->nvg_ctxt);
+}
+void Painter::draw_line(float x1, float y1, float x2, float y2) {
+    nvgBeginPath(priv->nvg_ctxt);
+    nvgMoveTo(priv->nvg_ctxt, x1, y1);
+    nvgLineTo(priv->nvg_ctxt, x2, y2);
+    nvgStroke(priv->nvg_ctxt);
+}
+void Painter::draw_lines(const FPoint *fp, size_t n) {
+    if (n < 1) {
+        return;
+    }
+    nvgBeginPath(priv->nvg_ctxt);
+    nvgMoveTo(priv->nvg_ctxt, fp[0].x, fp[0].y);
+    for (size_t i = 1; i < n; i++) {
+        nvgLineTo(priv->nvg_ctxt ,fp[i].x, fp[i].y);
+    }
+    nvgStroke(priv->nvg_ctxt);
+}
+
+void Painter::fill_rect(float x, float y, float w, float h) {
+    nvgBeginPath(priv->nvg_ctxt);
+    nvgRect(priv->nvg_ctxt, x, y, w, h);
+    nvgFill(priv->nvg_ctxt);
+}
+void Painter::fill_circle(float x, float y, float r) {
+    nvgBeginPath(priv->nvg_ctxt);
+    nvgCircle(priv->nvg_ctxt, x, y, r);
+    nvgFill(priv->nvg_ctxt);
+}
+void Painter::fill_ellipse(float x, float y, float rx, float ry) {
+    nvgBeginPath(priv->nvg_ctxt);
+    nvgEllipse(priv->nvg_ctxt, x, y, rx, ry);
+    nvgFill(priv->nvg_ctxt);
+}
+void Painter::fill_rounded_rect(float x, float y, float w, float h, float r) {
+    nvgBeginPath(priv->nvg_ctxt);
+    nvgRoundedRect(priv->nvg_ctxt, x, y, w, h, r);
+    nvgFill(priv->nvg_ctxt);
+}
+
+void Painter::push_scissor(float x, float y, float w, float h) {
+    nvgSave(priv->nvg_ctxt);
+    nvgIntersectScissor(priv->nvg_ctxt, x, y, w, h);
+}
+void Painter::pop_scissor() {
+    nvgRestore(priv->nvg_ctxt);
+}
+
 Painter Painter::FromWindow(AbstractWindow *win) {
     return Painter(new PainterImpl(win));
 }

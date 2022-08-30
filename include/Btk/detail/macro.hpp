@@ -55,25 +55,25 @@
 #endif
 
 // Bultin functions for speed optimization
-#if defined(__has_builtin) && !defined(_MSC_VER)
+#if defined(__has_builtin) && defined(__GNUC__)
 #define Btk_memmove(dst, src, n)   __builtin_memmove(dst, src, n)
 #define Btk_memcpy(dst, src, size) __builtin_memcpy(dst, src, size)
 #define Btk_memset(dst, val, size) __builtin_memset(dst, val, size)
 #define Btk_memcmp(a, b, size)     __builtin_memcmp(a, b, size)
 #define Btk_memzero(dst, size)     __builtin_memset(dst, 0, size)
 #elif !defined(Btk_memmove) //< User already defined it
-#define Btk_memmove(dst, src, n)   memmove(dst, src, n)
-#define Btk_memcpy(dst, src, size) memcpy(dst, src, size)
-#define Btk_memset(dst, val, size) memset(dst, val, size)
-#define Btk_memcmp(a, b, size)     memcmp(a, b, size)
-#define Btk_memzero(dst, size)     memset(dst, 0, size)
+#define Btk_memmove(dst, src, n)   ::memmove(dst, src, n)
+#define Btk_memcpy(dst, src, size) ::memcpy(dst, src, size)
+#define Btk_memset(dst, val, size) ::memset(dst, val, size)
+#define Btk_memcmp(a, b, size)     ::memcmp(a, b, size)
+#define Btk_memzero(dst, size)     ::memset(dst, 0, size)
 #endif
 
 // Memory management macros for easy replacement
 #if !defined(Btk_malloc)
-#define Btk_realloc(ptr, size) realloc(ptr, size)
-#define Btk_malloc(size)       malloc(size)
-#define Btk_free(ptr)          free(ptr)
+#define Btk_realloc(ptr, size) ::realloc(ptr, size)
+#define Btk_malloc(size)       ::malloc(size)
+#define Btk_free(ptr)          ::free(ptr)
 #endif
 
 

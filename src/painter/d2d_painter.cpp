@@ -1,5 +1,5 @@
 #include "build.hpp"
-#include "common.hpp"
+#include "common/utils.hpp"
 
 #include <Btk/context.hpp>
 #include <Btk/painter.hpp>
@@ -262,10 +262,12 @@ class PainterPathImpl {
     public:
         // Should I add this transform matrix to the path?
         D2D1::Matrix3x2F          mat = D2D1::Matrix3x2F::Identity();
+        ComPtr<ID2D1PathGeometry> helper;
         ComPtr<ID2D1PathGeometry> path;
         ComPtr<ID2D1GeometrySink> sink;
 
         bool is_figure_open = false;
+        bool is_double_open = false;
         bool is_open = false;
 };
 
@@ -285,6 +287,7 @@ class PainterImpl {
         void set_stroke_width(float width);
         void set_text_align(align_t align);
         void set_antialias(bool enable);
+        void set_alpha(float alpha);
         void set_brush(BrushImpl *b);
         void set_font(FontImpl *f);
         void set_pen(PenImpl *p);
@@ -342,6 +345,7 @@ class PainterImpl {
         void Shutdown();
 
         // Internal helpers
+        auto get_brush_impl(const D2D1_RECT_F &area) -> ID2D1Brush *;
         auto get_brush(const D2D1_RECT_F &area) -> ID2D1Brush *;
         
         // Factorys
@@ -667,7 +671,7 @@ inline void PainterImpl::initialize() {
         target.As(&context);
     }
 }
-inline auto PainterImpl::get_brush(const D2D1_RECT_F &r) -> ID2D1Brush* {
+inline auto PainterImpl::get_brush_impl(const D2D1_RECT_F &r) -> ID2D1Brush* {
     if (!state.brush) {
         // User did not set brush, use color
         static_cast<void>(r);
@@ -982,6 +986,11 @@ inline auto PainterImpl::get_brush(const D2D1_RECT_F &r) -> ID2D1Brush* {
 
     return nullptr;
 }
+inline auto PainterImpl::get_brush(const D2D1_RECT_F &r) -> ID2D1Brush* {
+    auto brush = get_brush_impl(r);
+    brush->SetOpacity(state.alpha);
+    return brush;
+}
 
 // Begin / End
 inline void PainterImpl::begin() {
@@ -1051,6 +1060,9 @@ inline void PainterImpl::set_stroke_width(float width) {
 }
 inline void PainterImpl::set_antialias(bool enable) {
     target->SetAntialiasMode(enable ? D2D1_ANTIALIAS_MODE_PER_PRIMITIVE : D2D1_ANTIALIAS_MODE_ALIASED);
+}
+inline void PainterImpl::set_alpha(float alpha) {
+    state.alpha = alpha;
 }
 inline void PainterImpl::set_brush(BrushImpl *brush) {
     state.brush = brush;
@@ -1569,6 +1581,9 @@ void Painter::set_text_align(align_t align) {
 void Painter::set_stroke_width(float width) {
     priv->set_stroke_width(width);
 }
+void Painter::set_alpha(float alpha) {
+    priv->set_alpha(alpha);
+}
 // 
 void Painter::draw_rect(float x, float y, float w, float h) {
     priv->draw_rect(x, y, w, h);
@@ -2009,9 +2024,16 @@ void PainterPath::open() {
     }
 
     HRESULT hr;
-    hr = priv->path->Open(
-        &priv->sink
-    );
+    if (priv->is_double_open) {
+        // Double open, combine mode
+        hr = d2d_factory->CreatePathGeometry(&priv->helper);
+        hr = priv->helper->Open(&priv->sink);
+    }
+    else {
+        hr = priv->path->Open(
+            &priv->sink
+        );
+    }
     if (FAILED(hr)) {
         D2D_WARN("Open failed %d", hr);
         BTK_THROW(std::runtime_error("Open failed"));
@@ -2029,8 +2051,22 @@ void PainterPath::close() {
         D2D_WARN("Close failed %d", hr);
         BTK_THROW(std::runtime_error("Close failed"));
     }
+    if (priv->is_double_open) {
+        // Conbime
+        ComPtr<ID2D1PathGeometry> dst;
+        ComPtr<ID2D1GeometrySink> sink;
+        hr = d2d_factory->CreatePathGeometry(&dst);
+
+        hr = dst->Open(&sink);
+        hr = priv->path->CombineWithGeometry(priv->helper.Get(), D2D1_COMBINE_MODE_UNION, nullptr, sink.Get());
+        hr = sink->Close();
+
+        priv->helper.Reset();
+        priv->path = dst;
+    }
     priv->sink.Reset();
     priv->is_figure_open = false;
+    priv->is_double_open = true; //< Double open impl by combine path
     priv->is_open = false;
 }
 void PainterPath::move_to(float x, float y) {
@@ -2081,6 +2117,15 @@ FRect PainterPath::bounding_box() const {
         }
         return FRect(bbox.left, bbox.top, bbox.right - bbox.left, bbox.bottom - bbox.top);
     }
+    return FRect(0, 0, 0, 0);
+}
+bool  PainterPath::contains(float x, float y) const {
+    if (priv) {
+        BOOL contains;
+        priv->path->FillContainsPoint(D2D1::Point2F(x, y), priv->mat, &contains);
+        return contains;
+    }
+    return false;
 }
 
 PainterPath &PainterPath::operator =(PainterPath &&p) {

@@ -1,5 +1,5 @@
 #include "build.hpp"
-#include "common.hpp"
+#include "common/utils.hpp"
 
 #include <Btk/painter.hpp>
 #include <Btk/context.hpp>
@@ -1359,6 +1359,13 @@ PainterPath::~PainterPath() {
 void PainterPath::open() {
     cairo_save(mem_cr);
     cairo_new_path(mem_cr);
+    if (priv) {
+        // Already has path
+        cairo_append_path(mem_cr, PATH_CAST(priv));
+        cairo_path_destroy(PATH_CAST(priv));
+
+        priv = nullptr;
+    }
 }
 void PainterPath::close() {
     PATH_CAST(priv) = cairo_copy_path(mem_cr);
