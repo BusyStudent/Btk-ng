@@ -112,6 +112,12 @@ class Win32Window : public AbstractWindow {
 
         RECT       adjust_rect(int x, int y, int w, int h);
 
+        int      btk_to_client(int v) const;
+        int      client_to_btk(int v) const;
+
+        POINTS   btk_to_client(POINTS) const;
+        POINTS   client_to_btk(POINTS) const;
+
         HWND         hwnd   = {};
         WindowFlags  flags  = {};
         Win32Driver *driver = {};
@@ -124,6 +130,7 @@ class Win32Window : public AbstractWindow {
         Modifier     mod_state = Modifier::None; //< Current keyboard modifiers state
         DWORD        win_style = 0; //< Window style
         DWORD        win_ex_style = 0; //< Window extended style
+        UINT         win_dpi = 0; //< Window dpi
 
         HMENU        menu = {}; //< Menu handle
         
@@ -331,6 +338,8 @@ HBITMAP buffer_to_hbitmap(const PixBuffer &buf) {
 
 
 Win32Driver::Win32Driver() {
+    // Set DPI
+    SetProcessDPIAware();
     // Initialize the window class.
     WNDCLASSEXW wc = {};
     wc.cbSize = sizeof(WNDCLASSEX);
@@ -341,10 +350,10 @@ Win32Driver::Win32Driver() {
     wc.hInstance = GetModuleHandle(nullptr);
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.lpszClassName = L"BtkWindow";
-    wc.hCursor = LoadCursor(nullptr,IDC_ARROW);
+    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.hbrBackground = (HBRUSH)COLOR_WINDOW;
-    wc.hIcon = LoadIcon(nullptr,IDI_APPLICATION);
-    wc.hIconSm = LoadIcon(nullptr,IDI_APPLICATION);
+    wc.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
+    wc.hIconSm = LoadIcon(nullptr, IDI_APPLICATION);
     RegisterClassExW(&wc);
 
 
@@ -659,7 +668,8 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
                 TrackMouseEvent(&tme);
             }
 
-            auto point = MAKEPOINTS(lparam);
+            auto point = win->client_to_btk(MAKEPOINTS(lparam));
+
             MotionEvent event(point.x, point.y);
             event.set_widget(win->widget);
             event.set_timestamp(GetTicks());
@@ -726,7 +736,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             [[fallthrough]];
         }
         case WM_RBUTTONDOWN : {
-            auto point = MAKEPOINTS(lparam);
+            auto point = win->client_to_btk(MAKEPOINTS(lparam));
             MouseEvent event(
                 Event::MousePress,
                 point.x, point.y,
@@ -747,7 +757,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             [[fallthrough]];
         }
         case WM_RBUTTONUP : {
-            auto pos = MAKEPOINTS(lparam);
+            auto pos = win->client_to_btk(MAKEPOINTS(lparam));
             MouseEvent event(Event::MouseRelease, pos.x, pos.y, wparam);
             if (msg == WM_LBUTTONUP) {
                 event.set_button(MouseButton::Left);
@@ -793,6 +803,8 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             // Get where the drop happened
             POINT p;            
             DragQueryPoint(drop, &p);
+            p.x = win->client_to_btk(p.x);
+            p.y = win->client_to_btk(p.y);
 
             // Get drop string
             UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
@@ -866,6 +878,13 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             event.set_widget(win->widget);
             event.set_timestamp(GetTicks());
             widget->handle(event);
+            break;
+        }
+        case WM_DPICHANGED : {
+            RECT *suggested_rect = reinterpret_cast<RECT*>(lparam);
+            win->win_dpi = HIWORD(wparam);
+
+            WIN_LOG("DPI Changed to %d\n", int(win->win_dpi));
             break;
         }
 
@@ -969,6 +988,7 @@ window_t Win32Driver::window_create(const char_t *title, int width, int height, 
 
     auto win = new Win32Window(hwnd, this);
     win->win_style = style;
+    win->win_dpi   = dpi;
     win->flags     = flags;
     return win;
 }
@@ -1117,12 +1137,18 @@ Win32Window::~Win32Window() {
 Size Win32Window::size() const {
     RECT r;
     GetClientRect(hwnd, &r);
-    return Size(r.right - r.left, r.bottom - r.top);
+    return Size(
+        client_to_btk(r.right - r.left), 
+        client_to_btk(r.bottom - r.top)
+    );
 }
 Point Win32Window::position() const {
     RECT r;
     GetClientRect(hwnd, &r);
-    return Point(r.left, r.top);
+    return Point(
+        client_to_btk(r.left), 
+        client_to_btk(r.top)
+    );
 }
 void Win32Window::raise() {
     SetForegroundWindow(hwnd);
@@ -1146,6 +1172,7 @@ void Win32Window::repaint() {
     PostMessageW(hwnd, WM_REPAINT, 0, 0);
 #endif
 }
+// TODO : Support DPI Scale
 void Win32Window::resize(int w, int h) {
     auto [x, y] = position();
     auto rect   = adjust_rect(x, y, w, h);
@@ -1560,6 +1587,22 @@ RECT Win32Window::adjust_rect(int x, int y, int w, int h) {
     rect.bottom = y + h;
     AdjustWindowRectExForDpi(&rect, win_style, has_menu, win_ex_style, GetDpiForWindow(hwnd));
     return rect;
+}
+int Win32Window::client_to_btk(int v) const { 
+    return MulDiv(v, 96, win_dpi);
+}
+int Win32Window::btk_to_client(int v) const {
+    return MulDiv(v, win_dpi, 96);
+}
+POINTS Win32Window::client_to_btk(POINTS s) const {
+    s.x = client_to_btk(s.x);
+    s.y = client_to_btk(s.y);
+    return s;
+}
+POINTS Win32Window::btk_to_client(POINTS s) const {
+    s.x = btk_to_client(s.x);
+    s.y = btk_to_client(s.y);
+    return s;
 }
 
 // Win32GLContext

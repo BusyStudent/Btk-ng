@@ -9,6 +9,7 @@
 
 BTK_NS_BEGIN
 
+class PainterEffectImpl ;
 class PainterPathImpl ;
 class TextLayoutImpl ;
 class PainterImpl    ;
@@ -34,7 +35,14 @@ enum class PainterFeature : uint8_t {
     TextGradient,      //< Does text support gradient?
     Antialias,         //< Does the painter support antialiasing?
     Gradient,          //< Does the painter support gradient?
+    Effect,            //< Does the painter support effect?
     Path,              //< Does the painter support rendering paths?
+};
+enum class EffectParam : uint8_t {
+    BlurStandardDeviation, //< Blur : type float
+};
+enum class EffectType  : uint8_t {
+    Blur,
 };
 enum class PathWinding : uint8_t {
     CW,  //< Odd-even rule
@@ -258,6 +266,7 @@ class BTKAPI Texture {
         Texture &operator =(std::nullptr_t );
     private:
         TextureImpl *priv;
+    friend class PainterEffect;
     friend class Painter;
 };
 
@@ -302,6 +311,27 @@ class BTKAPI TextLayout {
         void begin_mut();
 
         TextLayoutImpl *priv;
+    friend class Painter;
+};
+
+class BTKAPI PainterEffect {
+    public:
+        PainterEffect();
+        PainterEffect(EffectType type);
+        PainterEffect(PainterEffect &&);
+        ~PainterEffect();
+
+        PainterEffect &operator =(PainterEffect &&);
+        PainterEffect &operator =(std::nullptr_t);
+
+        bool attach(const Painter &p);
+        bool set_input(const Texture &tex);
+        bool set_input(const PixBuffer &buf);
+        bool set_value(EffectParam param, ...);
+
+        Texture output() const;
+    private:
+        PainterEffectImpl *priv;
     friend class Painter;
 };
 
@@ -487,6 +517,10 @@ class BTKAPI Painter {
         auto create_texture(PixFormat fmt, int w, int h) -> Texture;
         auto create_texture(const PixBuffer &buf)        -> Texture;
 
+        // Target
+        bool set_target(Texture &tex);
+        bool reset_target();
+
         // Notify 
         void notify_resize(int w, int h); //< Target size changed
 
@@ -513,6 +547,7 @@ class BTKAPI Painter {
         Painter(PainterImpl *p) : priv(p) {}
 
         PainterImpl *priv; // Private implementation
+    friend class PainterEffect;
 };
 
 class PainterInitializer {

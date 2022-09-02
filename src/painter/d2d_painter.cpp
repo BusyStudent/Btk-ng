@@ -9,6 +9,7 @@
 #include <variant>
 #include <d2d1.h>
 #include <limits>
+#include <stack>
 #include <wrl.h>
 #include <map>
 
@@ -258,6 +259,13 @@ class TextLayoutImpl : public Refable <TextLayoutImpl> {
         float                     max_height = std::numeric_limits<float>::max(); //< Max height of the text
 };
 
+class PainterEffectImpl : public Trackable {
+    public:
+        ComPtr<ID2D1DeviceContext> context;
+        ComPtr<ID2D1Effect>        effect;
+        const GUID                *id = nullptr;
+};
+
 class PainterPathImpl {
     public:
         // Should I add this transform matrix to the path?
@@ -303,6 +311,7 @@ class PainterImpl {
         void draw_ellipse(float x, float y, float xr, float yr);
         void draw_rounded_rect(float x, float y, float w, float h, float r);
 
+        void draw_image(PainterEffectImpl *e, const FRect *dst, const FRect *src);
         void draw_image(TextureImpl *t,  const FRect *dst, const FRect *src);
         void draw_lines(const FPoint *fp, size_t n);
         void draw_text(u8string_view txt, float x, float y);
@@ -331,8 +340,13 @@ class PainterImpl {
         void skew_y(float angle);
         void reset_transform();
         auto transform_matrix() -> FMatrix;
+        
         // Texture
         auto create_texture(PixFormat fmt, int w, int h) -> TextureImpl *;
+
+        // Target 
+        bool set_target(TextureImpl *tex);
+        bool reset_target();
 
         // Notify 
         void notify_resize(int w, int h); //< Target size changed
@@ -402,6 +416,8 @@ class PainterImpl {
         // Signal for cleanup any resources alloc by painter
         Signal<void()> signal_cleanup;
 
+        // State of rendering target
+        std::stack<ComPtr<ID2D1Image>> target_stack;
 };
 
 inline PainterImpl::PainterImpl(HWND hwnd) {
@@ -1001,6 +1017,7 @@ inline void PainterImpl::begin() {
 }
 inline void PainterImpl::end() {
     assert(state.n_clip_rects == 0);
+    assert(target_stack.empty());
 
     target->EndDraw();
 
@@ -1113,6 +1130,25 @@ inline void PainterImpl::draw_rounded_rect(float x, float y, float w, float h, f
     auto brush = get_brush(rect);
     target->DrawRoundedRectangle(D2D1::RoundedRect(D2D1::RectF(x, y, x + w, y + h), r, r), brush, state.stroke_width, style);
 }
+inline void PainterImpl::draw_image(PainterEffectImpl *eff, const FRect *_dst, const FRect *_src) {
+    // Incompleted, donot use it
+    D2D1_RECT_F *p_src = nullptr;
+    D2D1_RECT_F *p_dst = nullptr;
+
+    D2D1_RECT_F src;
+    D2D1_RECT_F dst;
+
+    if (_dst) {
+        p_dst = &dst;
+        dst = D2D1::RectF(_dst->x, _dst->y, _dst->x + _dst->w, _dst->y + _dst->h);
+    }
+    if (_src) {
+        p_src = &src;
+        src = D2D1::RectF(_src->x, _src->y, _src->x + _src->w, _src->y + _src->h);
+    }
+
+    context->DrawImage(eff->effect.Get());
+}
 inline void PainterImpl::draw_image(TextureImpl *tex,  const FRect *_dst, const FRect *_src) {
     ID2D1Bitmap *bitmap = tex->bitmap.Get();
     FRect src;
@@ -1169,7 +1205,7 @@ inline void PainterImpl::draw_image(TextureImpl *tex,  const FRect *_dst, const 
     D2D1_RECT_F d2d_src = D2D1::RectF(src.x, src.y, src.x + src.w, src.y + src.h);
     D2D1_RECT_F d2d_dst = D2D1::RectF(dst.x, dst.y, dst.x + dst.w, dst.y + dst.h);
 
-    target->DrawBitmap(bitmap, &d2d_dst, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &d2d_src);
+    target->DrawBitmap(bitmap, &d2d_dst, state.alpha, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &d2d_src);
 }
 inline void PainterImpl::draw_lines(const FPoint *fp, size_t n) {
     // TODO : Optimize this
@@ -1350,13 +1386,31 @@ inline auto PainterImpl::create_texture(PixFormat fmt, int w, int h) -> TextureI
     auto dxgi_fmt = btkfmt_to_d2d(fmt);
 
     ComPtr<ID2D1Bitmap> bitmap;
-    HRESULT hr = target->CreateBitmap(
-        D2D1::SizeU(w, h),
-        D2D1::BitmapProperties(
-            D2D1::PixelFormat(dxgi_fmt, D2D1_ALPHA_MODE_PREMULTIPLIED)
-        ),
-        bitmap.GetAddressOf()
-    );
+    HRESULT hr;
+
+    if (context) {
+        // Use new api ID2D1DeviceContext
+        hr = context->CreateBitmap(
+            D2D1::SizeU(w, h),
+            nullptr,
+            0,
+            D2D1::BitmapProperties1(
+                D2D1_BITMAP_OPTIONS_TARGET,
+                D2D1::PixelFormat(dxgi_fmt, D2D1_ALPHA_MODE_PREMULTIPLIED)
+            ),
+            reinterpret_cast<ID2D1Bitmap1**>(bitmap.GetAddressOf())
+        );
+    }
+    else {
+        hr = target->CreateBitmap(
+            D2D1::SizeU(w, h),
+            D2D1::BitmapProperties(
+                D2D1::PixelFormat(dxgi_fmt, D2D1_ALPHA_MODE_PREMULTIPLIED)
+            ),
+            bitmap.GetAddressOf()
+        );
+    }
+
 
     if (FAILED(hr)) {
         D2D_WARN("Failed to create bitmap");
@@ -1375,6 +1429,11 @@ inline auto PainterImpl::create_texture(PixFormat fmt, int w, int h) -> TextureI
 }
 // Notify
 inline void PainterImpl::notify_resize(int w, int h) {
+    // Emm, In HIDPI Direct2D seem need framebuffer size, not logical size
+    RECT rect;
+    GetClientRect(target_info.hwnd, &rect);
+    w = rect.right - rect.left;
+    h = rect.bottom - rect.top;
 
 #if defined(BTK_DIRECT2D_ON_D3D11)
     if (target_opt.d3d_target) {
@@ -1402,6 +1461,42 @@ inline void PainterImpl::notify_resize(int w, int h) {
     else if (target_opt.hwnd_target) {
         static_cast<ID2D1HwndRenderTarget*>(target.Get())->Resize(D2D1::SizeU(w, h));
     }
+}
+
+// Target
+inline bool PainterImpl::set_target(TextureImpl *tex) {
+    if (!context || !tex) {
+        // Unsupport or Empty target
+        return false;
+    }
+    HRESULT hr;
+
+    hr = context->EndDraw();
+
+    ComPtr<ID2D1Image> prev;
+    context->GetTarget(&prev);
+    target_stack.push(prev);
+
+    context->SetTarget(tex->bitmap.Get());
+
+    context->BeginDraw();
+
+    return true;
+}
+inline bool PainterImpl::reset_target() {
+    if (!context || target_stack.empty()) {
+        return false;
+    }
+    HRESULT hr;
+
+    hr = context->EndDraw();
+
+    context->SetTarget(target_stack.top().Get());
+
+    context->BeginDraw();
+
+    target_stack.pop();
+    return true;
 }
 
 // BrushImpl
@@ -1686,6 +1781,13 @@ auto Painter::create_texture(const PixBuffer &buf) -> Texture {
     return t;
 }
 
+bool Painter::set_target(Texture &tex) {
+    return priv->set_target(tex.priv);
+}
+bool Painter::reset_target() {
+    return priv->reset_target();
+}
+
 void Painter::notify_resize(int w, int h) {
     priv->notify_resize(w, h);
 }
@@ -1738,7 +1840,7 @@ bool Texture::empty() const {
         return priv->bitmap == nullptr;
     }
     // No texture
-    return false;
+    return true;
 }
 void Texture::clear() {
     delete priv;
@@ -1997,6 +2099,97 @@ BrushType Brush::type() const {
     return BrushType::Solid;
 }
 
+// PainterEffect
+
+PainterEffect::PainterEffect() {
+    priv = nullptr;
+}
+PainterEffect::PainterEffect(PainterEffect &&e) {
+    priv = e.priv;
+    e.priv = nullptr;
+}
+PainterEffect::PainterEffect(EffectType t) {
+    priv = new PainterEffectImpl;
+    switch (t) {
+        case EffectType::Blur : priv->id = &CLSID_D2D1GaussianBlur; break; 
+    }
+}
+PainterEffect::~PainterEffect() {
+    delete priv;
+}
+
+bool PainterEffect::attach(const Painter &p) {
+    if (priv) {
+        if (p.priv->context) {
+            if (priv->context == p.priv->context) {
+                return true;
+            }
+            priv->context = p.priv->context;
+            return priv->context->CreateEffect(
+                *priv->id,
+                &priv->effect
+            ) == S_OK;
+        }
+        // Not d3d backend, unsupported
+        return false;
+    }
+    return false;
+}
+bool PainterEffect::set_input(const Texture &tex) {
+    if (priv && !tex.empty()) {
+        priv->effect->SetInput(0, tex.priv->bitmap.Get());
+        return true;
+    }
+    return false;
+}
+bool PainterEffect::set_value(EffectParam param, ...) {
+    va_list varg;
+    va_start(varg, param);
+
+    bool ret = true;
+
+    switch (param) {
+        case EffectParam::BlurStandardDeviation : {
+            ret = SUCCEEDED(priv->effect->SetValue(D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, va_arg(varg, float)));
+            break;
+        }
+        default : {
+            ret = false;
+            break;
+        }
+    }
+
+    va_end(varg);
+    return ret;
+}
+Texture PainterEffect::output() const {
+    if (priv) {
+        ComPtr<ID2D1Bitmap> bitmap;
+        ComPtr<ID2D1Image> image;
+        priv->effect->GetOutput(&image);
+
+        if (SUCCEEDED(image.As(&bitmap))) {
+            Texture tex;
+            tex.priv = new TextureImpl;
+            tex.priv->bitmap = bitmap;
+            return tex;
+        }
+    }
+    return Texture();
+}
+PainterEffect &PainterEffect::operator =(PainterEffect &&e) {
+    if (&e != this) {
+        delete priv;
+        priv = e.priv;
+        e.priv = nullptr;
+    }
+    return *this;
+}
+PainterEffect &PainterEffect::operator =(std::nullptr_t) {
+    delete priv;
+    priv = nullptr;
+    return *this;
+}
 // PainterPath
 
 PainterPath::PainterPath() {

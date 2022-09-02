@@ -43,7 +43,7 @@ target("btk")
 
         -- Add windows specific libraries
         add_links("user32", "shlwapi", "shell32", "imm32", "gdi32")
-        add_links("windowscodecs", "d2d1", "dwrite")
+        add_links("windowscodecs", "d2d1", "dwrite", "uuid", "dxguid")
     else
         -- Make default driver
         add_defines("BTK_DRIVER=SDLDriverInfo")
