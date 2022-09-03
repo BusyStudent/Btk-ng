@@ -944,6 +944,7 @@ bool Slider::mouse_wheel(WheelEvent &event) {
 }
 
 bool Slider::drag_begin(DragEvent &event) {
+    _slider_pressed.emit();
     if (_pressed) {
         _dragging = true;
         repaint();
@@ -954,20 +955,20 @@ bool Slider::drag_begin(DragEvent &event) {
 bool Slider::drag_motion(DragEvent &event) {
     // Update the value by it
     
-    auto    rect = content_rect();
-    double  new_value = _value;
-
+    auto   rect = content_rect();
+    double v;
     if (_orientation == Horizontal) {
-        new_value += (event.xrel() / rect.w) * (_max - _min) + _min;
+        v = (event.x() - rect.x) * (_max - _min) / rect.w;
     }
     else {
-        new_value += (event.yrel() / rect.h) * (_max - _min) + _min;
+        v = (event.y() - rect.y) * (_max - _min) / rect.h;
     }
-    set_value(std::round(new_value));
+    set_value(std::round(v));
 
     return true;
 }
 bool Slider::drag_end(DragEvent &event) {
+    _slider_released.emit();
     _dragging = false;
     _pressed  = false;
     repaint();
@@ -1041,23 +1042,203 @@ void Layout::attach(Widget *w) {
         _hooked = true;
     }
 }
-void Layout::run_layout() {
-    if (!_dirty) {
-        return;
-    }
-
-    // Run it
-
-
-    _dirty = false;
+void Layout::set_margin(FMargin ma) {
+    _margin = ma;
+    mark_dirty();
 }
-void Layout::run_hook(Event &event) {
+Layout *Layout::layout() {
+    return this;
+}
+Widget *Layout::widget() {
+    return _widget;
+}
+Rect    Layout::rect() const {
+    return _widget->rect();
+}
+
+// BoxLayout
+BoxLayout::BoxLayout() {
+
+}
+BoxLayout::~BoxLayout() {
+    for (auto v : items) {
+        delete v;
+    }
+}
+void BoxLayout::add_item(LayoutItem *item) {
+    _dirty = true;
+    items.push_back(item);
+}
+int  BoxLayout::item_index(LayoutItem *item) {
+    auto iter = std::find(items.begin(), items.end(), item);
+    if (iter == items.end()) {
+        return -1;
+    }
+    return iter - items.begin();
+}
+int  BoxLayout::count_items() {
+    return items.size();
+}
+LayoutItem *BoxLayout::item_at(int idx) {
+    if (idx < 0 || idx > items.size()) {
+        return nullptr;
+    }
+    return items[idx];
+}
+LayoutItem *BoxLayout::take_item(int idx) {
+    if (idx < 0 || idx > items.size()) {
+        return nullptr;
+    }
+    auto it = items[idx];
+    items.erase(items.begin() + idx);
+    return it;
+}
+void BoxLayout::mark_dirty() {
+    _dirty = true;
+}
+void BoxLayout::run_hook(Event &event) {
     switch (event.type()) {
         case Event::Resized : {
-            _dirty = true;
+            mark_dirty();
+            break;
+        }
+        case Event::Paint : {
+            // Run it
+            run_layout();
             break;
         }
     }
+}
+void BoxLayout::run_layout() {
+    BTK_ASSERT(!"Imcompeleted");
+
+#if 0
+    auto rect  = margin.apply(rectangle<float>());
+    auto &list = get_childrens();
+    //Content rectangle
+    float x = rect.x;
+    float y = rect.y;
+    float h = rect.h;
+    float w = rect.w;
+    //Calc all item factors
+    float factors = 0;
+    for(auto item:items){
+        //If is fixed size
+        if(item->fixed_size.w > 0 and is_horizontal()){
+            w -= item->fixed_size.w;
+        }
+        else if(item->fixed_size.h > 0 and is_vertical()){
+            h -= item->fixed_size.h;
+        }
+        else{
+            factors += item->stretch;
+        }
+    }
+    //In horizontal direction, we need to know the width of the layout
+    if(_direction == LeftToRight or _direction == RightToLeft){
+        //H
+
+        //Calc the useable width after the spacing
+        w -= _spacing * (items.size() - 1);
+
+        if(_direction == RightToLeft){
+            for(auto iter = items.rbegin(); iter != items.rend(); ++iter){
+                auto item = *iter;
+                item->x = x;
+                item->y = y;
+                item->h = h;
+
+                if(item->fixed_size.w > 0){
+                    //Use fixed size if
+                    item->w = item->fixed_size.w;
+                }
+                else{
+                    item->w = w / factors * item->stretch;
+                }
+
+                //Step by spacing
+                x += item->w + _spacing;
+            }
+        }
+        else{
+            for(auto item:items){
+                item->x = x;
+                item->y = y;
+                item->h = h;
+
+                if(item->fixed_size.w > 0){
+                    //Use fixed size if
+                    item->w = item->fixed_size.w;
+                }
+                else{
+                    item->w = w / factors * item->stretch;
+                }
+
+                //Step by spacing
+                x += item->w + _spacing;
+            }
+        }
+    }
+    else{
+        //V
+
+        //Calc useable height after the spacing
+        h -= _spacing * (items.size() - 1);
+
+        if(_direction == BottomToTop){
+            for(auto iter = items.rbegin(); iter != items.rend(); ++iter){
+                auto item = *iter;
+                item->x = x;
+                item->y = y;
+                item->w = w;
+
+                //We can use the fixed size
+                if(item->fixed_size.h > 0){
+                    item->h = item->fixed_size.h;
+                }
+                else{
+                    item->h = h / factors * item->stretch;
+                }
+
+
+                //Step by spacing
+                y += item->h + _spacing;
+            }
+        }
+        else{
+            for(auto item:items){
+                item->x = x;
+                item->y = y;
+                item->w = w;
+
+                //We can use the fixed size
+                if(item->fixed_size.h > 0){
+                    item->h = item->fixed_size.h;
+                }
+                else{
+                    item->h = h / factors * item->stretch;
+                }
+
+                //Step
+                y += item->h + _spacing;
+            }
+        }
+    }
+
+    //End pack
+    for(auto item:items){
+        if(item->widget == nullptr){
+            continue;
+        }
+        item->widget->set_rectangle(
+            std::round(item->x),
+            std::round(item->y),
+            std::round(item->w),
+            std::round(item->h)
+        );
+    }
+#endif
+
 }
 
 

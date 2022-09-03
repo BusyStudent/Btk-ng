@@ -144,6 +144,7 @@ class Win32Window : public AbstractWindow {
         DWORD        repaint_limit = 60; //< Repaint limit in fps
         bool         repaint_in_progress = false; //< Repaint in progress
         bool         textinput_enabled = false; //< Text input enabled
+        bool         fullscreen_onced = false;
 
         HIMC         imcontext = {}; //< Default IME context
 
@@ -339,7 +340,7 @@ HBITMAP buffer_to_hbitmap(const PixBuffer &buf) {
 
 Win32Driver::Win32Driver() {
     // Set DPI
-    SetProcessDPIAware();
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
     // Initialize the window class.
     WNDCLASSEXW wc = {};
     wc.cbSize = sizeof(WNDCLASSEX);
@@ -614,9 +615,10 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
             if (w == 0 || h == 0) {
                 // Probably mini, ignore it
-                WIN_LOG("Resize to %d, %d\n", w, h);
                 break;
             }
+
+            WIN_LOG("Resize to %d, %d\n", w, h);
 
             event.set_new_size(
                 // LOWORD(lparam), HIWORD(lparam)
@@ -1144,10 +1146,9 @@ Size Win32Window::size() const {
 }
 Point Win32Window::position() const {
     RECT r;
-    GetClientRect(hwnd, &r);
+    GetWindowRect(hwnd, &r);
     return Point(
-        client_to_btk(r.left), 
-        client_to_btk(r.top)
+        r.left, r.top
     );
 }
 void Win32Window::raise() {
@@ -1174,8 +1175,11 @@ void Win32Window::repaint() {
 }
 // TODO : Support DPI Scale
 void Win32Window::resize(int w, int h) {
+    w = btk_to_client(w);
+    h = btk_to_client(h);
+
     auto [x, y] = position();
-    auto rect   = adjust_rect(x, y, w, h);
+    auto rect   = adjust_rect(0, 0, w, h);
 
     MoveWindow(
         hwnd,
@@ -1321,6 +1325,7 @@ bool     Win32Window::set_flags(WindowFlags new_flags) {
             }
             else {
                 // Err
+                WIN_LOG("Failed to SetFullscreen\n");
                 err = 1;
             }
         }
@@ -1345,8 +1350,8 @@ void     Win32Window::set_textinput_rect(const Rect &rect) {
     if (imc) {
         COMPOSITIONFORM cf = {};
         cf.dwStyle = CFS_POINT;
-        cf.ptCurrentPos.x = rect.x;
-        cf.ptCurrentPos.y = rect.y + rect.h;
+        cf.ptCurrentPos.x = btk_to_client(rect.x);
+        cf.ptCurrentPos.y = btk_to_client(rect.y + rect.h);
         ImmSetCompositionWindow(imc, &cf);
 
         ImmReleaseContext(hwnd, imc);

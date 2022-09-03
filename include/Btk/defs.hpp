@@ -85,6 +85,9 @@ class Widget;
 class Style;
 class Font;
 
+class Layout;
+class BoxLayout;
+
 class IOStream;
 class IODevice;
 

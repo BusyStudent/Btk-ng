@@ -1324,7 +1324,6 @@ inline void PainterImpl::fill_path(PainterPathImpl *p) {
 }
 
 // Scissor
-// TODO : 
 inline void PainterImpl::push_scissor(float x, float y, float w, float h) {
     target->PushAxisAlignedClip(D2D1::RectF(x, y, x + w, y + h), target->GetAntialiasMode());
     state.n_clip_rects += 1;

@@ -465,6 +465,9 @@ class BTKAPI Slider : public Widget {
 
         BTK_EXPOSE_SIGNAL(_value_changed);
         BTK_EXPOSE_SIGNAL(_range_changed);
+        BTK_EXPOSE_SIGNAL(_slider_released);
+        BTK_EXPOSE_SIGNAL(_slider_pressed);
+        BTK_EXPOSE_SIGNAL(_slider_moved);
     private:
         FRect content_rect() const;
         FRect bar_rect()     const;
@@ -484,6 +487,9 @@ class BTKAPI Slider : public Widget {
 
         Signal<void()> _value_changed;
         Signal<void()> _range_changed;
+        Signal<void()> _slider_released;
+        Signal<void()> _slider_pressed;
+        Signal<void()> _slider_moved;
 };
 
 // Display image
@@ -514,37 +520,94 @@ class ImageView : public Widget {
 class LayoutItem {
     public:
         virtual ~LayoutItem() = default;
-        // virtual void set_rect(const FRect &rect) = 0;
-        // virtual Size size_hint() const = 0;
 
+        virtual void set_rect(const Rect &rect) = 0;
+        virtual Size size_hint() const = 0;
+        virtual Rect rect()      const = 0;
+
+        // Safe cast to
+        virtual Layout *layout() = 0;
+        virtual Widget *widget() = 0;
 };
 class WidgetItem : public LayoutItem {
     public:
+        WidgetItem(Widget *w) : wi(w) {}
 
+        void set_rect(const Rect &r) override {
+           wi->set_rect(r.x, r.y, r.w, r.h); 
+        }
+        Size size_hint() const override {
+            return wi->size_hint();
+        }
+        Rect rect() const override {
+            return wi->rect();
+        }
+
+        Layout *layout() override {
+            return nullptr;
+        }
+        Widget *widget() override {
+            return wi;
+        }
+    private:
+        Widget *wi;
+        uintptr_t pad1;
+        uintptr_t pad2;
 };
 class SpacerItem : public LayoutItem {
     public:
 
 };
 
-class Layout     : public LayoutItem, public Trackable {
+class BTKAPI Layout     : public LayoutItem, public Trackable {
     public:
         Layout(Widget *parent = nullptr);
         ~Layout();
 
         void attach(Widget *widget);
-        void add_widget(Widget *widget);
-        void add_layout(Layout *layout);
+        void set_margin(FMargin m);
+
+        // Override
+        Rect    rect() const override;
+        Widget *widget() override;
+        Layout *layout() override;
+
+        // Abstract Interface
+        virtual void        add_item(LayoutItem *item) = 0;
+        virtual int         item_index(LayoutItem *item) = 0;
+        virtual LayoutItem *item_at(int idx) = 0;
+        virtual LayoutItem *take_item(int idx) = 0;
+        virtual int         count_items() = 0;
+        virtual void        mark_dirty() = 0;
+        virtual void        run_hook(Event &) = 0;
     private:
-        void run_hook(Event &event);
-        void run_layout();
 
         FMargin                _margin = {0.0f} ; //< Content margin
         Widget                *_widget = nullptr; //< Attached widget
-        std::list<LayoutItem*> _items; //< Layout items
 
         bool _hooked = false; //< Hooked to widget ? (default = false)
-        bool _dirty  = false; //< Dirty ? (default = false)
+};
+class BTKAPI BoxLayout : public Layout {
+    public:
+        BoxLayout();
+        ~BoxLayout();
+
+        void add_widget(Widget *wi);
+        void add_layout(Layout *lay);
+
+        void        add_item(LayoutItem *item)   override;
+        int         item_index(LayoutItem *item) override;
+        LayoutItem *item_at(int idx)             override;
+        LayoutItem *take_item(int idx)           override;
+        int         count_items()                override;
+        void        mark_dirty()                 override;
+        void        run_hook(Event &)            override;
+    private:
+        void        run_layout();
+
+        std::vector<LayoutItem *> items;
+        Direction _direction;
+        bool _dirty = true;
 };
 
 
