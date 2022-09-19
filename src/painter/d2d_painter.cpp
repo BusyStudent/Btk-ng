@@ -417,7 +417,7 @@ class PainterImpl {
         Signal<void()> signal_cleanup;
 
         // State of rendering target
-        std::stack<ComPtr<ID2D1Image>> target_stack;
+        std::stack<ComPtr<ID2D1RenderTarget>> target_stack;
 };
 
 inline PainterImpl::PainterImpl(HWND hwnd) {
@@ -1463,40 +1463,7 @@ inline void PainterImpl::notify_resize(int w, int h) {
 }
 
 // Target
-inline bool PainterImpl::set_target(TextureImpl *tex) {
-    if (!context || !tex) {
-        // Unsupport or Empty target
-        return false;
-    }
-    HRESULT hr;
 
-    hr = context->EndDraw();
-
-    ComPtr<ID2D1Image> prev;
-    context->GetTarget(&prev);
-    target_stack.push(prev);
-
-    context->SetTarget(tex->bitmap.Get());
-
-    context->BeginDraw();
-
-    return true;
-}
-inline bool PainterImpl::reset_target() {
-    if (!context || target_stack.empty()) {
-        return false;
-    }
-    HRESULT hr;
-
-    hr = context->EndDraw();
-
-    context->SetTarget(target_stack.top().Get());
-
-    context->BeginDraw();
-
-    target_stack.pop();
-    return true;
-}
 
 // BrushImpl
 inline void BrushImpl::painter_destroyed(PainterImpl *p) {
@@ -1780,12 +1747,6 @@ auto Painter::create_texture(const PixBuffer &buf) -> Texture {
     return t;
 }
 
-bool Painter::set_target(Texture &tex) {
-    return priv->set_target(tex.priv);
-}
-bool Painter::reset_target() {
-    return priv->reset_target();
-}
 
 void Painter::notify_resize(int w, int h) {
     priv->notify_resize(w, h);

@@ -2,6 +2,8 @@
 
 #include "build.hpp"
 
+#if defined(__gnu_linux__)
+
 #include <fontconfig/fontconfig.h>
 
 BTK_NS_BEGIN2()
@@ -61,3 +63,47 @@ FcFont FcContext::match(const char_t *pattern) {
 
 
 BTK_NS_END2()
+
+#elif defined(_WIN32)
+
+// DWrite match
+#include "dlloader.hpp"
+#include <wrl/client.h>
+#include <dwrite.h>
+
+LIB_BEGIN(DWriteLib, "dwrite.dll")
+    LIB_PROC(DWriteCreateFactory)
+LIB_END(DWrtieLib)
+
+
+// Begin impl
+
+BTK_NS_BEGIN2()
+
+using Microsoft::WRL::ComPtr;
+
+class FcContext : public DWriteLib {
+    public:
+        FcContext() {
+            assert(DWriteCreateFactory);
+
+            HRESULT hr;
+            hr = DWriteCreateFactory(
+                DWRITE_FACTORY_TYPE_SHARED,
+                __uuidof(IDWriteFactory),
+                reinterpret_cast<IUnknown**>(factory.GetAddressOf())
+            );
+
+            assert(SUCCEEDED(hr));
+
+            factory->GetSystemFontCollection(&collection, TRUE);
+        }
+    private:
+        ComPtr<IDWriteFactory> factory;
+        ComPtr<IDWriteFontCollection> collection;
+};
+
+BTK_NS_END2()
+
+
+#endif

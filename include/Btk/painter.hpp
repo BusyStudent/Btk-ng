@@ -518,8 +518,8 @@ class BTKAPI Painter {
         auto create_texture(const PixBuffer &buf)        -> Texture;
 
         // Target
-        bool set_target(Texture &tex);
-        bool reset_target();
+        void push_group(int w, int h);
+        void pop_group_to();
 
         // Notify 
         void notify_resize(int w, int h); //< Target size changed

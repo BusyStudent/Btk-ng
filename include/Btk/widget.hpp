@@ -36,6 +36,7 @@ enum class WindowFlags : uint32_t {
     OpenGL     = 1 << 6,
     Vulkan     = 1 << 7,
     AcceptDrop = 1 << 8,
+    Transparent = 1 << 9
 };
 // Enum for widget.
 enum class FocusPolicy : uint8_t {
@@ -45,7 +46,46 @@ enum class FocusPolicy : uint8_t {
 enum class WidgetAttr  : uint8_t {
     DeleteOnClose = 0,
 };
+// Class for widget
+class SizePolicy {
+    public:
+        enum Policy : uint8_t {
+            GrowMask   = 1 << 0, //< Expand on needed
+            ExpandMask = 1 << 1, //< Get space as big as possible
+            ShrinkMask = 1 << 2, //< Shrink on needed
+            IgnoreMask = 1 << 3,
 
+            Fixed     = 0,
+            Expanding = GrowMask | ShrinkMask | ExpandMask,
+            Ignore    = GrowMask | ShrinkMask | IgnoreMask,
+            Minimum   = GrowMask,
+            Maximum   = ShrinkMask,
+        };
+
+        SizePolicy() = default;
+        SizePolicy(Policy f) : v_flag(f), h_flag(f) {}
+        SizePolicy(Policy v, Policy h) : v_flag(v), h_flag(h) {}
+
+        Policy vertical_policy() const noexcept {
+            return v_flag;
+        }
+        Policy horizontal_policy() const noexcept {
+            return h_flag;
+        }
+        int    vertical_stretch() const noexcept {
+            return v_stretch;
+        }
+        int    horizontal_stretch() const noexcept {
+            return h_stretch;
+        }
+    private:
+        Policy v_flag = Fixed;
+        Policy h_flag = Fixed;
+        int  v_stretch = 0;
+        int  h_stretch = 0;
+};
+
+BTK_FLAGS_OPERATOR(SizePolicy::Policy, uint8_t);
 BTK_FLAGS_OPERATOR(WindowFlags, uint32_t);
 BTK_FLAGS_OPERATOR(FocusPolicy, uint8_t);
 
@@ -62,6 +102,8 @@ class BTKAPI Widget : public Object {
         // Configure
         void show();
         void hide();
+        void raise();
+        void lower();
         void close();
         void repaint();
         void repaint_now();
@@ -105,6 +147,18 @@ class BTKAPI Widget : public Object {
 
         Size    adjust_size() const;
 
+        Size    maximum_size() const {
+            return _maximum_size;
+        }
+        Size    minimum_size() const {
+            return _minimum_size;
+        }
+        FocusPolicy focus_policy() const {
+            return _focus;
+        }
+        SizePolicy  size_policy() const {
+            return _size;
+        }
         // Size Hints
         virtual Size size_hint() const;
 
@@ -175,6 +229,11 @@ class BTKAPI Widget : public Object {
 
         // Configure properties
         void set_focus_policy(FocusPolicy policy);
+        void set_size_policy(SizePolicy policy);
+        void set_maximum_size(int w, int h);
+        void set_minimum_size(int w, int h);
+        void set_maximum_size(Size size);
+        void set_minimum_size(Size size);
         void set_style(Style *style);
         void set_font(const Font &font);
     private:
@@ -186,9 +245,12 @@ class BTKAPI Widget : public Object {
         Style      *_style      = nullptr; //< Pointer to style
         WindowFlags _flags      = WindowFlags::Resizable; //< Window flags
         FocusPolicy _focus      = FocusPolicy::None; //< Focus policy
+        SizePolicy  _size       = SizePolicy::Fixed; //< Size policy
         std::list<Widget *>           _children; //< Child widgets
         std::list<Widget *>::iterator _in_child_iter = {}; //< Child iterator
 
+        Size        _maximum_size = {INT_MAX, INT_MAX}; //< Maximum size
+        Size        _minimum_size = {0, 0}; //< Minimum size
         Rect        _rect = {0, 0, 0, 0}; //< Rectangle
         Font        _font    = {}; //< Font
 
@@ -282,7 +344,8 @@ class BTKAPI RadioButton : public AbstractButton {
 };
 class BTKAPI Button      : public AbstractButton {
     public:
-        Button(Widget *parent = nullptr);
+        Button(Widget *parent = nullptr, u8string_view txt = {});
+        Button(u8string_view txt) : Button(nullptr, txt) {}
         ~Button();
 
         // Event handlers
@@ -516,23 +579,38 @@ class ImageView : public Widget {
 
 
 // Layout Tools
-
+class SpacerItem ;
 class LayoutItem {
     public:
         virtual ~LayoutItem() = default;
 
+        virtual void mark_dirty()               = 0;
         virtual void set_rect(const Rect &rect) = 0;
         virtual Size size_hint() const = 0;
         virtual Rect rect()      const = 0;
 
         // Safe cast to
-        virtual Layout *layout() = 0;
-        virtual Widget *widget() = 0;
+        virtual SpacerItem *spacer_item() {return nullptr;}
+        virtual Widget *widget() const { return nullptr; }
+        virtual Layout *layout() { return nullptr; }
+
+        void set_alignment(Alignment alig) {
+            _alignment = alig;
+            mark_dirty();
+        }
+        auto alignment() const -> Alignment {
+            return _alignment;
+        }
+    private:
+        Alignment _alignment = {};
 };
 class WidgetItem : public LayoutItem {
     public:
         WidgetItem(Widget *w) : wi(w) {}
 
+        void mark_dirty() override {
+            
+        }
         void set_rect(const Rect &r) override {
            wi->set_rect(r.x, r.y, r.w, r.h); 
         }
@@ -543,20 +621,39 @@ class WidgetItem : public LayoutItem {
             return wi->rect();
         }
 
-        Layout *layout() override {
-            return nullptr;
-        }
-        Widget *widget() override {
+        Widget *widget() const override {
             return wi;
         }
     private:
         Widget *wi;
-        uintptr_t pad1;
-        uintptr_t pad2;
 };
 class SpacerItem : public LayoutItem {
     public:
+        SpacerItem(int w, int h) : size(w, h) {}
 
+        void mark_dirty() override {
+            
+        }
+        void set_rect(const Rect &r) override {
+        
+        }
+        Size size_hint() const override {
+            return size;
+        }
+        SpacerItem *spacer_item() override {
+            return this;
+        }
+
+        Rect rect() const override {
+            return Rect(0, 0, size.w, size.h);
+        }
+
+        void set_size(int w, int h) {
+            size.w = w;
+            size.h = h;
+        }
+    private:
+        Size size;
 };
 
 class BTKAPI Layout     : public LayoutItem, public Trackable {
@@ -565,11 +662,22 @@ class BTKAPI Layout     : public LayoutItem, public Trackable {
         ~Layout();
 
         void attach(Widget *widget);
-        void set_margin(FMargin m);
+        void set_margin(Margin m);
+        void set_spacing(int spacing);
+        void set_parent(Layout *lay);
+
+        Margin margin() const {
+            return _margin;
+        }
+        int    spacing() const {
+            return _spacing;
+        }
+        Layout *parent() const {
+            return _parent;
+        }
 
         // Override
-        Rect    rect() const override;
-        Widget *widget() override;
+        Widget *widget() const override;
         Layout *layout() override;
 
         // Abstract Interface
@@ -581,19 +689,23 @@ class BTKAPI Layout     : public LayoutItem, public Trackable {
         virtual void        mark_dirty() = 0;
         virtual void        run_hook(Event &) = 0;
     private:
-
-        FMargin                _margin = {0.0f} ; //< Content margin
-        Widget                *_widget = nullptr; //< Attached widget
+        Margin                 _margin = {0} ; //< Content margin
+        Widget                *_widget = nullptr; //< Attached 
+        Layout                *_parent = nullptr;
+        int                    _spacing = 0;
 
         bool _hooked = false; //< Hooked to widget ? (default = false)
 };
 class BTKAPI BoxLayout : public Layout {
     public:
-        BoxLayout();
+        BoxLayout(Direction d = LeftToRight);
         ~BoxLayout();
 
-        void add_widget(Widget *wi);
-        void add_layout(Layout *lay);
+        void add_layout(Layout *lay, int stretch = 0);
+        void add_widget(Widget *wid, int stretch = 0, Alignment align = {});
+        void add_spacing(int spacing);
+        void add_stretch(int stretch);
+        void set_direction(Direction d);
 
         void        add_item(LayoutItem *item)   override;
         int         item_index(LayoutItem *item) override;
@@ -602,12 +714,28 @@ class BTKAPI BoxLayout : public Layout {
         int         count_items()                override;
         void        mark_dirty()                 override;
         void        run_hook(Event &)            override;
+        void        set_rect(const Rect &)       override;
+        Rect        rect()                 const override;
+        Size        size_hint()            const override; 
     private:
-        void        run_layout();
+        void        run_layout(const Rect *dst);
 
-        std::vector<LayoutItem *> items;
-        Direction _direction;
+        struct ItemExtra {
+            int stretch = 0;
+
+            // Cached field in run_layout
+            Size alloc_size = {0, 0};
+        };
+
+        mutable Size cached_size = {0, 0}; //< Measured size
+        mutable bool size_dirty = true;
+
+        std::vector<std::pair<LayoutItem*, ItemExtra>> items;
+        Direction _direction = LeftToRight;
+        Rect      _rect = {0, 0, 0, 0};
+        bool _except_resize = false;
         bool _dirty = true;
+        int  n_spacing_item = 0;
 };
 
 
@@ -637,6 +765,12 @@ class ItemModel {
 // Inline methods for Widget
 inline void Widget::stop_textinput() {
     start_textinput(false);
+}
+inline void Widget::set_maximum_size(Size s) {
+    set_maximum_size(s.w, s.h);
+}
+inline void Widget::set_minimum_size(Size s) {
+    set_minimum_size(s.w, s.h);
 }
 
 BTK_NS_END

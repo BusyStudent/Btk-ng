@@ -471,5 +471,30 @@ int main () {
     tft.set_size(15);
     tedit.set_font(tft);
 
+    // Test layout
+    Widget lay_root;
+    Button lay_btn1("Button 1");
+    Button lay_btn2("Button 2");
+    Button lay_btn3("Button 3");
+    BoxLayout layout(LeftToRight);
+
+    layout.attach(&lay_root);
+    layout.add_widget(&lay_btn1, 1, Alignment::Middle | Alignment::Center);
+    layout.add_widget(&lay_btn2, 2, Alignment::Middle | Alignment::Center);
+    layout.add_spacing(50);
+    layout.add_widget(&lay_btn3, 1, Alignment::Middle | Alignment::Center);
+
+    auto sublay = new BoxLayout(TopToBottom);
+    layout.add_layout(sublay);
+    sublay->add_widget(new Button("SubButton 1"));
+    sublay->add_widget(new Button("SubButton 2"));
+    sublay->add_widget(new Button("SubButton 3"));
+    sublay->add_stretch(1);
+
+    layout.add_stretch(1);
+
+    lay_root.show();
+
+
     context.run();
 }

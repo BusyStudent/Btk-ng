@@ -58,6 +58,25 @@ void Widget::show() {
 void Widget::hide() {
     set_visible(false);
 }
+void Widget::raise() {
+    if (_win) {
+        _win->raise();
+    }
+    if (parent()) {
+        parent()->_children.erase(_in_child_iter);
+        parent()->_children.push_front(this);
+
+        _in_child_iter = parent()->_children.begin();
+    }
+}
+void Widget::lower() {
+    if (parent()) {
+        parent()->_children.erase(_in_child_iter);
+        parent()->_children.push_back(this);
+
+        _in_child_iter = --parent()->_children.end();
+    }
+}
 void Widget::close() {
     if (is_window()) {
         _win->close();
@@ -76,6 +95,10 @@ void Widget::close() {
     }
 }
 void Widget::resize(int w, int h) {
+    // Clamp value by minimum & maximum
+    w = clamp(w, _minimum_size.w, _maximum_size.w);
+    h = clamp(h, _minimum_size.h, _maximum_size.h);
+
     int old_w = _rect.w;
     int old_h = _rect.h;
     _rect.w = w;
@@ -87,6 +110,13 @@ void Widget::resize(int w, int h) {
     event.set_new_size(w, h);
     event.set_old_size(old_w, old_h);
     handle(event);
+
+    // As same as move
+    if (_parent) {
+        if (_parent->mouse_current_widget == this) {
+            
+        }
+    }
 
     // We should repaint 
     repaint();
@@ -100,7 +130,18 @@ void Widget::move(int x, int y) {
     MoveEvent event(x, y);
     handle(event);
 
+    // Check parent if we are mouse is out
+    if (_parent) {
+        if (_parent->mouse_current_widget == this) {
+            // We need a way to get the mouse position
+        }
+    }
+
     repaint();
+}
+void Widget::set_rect(int x, int y, int w, int h) {
+    resize(w, h);
+    move(x, y);
 }
 bool Widget::handle(Event &event) {
     // printf("Widget::handle(%d)\n", event.type());
@@ -716,6 +757,25 @@ void Widget::set_focus_policy(FocusPolicy policy) {
             handle(event);
             _parent->focused_widget = nullptr;
         }
+    }
+}
+void Widget::set_size_policy(SizePolicy policy) {
+    _size = policy;
+}
+void Widget::set_maximum_size(int w, int h) {
+    Size s(w, h);
+
+    _maximum_size = s;
+    if (_win) {
+        _win->set_value(AbstractWindow::MaximumSize, &s);
+    }
+}
+void Widget::set_minimum_size(int w, int h) {
+    Size s(w, h);
+
+    _minimum_size = s;
+    if (_win) {
+        _win->set_value(AbstractWindow::MinimumSize, &s);
     }
 }
 void Widget::set_font(const Font &font) {

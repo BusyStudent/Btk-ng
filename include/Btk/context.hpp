@@ -109,6 +109,7 @@ class GLFormat {
 class GLContext : public GraphicsContext {
     public:
         virtual bool      initialize(const GLFormat &) = 0;
+        virtual bool      make_current() = 0;
         virtual bool      set_swap_interval(int v) = 0;
         virtual Size      get_drawable_size() = 0;
         virtual pointer_t get_proc_address(const char_t *name) = 0;
@@ -141,6 +142,10 @@ class AbstractWindow : public Any {
             XDisplay,    //< Xlib Display
             XWindow,     //< Window
         };
+        enum Configure : int {
+            MaximumSize, //< args (*Size)
+            MinimumSize, //< args (*Size)
+        };
 
         virtual Size       size() const = 0;
         virtual Point      position() const = 0;
@@ -159,6 +164,7 @@ class AbstractWindow : public Any {
 
         // Flags control
         virtual bool       set_flags(WindowFlags flags) = 0;
+        virtual bool       set_value(int conf, ...) = 0;
 
         virtual pointer_t  native_handle(int what) = 0;
         virtual widget_t   bind_widget(widget_t widget) = 0;
@@ -244,6 +250,13 @@ enum class EventWalk {
     Continue = 0,
     Stop     = 1,
     Drop     = 1 << 1,
+};
+
+class EventDispatcher {
+    public:
+        // virtual void      send(Event &) = 0;
+        virtual timerid_t timer_add(timertype_t type, uint32_t ms) = 0;
+        virtual bool      timer_del(timerid_t id) = 0;
 };
 
 BTK_FLAGS_OPERATOR(EventWalk, int);

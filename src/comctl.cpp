@@ -8,9 +8,13 @@
 
 BTK_NS_BEGIN
 
-Button::Button(Widget *parent) : AbstractButton(parent) {
+Button::Button(Widget *parent, u8string_view txt) : AbstractButton(parent) {
     auto style = this->style();
     resize(style->button_width, style->button_height);
+
+    if (!txt.empty()) {
+        set_text(txt);
+    }
 }
 Button::~Button() {
 
@@ -1042,35 +1046,111 @@ void Layout::attach(Widget *w) {
         _hooked = true;
     }
 }
-void Layout::set_margin(FMargin ma) {
+void Layout::set_margin(Margin ma) {
     _margin = ma;
+    mark_dirty();
+}
+void Layout::set_spacing(int spacing) {
+    _spacing = spacing;
+    mark_dirty();
+}
+void Layout::set_parent(Layout *l) {
+    _parent = l;
     mark_dirty();
 }
 Layout *Layout::layout() {
     return this;
 }
-Widget *Layout::widget() {
+Widget *Layout::widget() const {
     return _widget;
 }
-Rect    Layout::rect() const {
-    return _widget->rect();
-}
-
 // BoxLayout
-BoxLayout::BoxLayout() {
-
+BoxLayout::BoxLayout(Direction d) {
+    _direction = d;
 }
 BoxLayout::~BoxLayout() {
     for (auto v : items) {
-        delete v;
+        delete v.first;
     }
 }
 void BoxLayout::add_item(LayoutItem *item) {
-    _dirty = true;
-    items.push_back(item);
+    mark_dirty();
+    items.push_back(std::make_pair(item, ItemExtra()));
+}
+void BoxLayout::add_widget(Widget *w, int stretch, Alignment align) {
+    if (w) {
+        auto p = parent();
+        if (p) {
+            // To top
+            while(p->parent()) {
+                p = p->parent();
+            }
+        }
+        else {
+            p = this;
+        }
+        auto item = new WidgetItem(w);
+        item->set_alignment(align);
+
+        mark_dirty();
+        items.push_back(std::make_pair(item, ItemExtra{stretch}));
+
+        p->widget()->add_child(w);
+    }
+}
+void BoxLayout::add_layout(Layout *l, int stretch) {
+    if (l) {
+        mark_dirty();
+        items.push_back(std::make_pair(static_cast<LayoutItem*>(l), ItemExtra{stretch}));
+        l->set_parent(this);
+    }
+}
+void BoxLayout::add_stretch(int stretch) {
+    mark_dirty();
+    items.push_back(std::make_pair(static_cast<LayoutItem*>(new SpacerItem(0, 0)), ItemExtra{stretch}));
+}
+void BoxLayout::add_spacing(int spacing) {
+    mark_dirty();
+    Size size = {0, 0};
+    if (_direction == RightToLeft || _direction == LeftToRight) {
+        size.w = spacing;
+    }
+    else {
+        size.h = spacing;
+    }
+    add_item(new SpacerItem(size.w, size.h));
+    n_spacing_item += 1;
+}
+void BoxLayout::set_direction(Direction d) {
+    _direction = d;
+    mark_dirty();
+
+    if (n_spacing_item) {
+        // We need for and excahnge items w, h
+        for (auto [item, extra] : items) {
+            auto i = item->spacer_item();
+            if (!i) {
+                continue;
+            }
+            auto size = item->size_hint();
+            std::swap(size.w, size.h);
+            i->set_size(size.w, size.h);
+
+            --n_spacing_item;
+            if (!n_spacing_item) {
+                break;
+            }
+        }
+    }
 }
 int  BoxLayout::item_index(LayoutItem *item) {
-    auto iter = std::find(items.begin(), items.end(), item);
+    auto iter = items.begin();
+    while (iter != items.end()) {
+        if (iter->first == item) {
+            break;
+        }
+        ++iter;
+    }
     if (iter == items.end()) {
         return -1;
     }
@@ -1083,7 +1163,7 @@ LayoutItem *BoxLayout::item_at(int idx) {
     if (idx < 0 || idx > items.size()) {
         return nullptr;
     }
-    return items[idx];
+    return items[idx].first;
 }
 LayoutItem *BoxLayout::take_item(int idx) {
     if (idx < 0 || idx > items.size()) {
@@ -1091,154 +1171,302 @@ LayoutItem *BoxLayout::take_item(int idx) {
     }
     auto it = items[idx];
     items.erase(items.begin() + idx);
-    return it;
+    mark_dirty();
+
+    if (it.first->spacer_item()) {
+        n_spacing_item -= 1;
+    }
+
+    return it.first;
 }
 void BoxLayout::mark_dirty() {
+    size_dirty = true;
     _dirty = true;
 }
 void BoxLayout::run_hook(Event &event) {
     switch (event.type()) {
         case Event::Resized : {
-            mark_dirty();
+            _rect.x = 0;
+            _rect.y = 0;
+            _rect.w = event.as<ResizeEvent>().width();
+            _rect.h = event.as<ResizeEvent>().height();
+            if (!_except_resize) {
+                mark_dirty();
+                run_layout(nullptr);
+            }
             break;
         }
-        case Event::Paint : {
-            // Run it
-            run_layout();
+        case Event::Show : {
+            run_layout(nullptr);
             break;
         }
     }
 }
-void BoxLayout::run_layout() {
-    BTK_ASSERT(!"Imcompeleted");
+void BoxLayout::run_layout(const Rect *dst) {
+    if (items.empty() || !_dirty) {
+        return;
+    }
+    // Calc need size
+    Rect r;
 
-#if 0
-    auto rect  = margin.apply(rectangle<float>());
-    auto &list = get_childrens();
-    //Content rectangle
-    float x = rect.x;
-    float y = rect.y;
-    float h = rect.h;
-    float w = rect.w;
-    //Calc all item factors
-    float factors = 0;
-    for(auto item:items){
-        //If is fixed size
-        if(item->fixed_size.w > 0 and is_horizontal()){
-            w -= item->fixed_size.w;
-        }
-        else if(item->fixed_size.h > 0 and is_vertical()){
-            h -= item->fixed_size.h;
-        }
-        else{
-            factors += item->stretch;
+    if (!dst) {
+        // In tree top, measure it
+        Size size;
+        size = size_hint();
+        r    = rect();
+        if (r.w < size.w || r.h < size.h) {
+            // We need bigger size
+            BTK_LOG("BoxLayout resize to bigger size (%d, %d\n)", size.w, size.h);
+            BTK_LOG("Current size (%d, %d)\n", r.w, r.h);
+
+            assert(widget());
+            
+            _except_resize = true;
+            widget()->set_minimum_size(size);
+            widget()->resize(size);
+            _except_resize = false;
+
+            r.w = size.w;
+            r.h = size.h;
         }
     }
-    //In horizontal direction, we need to know the width of the layout
-    if(_direction == LeftToRight or _direction == RightToLeft){
-        //H
+    else {
+        // Sub, just pack
+        r = *dst;
+    }
+    r = r.apply_margin(margin());
 
-        //Calc the useable width after the spacing
-        w -= _spacing * (items.size() - 1);
+    BTK_LOG("BoxLayout: run_layout\n");
 
-        if(_direction == RightToLeft){
-            for(auto iter = items.rbegin(); iter != items.rend(); ++iter){
-                auto item = *iter;
-                item->x = x;
-                item->y = y;
-                item->h = h;
-
-                if(item->fixed_size.w > 0){
-                    //Use fixed size if
-                    item->w = item->fixed_size.w;
-                }
-                else{
-                    item->w = w / factors * item->stretch;
-                }
-
-                //Step by spacing
-                x += item->w + _spacing;
+    // Begin
+    auto iter = items.begin();
+    auto move_next = [&, this]() -> bool {
+        if (_direction == RightToLeft || _direction == BottomToTop) {
+            // Reverse
+            if (iter == items.begin()) {
+                // EOF
+                return false;
             }
+            --iter;
+            return true;
         }
-        else{
-            for(auto item:items){
-                item->x = x;
-                item->y = y;
-                item->h = h;
+        ++iter;
+        return iter != items.end();
+    };
+    auto move_to_begin = [&, this]() -> void {
+        if (_direction == RightToLeft || _direction == BottomToTop) {
+            iter = --items.end();
+        }
+        else {
+            iter = items.begin();
+        }
+    };
+    auto is_vertical = (_direction == RightToLeft || _direction == LeftToRight);
 
-                if(item->fixed_size.w > 0){
-                    //Use fixed size if
-                    item->w = item->fixed_size.w;
-                }
-                else{
-                    item->w = w / factors * item->stretch;
-                }
+    move_to_begin();
+    int stretch_sum = 0; //< All widget stretch
+    int space = 0;
 
-                //Step by spacing
-                x += item->w + _spacing;
-            }
+    if (is_vertical) {
+        space = r.w - spacing() * (items.size() - 1);
+    }
+    else {
+        space = r.h - spacing() * (items.size() - 1);
+    }
+    // Useable space
+    do {
+        auto &extra = iter->second;
+        auto  item  = iter->first;
+        auto  hint  = item->size_hint();
+
+        // Save current alloc size
+        extra.alloc_size = hint;
+
+        if (is_vertical) {
+            space -= hint.w;
+        }
+        else {
+            space -= hint.h;
+        }
+
+        if (extra.stretch) {
+            // Has stretch
+            stretch_sum += extra.stretch;
         }
     }
-    else{
-        //V
+    while(move_next());
 
-        //Calc useable height after the spacing
-        h -= _spacing * (items.size() - 1);
+    // Process extra space if
+    if (space) {
+        move_to_begin();
+        BTK_LOG("BoxLayout: has extra space\n");
+        if (stretch_sum) {
+            // Alloc space for item has stretch
+            int part = space / stretch_sum;
+            do {
+                auto &extra = iter->second;
+                auto  item = iter->first;
 
-        if(_direction == BottomToTop){
-            for(auto iter = items.rbegin(); iter != items.rend(); ++iter){
-                auto item = *iter;
-                item->x = x;
-                item->y = y;
-                item->w = w;
-
-                //We can use the fixed size
-                if(item->fixed_size.h > 0){
-                    item->h = item->fixed_size.h;
+                if (!extra.stretch) {
+                    continue;
                 }
-                else{
-                    item->h = h / factors * item->stretch;
+                if (is_vertical) {
+                    extra.alloc_size.w += part * extra.stretch;
                 }
-
-
-                //Step by spacing
-                y += item->h + _spacing;
+                else {
+                    extra.alloc_size.h += part * extra.stretch;
+                }
             }
+            while(move_next());
         }
-        else{
-            for(auto item:items){
-                item->x = x;
-                item->y = y;
-                item->w = w;
+        else {
+            // Alloc space for item has stretch 0 by size policy
+            // TODO : temp use avg
+            int part = space / items.size();
+            do {
+                auto &extra = iter->second;
+                auto  item = iter->first;
 
-                //We can use the fixed size
-                if(item->fixed_size.h > 0){
-                    item->h = item->fixed_size.h;
+                if (is_vertical) {
+                    extra.alloc_size.w += part;
                 }
-                else{
-                    item->h = h / factors * item->stretch;
+                else {
+                    extra.alloc_size.h += part;
                 }
-
-                //Step
-                y += item->h + _spacing;
             }
+            while(move_next());
         }
     }
 
-    //End pack
-    for(auto item:items){
-        if(item->widget == nullptr){
-            continue;
-        }
-        item->widget->set_rectangle(
-            std::round(item->x),
-            std::round(item->y),
-            std::round(item->w),
-            std::round(item->h)
-        );
-    }
-#endif
 
+    // Assign
+    move_to_begin();
+    int x = r.x;
+    int y = r.y;
+    do {
+        auto &extra = iter->second;
+        auto  item  = iter->first;
+        auto  size  = extra.alloc_size;
+        auto  rect  = Rect(x, y, size.w, size.h);
+        // Make it to box
+        if (is_vertical) {
+            rect.h = r.h;
+        }
+        else {
+            rect.w = r.w;
+        }
+
+        if (item->alignment() != Alignment{}) {
+            // Align it
+            auto perfered = item->size_hint();
+            auto alig     = item->alignment();
+
+            if (bool(alig & Alignment::Left)) {
+                rect.w = perfered.w;
+            }
+            else if (bool(alig & Alignment::Right)) {
+                rect.x = rect.x + rect.w - perfered.w;
+                rect.w = perfered.w;
+            }
+            else if (bool(alig & Alignment::Center)) {
+                rect.x = rect.x + rect.w / 2 - perfered.w / 2;
+                rect.w = perfered.w;
+            }
+
+            if (bool(alig & Alignment::Top)) {
+                rect.h = perfered.h;
+            }
+            else if (bool(alig & Alignment::Bottom)) {
+                rect.y = rect.y + rect.h - perfered.h;
+                rect.h = perfered.h;
+            }
+            else if (bool(alig & Alignment::Middle)) {
+                rect.y = rect.y + rect.h / 2 - perfered.h / 2;
+                rect.h = perfered.h;
+            }
+        }
+
+        item->set_rect(rect);
+
+        if (is_vertical) {
+            x += size.w;
+            x += spacing();
+        }
+        else {
+            y += size.h;
+            y += spacing();
+        }
+    }
+    while(move_next());
+
+    _dirty = false;
+}
+void BoxLayout::set_rect(const Rect &r) {
+    auto w = widget();
+    if (w != nullptr) {
+        _except_resize = true;
+        w->set_rect(r.x, r.y, r.w, r.h);
+        _except_resize = false;
+    }
+    _rect = r;
+    mark_dirty();
+    run_layout(&_rect);
+}
+Size BoxLayout::size_hint() const {
+    if (size_dirty) {
+        // Measure the width
+        auto spacing = this->spacing();
+        auto margin = this->margin();
+        Rect result = {0, 0, 0, 0};
+
+        switch (_direction) {
+            case LeftToRight : {
+                [[fallthrough]];
+            }
+            case RightToLeft : {
+                for (auto [item, extra] : items) {
+                    auto hint = item->size_hint();
+                    
+                    result.w += hint.w;
+                    result.h = max(result.h, hint.h);
+                }
+
+                if (items.size() > 0) {
+                    // Add spacing
+                    result.w += spacing * (items.size() - 1);
+                }
+                break;
+            }
+            case BottomToTop : {
+                [[fallthrough]];
+            }
+            case TopToBottom : {
+                for (auto [item, extra] : items) {
+                    auto hint = item->size_hint();
+                    
+                    result.h += hint.h;
+                    result.w = max(result.w, hint.w);
+                }
+
+                if (items.size() > 0) {
+                    // Add spacing
+                    result.h += spacing * (items.size() - 1);
+                }
+                break;
+            }
+        }
+        cached_size = result.unapply_margin(margin).size();
+        size_dirty = false;
+    }
+    BTK_LOG("BoxLayout size_hint (%d, %d)\n", cached_size.w, cached_size.h);
+    return cached_size;
+}
+Rect BoxLayout::rect() const {
+    // auto w = widget();
+    // if (w) {
+    //     return w->rect();
+    // }
+    return _rect;
 }
 
 

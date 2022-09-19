@@ -70,7 +70,8 @@ constexpr inline auto RightToLeft = Direction::RightToLeft;
 constexpr inline auto TopToBottom = Direction::TopToBottom;
 constexpr inline auto BottomToTop = Direction::BottomToTop;
 
-BTK_FLAGS_OPERATOR(Alignment, uint8_t);
+BTK_FLAGS_OPERATOR(Orientation, uint8_t);
+BTK_FLAGS_OPERATOR(Alignment,   uint8_t);
 
 // Forward declarations
 class EventQueue;

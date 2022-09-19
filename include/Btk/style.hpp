@@ -31,13 +31,17 @@ class BTKAPI Palette {
             MaxRole,
         };
 
-        Color color_at(Group gp, Role r) const;
-        Brush brush_at(Group gp, Role r) const;
+        auto brush_at(Group gp, Role r) const -> const Brush &;
+        auto color_at(Group gp, Role r) const -> GLColor;
+        auto set_brush(const Brush &brhs)     -> void;
+
+        auto operator =(const Palette &) -> Palette &;
     private:
         void begin_mut();
 
         struct Priv {
             Brush brushs[MaxGroup][MaxRole];
+            int refcount = 1;
         } *priv = nullptr;
 };
 

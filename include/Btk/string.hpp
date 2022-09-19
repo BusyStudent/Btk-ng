@@ -476,6 +476,17 @@ class BTKAPI u8string {
             return const_iterator(this, data() + size());
         }
 
+        // Index
+        reference at(size_t pos) {
+            auto where = c_str();
+            Utf8Seek(where, size(), where, pos);
+            return reference(this, where);
+        }
+        const_reference at(size_t pos) const {
+            auto where = c_str();
+            Utf8Seek(where, size(), where, pos);
+            return const_reference(this, where);
+        }
 
         // Utils
         List       split    (u8string_view what, size_t max = size_t(-1)) const;
@@ -526,20 +537,10 @@ class BTKAPI u8string {
             return !compare(str);
         }
         reference  operator [](size_t pos) {
-            auto where = c_str();
-            Utf8Seek(where, size(), where, pos);
-            return {
-                this,
-                where
-            };
+            return at(pos);
         }
         const_reference  operator [](size_t pos) const {
-            auto where = c_str();
-            Utf8Seek(where, size(), where, pos);
-            return {
-                this,
-                where
-            };
+            return at(pos);
         }
 
         // Cast
@@ -585,8 +586,10 @@ class BTKAPI u8string_view {
 
         static constexpr auto npos = stdu8string_view::npos;
 
-        using const_iterator = _Utf8Iterator<const u8string_view>;
-        using iterator       = _Utf8Iterator<const u8string_view>;
+        using const_reference = _Utf8Codepoint<const u8string_view>; 
+        using reference       = _Utf8Codepoint<const u8string_view>;
+        using const_iterator  = _Utf8Iterator<const u8string_view>;
+        using iterator        = _Utf8Iterator<const u8string_view>;
 
         using List           = StringList;
         using RefList        = StringRefList;
@@ -596,6 +599,9 @@ class BTKAPI u8string_view {
         }
         size_t length() const noexcept {
             return Utf8Strlen(_str.data(), _str.size());
+        }
+        bool   empty() const noexcept {
+            return _str.empty();
         }
         const char_t *data() const noexcept {
             return _str.data();
@@ -608,6 +614,19 @@ class BTKAPI u8string_view {
         const_iterator end() const {
             return const_iterator(this, _str.data() + _str.size());
         }
+        const_reference front() const {
+            return *begin();
+        }
+        const_reference back() const {
+            return *--end();
+        }
+
+        // Index
+        const_reference at(size_t pos) const {
+            auto where = data();
+            Utf8Seek(where, size(), where, pos);
+            return const_reference(this, where);
+        }
 
         // Utils
         List       split    (u8string_view what, size_t max = size_t(-1)) const;
@@ -617,6 +636,11 @@ class BTKAPI u8string_view {
         // Cast
         std::u16string to_utf16() const;
         std::u32string to_utf32() const;
+        
+        // Operators
+        const_reference operator [](size_t pos) const {
+            return at(pos);
+        }
 
         // Auto cast to stdu8string const refernce
         operator const stdu8string_view &() const noexcept {

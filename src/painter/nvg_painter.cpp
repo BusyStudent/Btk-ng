@@ -1,3 +1,23 @@
+// nanovg interface
+//
+// Copyright (c) 2009-2013 Mikko Mononen memon@inside.org
+// Copyright (c) 2022 BusyStudent 
+//
+// This software is provided 'as-is', without any express or implied
+// warranty.  In no event will the authors be held liable for any damages
+// arising from the use of this software.
+// Permission is granted to anyone to use this software for any purpose,
+// including commercial applications, and to alter it and redistribute it
+// freely, subject to the following restrictions:
+// 1. The origin of this software must not be misrepresented; you must not
+//    claim that you wrote the original software. If you use this software
+//    in a product, an acknowledgment in the product documentation would be
+//    appreciated but is not required.
+// 2. Altered source versions must be plainly marked as such, and must not be
+//    misrepresented as being the original software.
+// 3. This notice may not be removed or altered from any source distribution.
+//
+
 #include "build.hpp"
 #include "common/utils.hpp"
 
@@ -14,6 +34,7 @@
 #include <Btk/context.hpp>
 #include <unordered_map>
 #include <filesystem>
+#include <variant>
 #include <set>
 
 // Forward declaration for nanovg
@@ -100,7 +121,6 @@ namespace {
     void         fonsSetSpacing(FONScontext *s, float spacing);
     void         fonsSetSize(FONScontext *s, float size);
     void         fonsSetFont(FONScontext *s, int font);
-    void         fonsSetBlur(FONScontext *s, int blur);
     void         fonsSetAlign(FONScontext *s, int align);
 
     float        fonsTextBounds(FONScontext *s, float x, float y, const char* str, const char* end, float* bounds);
@@ -110,12 +130,22 @@ namespace {
     bool         fonsTextIterInit(FONScontext *s, FONStextIter* iter, float x, float y, const char* str, const char* end, int bitmapOption);
     bool         fonsTextIterNext(FONScontext *s, FONStextIter* iter, FONSquad* quad);
 
+    // Unsupport blur temp
+    FONS_DROP   (fonsSetBlur);
     FONS_DROP   (fonsAddFont);
     FONS_DROP   (fonsAddFontMem);
     FONS_DROP   (fonsAddFallbackFont);
     FONS_DROP   (fonsAddFallbackFontId);
     FONS_DROP   (fonsResetFallbackFont);
     FONS_DROP   (fonsGetFontByName);
+
+    // Utils
+    inline int64_t FixedFloor(int64_t x) {
+        return ((x & -64) / 64);
+    }
+    inline int64_t FixedCeil(int64_t x) {
+        return (((x + 63) & -64) / 64);
+    }
 }
 
 // Import nanovg
@@ -158,12 +188,16 @@ class FontMetrics {
         int descender;
         int height;
         int max_advance;
+        int underline_position;
+        int underline_thickness;
 };
 class FontGlyph {
     public:
         GlyphMetrics m; //< Glyph Metrics
         PhyFont  *font; //< Font
         short x, y; //< In bitmap position
+        short size; //< Size of font
+        uint32_t idx; //< Glyph index
 };
 
 class PhyBlob : public Refable<PhyBlob>, public UnCopyable {
@@ -201,6 +235,9 @@ class PhyFont : public Refable<PhyFont>, public UnCopyable {
         int  face_index() const noexcept { return face->face_index & 0xFFFF; }
 
         auto glyph_metrics(uint32_t idx) -> GlyphMetrics;
+        auto glyph_index(uchar_t codepoint) -> uint32_t;
+        auto glyph_render(uint32_t idx, void *buf, int pitch, int pen_x, int pen_y) -> void;
+
 
         Ref<PhyBlob>   blob = {};
         FT_Face        face = {};
@@ -209,15 +246,60 @@ class PhyFont : public Refable<PhyFont>, public UnCopyable {
 };
 
 // For cache Glyph
+class AtlasNode {
+    public:
+        short x = 0;
+        short y = 0;
+        short width = 0;
+};
 class FontAtlas : public FONScontext, public UnCopyable {
     public:
-        FontAtlas() = default;
-        FontAtlas(int w, int h) : bitmap(w * h), width(w), height(h) {}
-        ~FontAtlas() = default;
+        FontAtlas() : FontAtlas(521, 512) {}
+        FontAtlas(int w, int h);
+        ~FontAtlas();
+
+        void add_dirty(int x, int y, int w, int h);
+        bool validate(int *dirty);
+        uint8_t *data(); 
+
+        // Measure
+        float text_bounds(float x, float y, const char* str, const char* end, float* bounds);
+        void  line_bounds(float y, float* miny, float* maxy);
+        void  metrics(float* ascender, float* descender, float* lineh);
+
+        FSize measure_text(u8string_view txt);
+
+        void  transform_back(float w, float h,float *x, float *y);
+
+        // Atlas interface
+        void expend(int w, int h);
+        void reset(int w, int h);
+
+        void atlas_init(int w, int h);
+        void atlas_cleanup();
+        void atlas_expend(int w, int h);
+        void atlas_reset(int w, int h);
+        void atlas_remove_node(int index);
+        bool atlas_insert_node(int index,int x,int width,int height);
+        bool atlas_add_skyline(int index,int x,int y,int w,int h);
+        int  atlas_rect_fits(int i,int w,int h);
+        bool atlas_add_rect(int x,int y,int *w,int *h);
+
+        // Glyph
+        FontGlyph *get_glyph(PhyFont *font, uchar_t codepoint, bool need_bitmap);
+
 
         std::vector<uint8_t> bitmap; //< Gray scale bitmap
+        int   dirty[4]; //< Left | Top => Right | Bottom
+
+        // Packer field
         int   width;
         int   height;
+        int   nnodes;
+        int   cnodes;
+        AtlasNode* nodes;
+
+        // State
         
         float size    = 0;
         float spacing = 0;
@@ -225,10 +307,15 @@ class FontAtlas : public FONScontext, public UnCopyable {
         float xdpi    = 72;
         float ydpi    = 72;
 
+        int   font    = FONS_INVALID;
+
         Alignment align = Alignment::Left | Alignment::Top;
 
         // Font used in this atlas
         std::vector<WeakRef<PhyFont>> fonts;
+
+        // Cached glyph [codepoint => glyph]
+        std::unordered_multimap<uchar_t, FontGlyph> glyphs;
 };
 
 class FtInitilizer : public UnCopyable {
@@ -298,6 +385,13 @@ class FontContext : public FtInitilizer {
 
             return f;
         }
+        Ref<PhyFont> query_font(int id) {
+            auto iter = fonts.find(id);
+            if (iter == fonts.end()) {
+                // TODO :
+            }
+            return iter->second.lock();
+        }
         // For storeing fonts
         std::unordered_map<u8string, WeakRef<PhyBlob>> blobs;
         std::unordered_map<int     , WeakRef<PhyFont>> fonts;
@@ -365,6 +459,52 @@ bool PhyFont::initailize(int index) {
 
     return err == FT_Err_Ok;
 }
+auto PhyFont::metrics() -> FontMetrics {
+    FontMetrics metrics;
+    if(FT_IS_SCALABLE(face)){
+        FT_Fixed scale = face->size->metrics.y_scale;
+        metrics.ascender   = FixedCeil(FT_MulFix(face->ascender, scale));
+        metrics.descender  = FixedCeil(FT_MulFix(face->descender, scale));
+        metrics.height   = FixedCeil(FT_MulFix(face->ascender - face->descender, scale));
+        metrics.underline_position = FixedFloor(FT_MulFix(face->underline_position, scale));
+        metrics.underline_thickness = FixedFloor(FT_MulFix(face->underline_thickness, scale));
+        metrics.max_advance = face->size->metrics.max_advance >> 6;
+    }
+    else{
+        metrics.ascender    = face->size->metrics.ascender >> 6;
+        metrics.descender   = face->size->metrics.descender >> 6;
+        metrics.height      = face->size->metrics.height >> 6;
+        metrics.max_advance = face->size->metrics.max_advance >> 6;
+        metrics.underline_position = face->underline_position >> 6;
+        metrics.underline_thickness = face->underline_thickness >> 6;
+    }
+
+}
+void PhyFont::set_size(float size, float xdpi, float ydpi) {
+    FT_Set_Char_Size(
+        face, 
+        size * 64,
+        size * 64,
+        xdpi,
+        ydpi
+    );
+}
+auto PhyFont::glyph_index(uchar_t codepoint) -> uint32_t {
+    return FT_Get_Char_Index(face, codepoint);
+}
+auto PhyFont::glyph_metrics(uint32_t idx) -> GlyphMetrics {
+    FT_Load_Glyph(face, idx, FT_LOAD_DEFAULT);
+    FT_GlyphSlot slot = face->glyph;
+
+    GlyphMetrics m;
+    m.width = slot->bitmap.width;
+    m.height = slot->bitmap.rows;
+    m.bitmap_left = slot->bitmap_left;
+    m.bitmap_top  = slot->bitmap_top;
+    m.advance_x   = slot->advance.x >> 6;
+
+    return m;
+}
 
 // Blob implementation
 PhyBlob::PhyBlob(u8string_view file) {
@@ -396,6 +536,380 @@ PhyBlob::~PhyBlob() {
     }
 }
 
+// FontAtlas
+FontAtlas::FontAtlas(int w, int h) : bitmap(w * h), dirty{w, h, 0, 0}, width(w), height(h) {
+    atlas_init(w, h);
+}
+FontAtlas::~FontAtlas() {
+    atlas_cleanup();
+}
+void FontAtlas::add_dirty(int x, int y, int w, int h) {
+    dirty[0] = min(dirty[0], x);
+    dirty[1] = min(dirty[1], y);
+    dirty[2] = max(dirty[2], x + w);
+    dirty[3] = max(dirty[3], y + h);
+}
+bool FontAtlas::validate(int *d) {
+    if (dirty[0] < dirty[2] && dirty[1] < dirty[3]) {
+        // Has dirty
+        for (int i = 0;i < 4; i++) {
+            d[i] = dirty[i];
+        }
+
+        dirty[0] = width;
+        dirty[1] = height;
+        dirty[2] = 0;
+        dirty[3] = 0;
+        return true;
+    }
+    return false;
+}
+
+void FontAtlas::expend(int w, int h) {
+    auto prev_w = width;
+    auto prev_h = height;
+    w = max(w, width);
+    h = max(h, height);
+
+    if(w == width && h == height){
+        return;
+    }
+    
+    std::vector<uint8_t> new_map(w * h);
+    //Copy old map to new map
+    for(int y = 0;y < width; y++) {
+        for(int x = 0;x < height; x++) {
+            new_map[y * w + x] = bitmap[y * width + x];
+        }
+    }
+    //Increase atlas size
+    atlas_expend(w, h);
+
+    //Mark as dirty
+    short maxy = 0;
+    for(int i = 0;i < nnodes;i++){
+        maxy = max(maxy, nodes[i].y);
+    }
+
+    dirty[0] = 0;
+    dirty[1] = 0;
+    dirty[2] = prev_w;
+    dirty[3] = maxy;
+
+    bitmap = std::move(new_map);
+}
+void FontAtlas::reset(int w, int h) {
+    bitmap.resize(w * h);
+    atlas_reset(w, h);
+    dirty[0] = w;
+    dirty[1] = h;
+    dirty[2] = 0;
+    dirty[3] = 0;
+
+    glyphs.clear();
+}
+
+FontGlyph *FontAtlas::get_glyph(PhyFont *ft, uchar_t codepoint, bool need_bitmap) {
+    auto iter = glyphs.find(codepoint);
+    auto num  = glyphs.count(codepoint);
+
+    FontGlyph *glyph = nullptr;
+
+    if (iter != glyphs.end()) {
+        // Hit
+        while (num) {
+            -- num;
+            auto &gl = iter->second;
+            if (gl.font != ft || gl.size == gl.size) {
+                glyph = &gl;
+                break;
+            }
+        }
+    }
+    if (!glyph) {
+        // Make a new one
+        ft->set_size(size, xdpi, ydpi);
+        auto idx = ft->glyph_index(codepoint);
+        auto metrics = ft->glyph_metrics(idx);
+
+        FontGlyph g;
+        g.font = ft;
+        g.idx = idx;
+        g.m = metrics;
+        g.size = size;
+        g.x = -1;
+        g.y = -1;
+
+        auto iter = glyphs.emplace(std::make_pair(codepoint, g));
+        glyph = &iter->second;
+    }
+
+
+    if (need_bitmap && glyph->x < 0 & glyph->y < 0) {
+        // Need raster
+        ft->set_size(size, xdpi, ydpi);
+        
+        // Alloc space
+        int x, y;
+        if (!atlas_add_rect(glyph->m.width, glyph->m.height, &x, &y)) {
+            // No encough space
+            return nullptr;
+        }
+
+        glyph->x = x;
+        glyph->y = y;
+
+        ft->glyph_render(glyph->idx, bitmap.data(), width, x, y);
+
+        add_dirty(x, y, glyph->m.width, glyph->m.height);
+    }
+    return glyph;
+}
+FSize FontAtlas::measure_text(u8string_view txt) {
+    auto ft = pt_runtime->query_font(font);
+
+    // Query Global metrics
+    ft->set_size(size, xdpi, ydpi);
+    auto metrics = ft->metrics();
+
+    float w = 0;
+    float h = 0;
+
+    uint32_t prev = 0;
+    bool first = true;
+
+    for (uchar_t codepoint : txt) {
+        if (!first) {
+            w += spacing;
+        }
+        else {
+            first = false;
+        }
+        auto g = get_glyph(ft.get(), codepoint, FONS_GLYPH_BITMAP_OPTIONAL);
+        int yoffset = metrics.ascender - g->m.bitmap_top;
+
+        h = max<float>(h, g->m.height);
+        h = max<float>(h, g->m.height + yoffset);
+        w += g->m.advance_x;
+    }
+    return FSize(w, h);
+}
+float FontAtlas::text_bounds(float x, float y, const char* str, const char* end, float* bounds) {
+    if (!end) {
+        end = str + strlen(str);
+    }
+    auto [w, h] = measure_text(u8string_view(str, end - str));
+
+    // Back to Left | Top
+    transform_back(w, h, &x, &y);
+
+    if (bounds) {
+        bounds[0] = x;
+        bounds[1] = y;
+        bounds[2] = x + w;
+        bounds[3] = y + h;
+    }
+
+    return w;
+}
+void FontAtlas::line_bounds(float y, float *miny, float *maxy){
+    auto ft = pt_runtime->query_font(font);
+    
+    // Query Global metrics
+    ft->set_size(size, xdpi, ydpi);
+    auto metrics = ft->metrics();
+
+    if ((align & Alignment::Top) == Alignment::Top) {
+        // Nothing
+    }
+    else if ((align & Alignment::Middle) == Alignment::Middle) {
+        y -= metrics.height / 2;
+    }
+    else if ((align & Alignment::Baseline) == Alignment::Middle) {
+        y -= metrics.ascender;
+    }
+    else if ((align & Alignment::Bottom) == Alignment::Bottom) {
+        y -= metrics.height;
+    }
+
+    if (miny) {
+        *miny = y;
+    }
+    if (maxy) {
+        *maxy = y + metrics.height;
+    }
+}
+void FontAtlas::transform_back(float w, float h,float *x, float *y) {
+    if ((align & Alignment::Right) == Alignment::Right) {
+        *x -= w;
+    }
+    if ((align & Alignment::Bottom) == Alignment::Bottom) {
+        *y -= h;
+    }
+    if ((align & Alignment::Center) == Alignment::Center) {
+        *x -= w / 2;
+    }
+    if ((align & Alignment::Middle) == Alignment::Middle) {
+        *y -= h / 2;
+    }
+    if ((align & Alignment::Baseline) == Alignment::Baseline) {
+        // TODO 
+        *y -= h / 2;
+    }
+}
+
+// Atlas packer
+void FontAtlas::atlas_init(int w, int h) {
+    // Allocate memory for the font stash.
+    int n = 255;
+    
+    width = w;
+    height = h;
+
+    // Allocate space for skyline nodes
+    nodes = (AtlasNode*)Btk_malloc(sizeof(AtlasNode) * n);
+    Btk_memset(nodes, 0, sizeof(AtlasNode) * n);
+    nnodes = 0;
+    cnodes = n;
+
+    // Init root node.
+    nodes[0].x = 0;
+    nodes[0].y = 0;
+    nodes[0].width = (short)w;
+    nnodes++;
+}
+void FontAtlas::atlas_cleanup() {
+    Btk_free(nodes);
+}
+bool FontAtlas::atlas_insert_node(int idx, int x, int y, int w) {
+    int i;
+    // Insert node
+    if (nnodes+1 > cnodes) {
+        cnodes = cnodes == 0 ? 8 : cnodes * 2;
+        nodes = (AtlasNode*)Btk_realloc(nodes, sizeof(AtlasNode) * cnodes);
+        if (nodes == nullptr)
+            return false;
+    }
+    for (i = nnodes; i > idx; i--)
+        nodes[i] = nodes[i-1];
+    nodes[idx].x = (short)x;
+    nodes[idx].y = (short)y;
+    nodes[idx].width = (short)w;
+    nnodes++;
+    return true;
+}
+void FontAtlas::atlas_remove_node(int idx) {
+    int i;
+    if (nnodes == 0) return;
+    for (i = idx; i < nnodes-1; i++)
+        nodes[i] = nodes[i+1];
+    nnodes--;
+}
+void FontAtlas::atlas_expend(int w,int h) {
+    // Insert node for empty space
+    if (w > width)
+        atlas_insert_node(nnodes, width, 0, w - width);
+    width = w;
+    height = h;
+}
+void FontAtlas::atlas_reset(int w,int h) {
+    width = w;
+    height = h;
+    nnodes = 0;
+
+    // Init root node.
+    nodes[0].x = 0;
+    nodes[0].y = 0;
+    nodes[0].width = (short)w;
+    nnodes++;
+}
+bool FontAtlas::atlas_add_skyline(int idx, int x, int y, int w, int h) {
+    int i;
+
+    // Insert new node
+    if (atlas_insert_node(idx, x, y+h, w) == 0)
+        return false;
+
+    // Delete skyline segments that fall under the shadow of the new segment.
+    for (i = idx+1; i < nnodes; i++) {
+        if (nodes[i].x < nodes[i-1].x + nodes[i-1].width) {
+            int shrink = nodes[i-1].x + nodes[i-1].width - nodes[i].x;
+            nodes[i].x += (short)shrink;
+            nodes[i].width -= (short)shrink;
+            if (nodes[i].width <= 0) {
+                atlas_remove_node(i);
+                i--;
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    // Merge same height skyline segments that are next to each other.
+    for (i = 0; i < nnodes-1; i++) {
+        if (nodes[i].y == nodes[i+1].y) {
+            nodes[i].width += nodes[i+1].width;
+            atlas_remove_node(i+1);
+            i--;
+        }
+    }
+
+    return true;
+}
+int  FontAtlas::atlas_rect_fits(int i, int w, int h){
+    // Checks if there is enough space at the location of skyline span 'i',
+    // and return the max height of all skyline spans under that at that location,
+    // (think tetris block being dropped at that position). Or -1 if no space found.
+    int x = nodes[i].x;
+    int y = nodes[i].y;
+    int spaceLeft;
+    if (x + w > width)
+        return -1;
+    spaceLeft = w;
+    while (spaceLeft > 0) {
+        if (i == nnodes) return -1;
+        y = std::max<int>(y, nodes[i].y);
+        if (y + h > height) return -1;
+        spaceLeft -= nodes[i].width;
+        ++i;
+    }
+    return y;
+}
+bool FontAtlas::atlas_add_rect(int rw, int rh, int* rx, int* ry){
+
+    int besth = height, bestw = width, besti = -1;
+    int bestx = -1, besty = -1, i;
+
+    // Bottom left fit heuristic.
+    for (i = 0; i < nnodes; i++) {
+        int y = atlas_rect_fits(i, rw, rh);
+        if (y != -1) {
+            if (y + rh < besth || (y + rh == besth && nodes[i].width < bestw)) {
+                besti = i;
+                bestw = nodes[i].width;
+                besth = y + rh;
+                bestx = nodes[i].x;
+                besty = y;
+            }
+        }
+    }
+
+    if (besti == -1)
+        return false;
+
+    // Perform the actual packing.
+    if (atlas_add_skyline(besti, bestx, besty, rw, rh) == 0)
+        return false;
+
+    *rx = bestx;
+    *ry = besty;
+
+    return 1;
+}
+
+
 BTK_NS_END2()
 
 
@@ -417,12 +931,27 @@ class PainterPathNode {
 
 class PainterPathImpl {
     public:
-        std::vector<PainterPathNode> nodes;
+        // std::vector<PainterPathNode> nodes;
+        // This way save more memory
+        std::vector<float> data;
+
+        // Opcode : Datalen
+        // MoveTo   x , y    3 float
+        // LineTo   x , y    3 float
+        // QuadTo   xy, xy   5 float
+        // ClosePath  [Empty] 1 float
 };
 
 class BrushImpl   : public Refable<BrushImpl>, public Trackable {
     public:
-
+        std::variant<
+            LinearGradient, 
+            RadialGradient, 
+            PixBuffer, 
+            GLColor
+        > data = Color::Black;
+        CoordinateMode mode = CoordinateMode::Relative;
+        BrushType      type = BrushType::Solid;
 };
 class FontImpl    : public Refable<FontImpl> {
     public:
@@ -533,7 +1062,11 @@ void Painter::set_colorf(float r, float g, float b, float a) {
     nvgStrokeColor(priv->nvg_ctxt, nvgRGBAf(r, g, b, a));
 }
 void Painter::set_font(const Font &f) {
-
+    int id = FONS_INVALID;
+    if (!f.empty()) {
+        id = f.priv->font->id;
+    }
+    nvgFontFaceId(priv->nvg_ctxt, id);
 }
 void Painter::set_brush(const Brush &b) {
 
@@ -617,3 +1150,53 @@ Painter Painter::FromWindow(AbstractWindow *win) {
 
 
 BTK_NS_END
+
+
+// Implmentation of fontstash, just forwward the args to FontAtlas
+// FONScontext is just for cap
+
+namespace {
+    FONScontext *fonsCreateInternal(FONSparams *param) {
+        return new FontAtlas(param->width, param->height);
+    }
+    void         fonsDeleteInternal(FONScontext *s) {
+        delete static_cast<FontAtlas*>(s);
+    }
+
+    bool         fonsValidateTexture(FONScontext *s, int *dirty) {
+        return static_cast<FontAtlas*>(s)->validate(dirty);
+    }
+    uint8_t     *fonsGetTextureData(FONScontext *s, int *width, int *height) {
+        auto ctxt = static_cast<FontAtlas*>(s);
+        if (width) {
+            *width = ctxt->width;
+        }
+        if (height) {
+            *height = ctxt->height;
+        }
+        return ctxt->bitmap.data();
+    }
+
+    void         fonsSetSpacing(FONScontext *s, float spacing) {
+        static_cast<FontAtlas*>(s)->spacing = spacing;
+    }
+    void         fonsSetSize(FONScontext *s, float size) {
+        static_cast<FontAtlas*>(s)->size = size;
+    }
+    void         fonsSetFont(FONScontext *s, int font) {
+        static_cast<FontAtlas*>(s)->font = font;
+    }
+    void         fonsSetAlign(FONScontext *s, int align) {
+        static_cast<FontAtlas*>(s)->align = Alignment(align);
+    }
+
+    float        fonsTextBounds(FONScontext *s, float x, float y, const char* str, const char* end, float* bounds) {
+        return static_cast<FontAtlas*>(s)->text_bounds(x, y, str, end, bounds);
+    }
+    void         fonsLineBounds(FONScontext *s, float y, float* miny, float* maxy) {
+        return static_cast<FontAtlas*>(s)->line_bounds(y, miny, maxy);
+    }
+    void         fonsVertMetrics(FONScontext *s, float* ascender, float* descender, float* lineh) {
+        // TODO 
+    }
+}

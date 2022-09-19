@@ -1,4 +1,5 @@
 #include "build.hpp"
+#include "common/dlloader.hpp"
 
 #include <Btk/context.hpp>
 #include <unordered_map>
@@ -67,6 +68,14 @@ using PFNwglCreateContextAttribsARB = HGLRC (WINAPI *)(HDC h, HGLRC share, const
 using PFNwglGetExtensionsStringARB = const char *(WINAPI *)(HDC h);
 using PFNwglSetSwapIntervalEXT = BOOL (WINAPI *)(int interval);
 
+// User32 library
+LIB_BEGIN(Win32User32, "user32.dll")
+    // 
+    LIB_PROC4(BOOL(* WINAPI)(LPRECT, DWORD, BOOL, DWORD, UINT), AdjustWindowRectExForDpi)
+    LIB_PROC4(UINT(* WINAPI)(HWND), GetDpiForWindow)
+    LIB_PROC4(UINT(* WINAPI)()    , GetDpiForSystem)
+LIB_END(Win32User32)
+
 // Make sure the MSG can be casted to a Win32Callback
 static_assert(sizeof(LPARAM) >= sizeof(void *));
 static_assert(sizeof(WPARAM) >= sizeof(void *));
@@ -102,6 +111,7 @@ class Win32Window : public AbstractWindow {
         void       set_textinput_rect(const Rect &r) override;
 
         bool       set_flags(WindowFlags attr) override;
+        bool       set_value(int conf, ...)    override;
 
         pointer_t  native_handle(int what) override;
         widget_t   bind_widget(widget_t w) override;
@@ -153,7 +163,7 @@ class Win32Window : public AbstractWindow {
         WINDOWPLACEMENT prev_placement;
 };
 
-class Win32Driver : public GraphicsDriver {
+class Win32Driver : public GraphicsDriver, public Win32User32 {
     public:
         Win32Driver();
         ~Win32Driver();
@@ -198,6 +208,7 @@ class Win32GLContext : public GLContext {
         void swap_buffers() override;
 
         bool  initialize(const GLFormat &format) override;
+        bool  make_current()              override;
         bool  set_swap_interval(int v)    override;
         Size  get_drawable_size() override;
         void *get_proc_address(const char_t *name) override;
@@ -352,7 +363,7 @@ Win32Driver::Win32Driver() {
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.lpszClassName = L"BtkWindow";
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    wc.hbrBackground = (HBRUSH)COLOR_WINDOW;
+    wc.hbrBackground = (HBRUSH)0;
     wc.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
     wc.hIconSm = LoadIcon(nullptr, IDI_APPLICATION);
     RegisterClassExW(&wc);
@@ -389,6 +400,39 @@ Win32Driver::Win32Driver() {
 
     // Set the instance
     win32_driver = this;
+
+    // Set the fallback
+    if (!GetDpiForWindow) {
+        GetDpiForWindow = [](HWND h) -> UINT {
+            HDC dc = GetDC(h);
+            UINT dpi = GetDeviceCaps(dc, LOGPIXELSX);
+            ReleaseDC(h, dc);
+            return dpi;
+        };
+    }
+    if (!GetDpiForSystem) {
+        GetDpiForSystem = []() -> UINT {
+            return win32_driver->GetDpiForWindow(GetDesktopWindow());
+        };
+    }
+    if (!AdjustWindowRectExForDpi) {
+        AdjustWindowRectExForDpi = [](LPRECT rect, DWORD style, BOOL has_menu, DWORD exstyle, UINT dpi) -> BOOL {
+            if (!AdjustWindowRectEx(rect, style, has_menu, exstyle)) {
+                return FALSE;
+            }
+            // Scale by dpi
+            UINT width = rect->right - rect->left;
+            UINT height = rect->bottom - rect->top;
+
+            width = MulDiv(width, dpi, 96);
+            height = MulDiv(height, dpi, 96);
+
+            rect->right = rect->left + width;
+            rect->bottom = rect->top + height;
+
+            return TRUE;
+        };
+    }
 
 #if !defined(NDEBUG)
     // Initialize the debug 
@@ -628,13 +672,30 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             widget->handle(event);
             break;
         }
-        // case WM_GETMINMAXINFO : {
-        //     MINMAXINFO *mmi = (MINMAXINFO*)lparam;
-        //     if (win->maximum_size.is_valid()) {
-
-        //     }
-        //     break;
-        // }
+        case WM_GETMINMAXINFO : {
+            MINMAXINFO *mmi = (MINMAXINFO*)lparam;
+            if (win->maximum_size.is_valid()) {
+                auto rect = win->adjust_rect(
+                    0, 
+                    0, 
+                    win->btk_to_client(win->maximum_size.w), 
+                    win->btk_to_client(win->maximum_size.h)
+                );
+                mmi->ptMaxTrackSize.x = rect.right - rect.left;
+                mmi->ptMaxTrackSize.y = rect.bottom - rect.top;
+            }
+            if (win->minimum_size.is_valid()) {
+                auto rect = win->adjust_rect(
+                    0, 
+                    0, 
+                    win->btk_to_client(win->minimum_size.w), 
+                    win->btk_to_client(win->minimum_size.h)
+                );
+                mmi->ptMinTrackSize.x = rect.right - rect.left;
+                mmi->ptMinTrackSize.y = rect.bottom - rect.top;
+            }
+            break;
+        }
         // case WM_COMMAND : {
         //     printf("Menu command %d\n", wparam);
         //     break;
@@ -1342,8 +1403,48 @@ bool     Win32Window::set_flags(WindowFlags new_flags) {
             );
         }
     }
+    if (bit_changed(WindowFlags::Transparent)) {
+        DWORD new_ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        if (bool(new_flags & WindowFlags::Transparent)) {
+            new_ex_style |= WS_EX_LAYERED;
+        }
+        else {
+            new_ex_style ^= WS_EX_LAYERED;
+        }
+
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_ex_style);
+        win_ex_style = new_ex_style;
+
+        if (bool(new_flags & WindowFlags::Transparent)) {
+            SetLayeredWindowAttributes(hwnd, RGB(0, 0, 0), 1, LWA_COLORKEY);
+        }
+        // TODO :
+    }
     flags = new_flags;
     return err == 0;
+}
+bool     Win32Window::set_value(int conf, ...) {
+    va_list varg;
+    va_start(varg, conf);
+    bool ret = true;
+
+    switch (conf) {
+        case MinimumSize : {
+            minimum_size = *va_arg(varg, Size*);
+            break;
+        }
+        case MaximumSize : {
+            maximum_size = *va_arg(varg, Size*);
+            break;
+        }
+        default : {
+            ret = false;
+            break;
+        }
+    }
+
+    va_end(varg);
+    return ret;
 }
 void     Win32Window::set_textinput_rect(const Rect &rect) {
     auto imc = ImmGetContext(hwnd);
@@ -1381,7 +1482,11 @@ pointer_t Win32Window::native_handle(int what) {
 }
 any_t     Win32Window::gc_create(const char_t *name) {
     if (_stricmp(name, "opengl") == 0) {
-        // return new Win32GLContext(hwnd);
+        if (SetWindowLongPtrW(hwnd, GWL_STYLE, GetWindowLongPtrW(hwnd, GWL_STYLE) | CS_OWNDC) == 0) {
+            // Failed
+            return nullptr;
+        }
+        return new Win32GLContext(hwnd);
     }
     return nullptr;
 }
@@ -1590,7 +1695,7 @@ RECT Win32Window::adjust_rect(int x, int y, int w, int h) {
     rect.top  = y;
     rect.right = x + w;
     rect.bottom = y + h;
-    AdjustWindowRectExForDpi(&rect, win_style, has_menu, win_ex_style, GetDpiForWindow(hwnd));
+    driver->AdjustWindowRectExForDpi(&rect, win_style, has_menu, win_ex_style, driver->GetDpiForWindow(hwnd));
     return rect;
 }
 int Win32Window::client_to_btk(int v) const { 
@@ -1613,6 +1718,7 @@ POINTS Win32Window::btk_to_client(POINTS s) const {
 // Win32GLContext
 Win32GLContext::Win32GLContext(HWND h) {
     hwnd  = h;
+    hdc   = GetDC(h);
 }
 Win32GLContext::~Win32GLContext() {
     if (hglrc) {
@@ -1628,7 +1734,7 @@ void Win32GLContext::begin() {
 
     if (prev_rc != hglrc) {
         if (hwnd != nullptr) {
-            hdc = GetDC(hwnd);
+            // hdc = GetDC(hwnd);
         }
         wglMakeCurrent(hdc, hglrc);
     }
@@ -1639,7 +1745,7 @@ void Win32GLContext::begin() {
 }
 void Win32GLContext::end() {
     if (hwnd != nullptr) {
-        ReleaseDC(hwnd, hdc);
+        // ReleaseDC(hwnd, hdc);
     }
 
     if (prev_rc) {
@@ -1662,9 +1768,9 @@ bool Win32GLContext::initialize(const GLFormat &format) {
     d.cStencilBits = format.stencil_size;
     d.iLayerType = PFD_MAIN_PLANE;
 
-    if (hwnd) {
-        hdc = GetDC(hwnd);
-    }
+    // if (hwnd) {
+    //     hdc = GetDC(hwnd);
+    // }
 
     auto pf = ChoosePixelFormat(hdc, &d);
     if (pf == 0) {
@@ -1683,10 +1789,13 @@ bool Win32GLContext::initialize(const GLFormat &format) {
     wglSetSwapIntervalEXT = (PFNwglSetSwapIntervalEXT) wglGetProcAddress("wglSwapIntervalEXT");
 
     // Clenup
-    if (hwnd) {
-        ReleaseDC(hwnd, hdc);
-    }
+    // if (hwnd) {
+    //     ReleaseDC(hwnd, hdc);
+    // }
     return true;
+}
+bool Win32GLContext::make_current() {
+    return wglMakeCurrent(hdc, hglrc);
 }
 bool Win32GLContext::set_swap_interval(int v) {
     if (wglSetSwapIntervalEXT) {
