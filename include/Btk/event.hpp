@@ -56,6 +56,8 @@ class Event {
             DropEnd     = WidgetEvent + 28, //< Drop end
             StyleChanged= WidgetEvent + 29, //< Style changed
             FontChanged = WidgetEvent + 30, //< Font changed
+            PaletteChanged = WidgetEvent + 31, // < Palette changed
+            LayoutRequest  = WidgetEvent + 32, // < Layout changed
 
             WidgetEnd ,
 

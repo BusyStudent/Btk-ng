@@ -36,6 +36,7 @@ enum class PainterFeature : uint8_t {
     Antialias,         //< Does the painter support antialiasing?
     Gradient,          //< Does the painter support gradient?
     Effect,            //< Does the painter support effect?
+    Dash,              //< Does the painter support dash?
     Path,              //< Does the painter support rendering paths?
 };
 enum class EffectParam : uint8_t {
@@ -50,6 +51,14 @@ enum class PathWinding : uint8_t {
 
     Solid = CW,
     Hole  = CCW,
+};
+enum class DashStyle : uint8_t {
+    Solid,
+    Dash,
+    Dot,
+    DashDot,
+    DashDotDot,
+    Custom, //< User defined
 };
 enum class FontStyle : uint8_t {
     Normal = 0,
@@ -239,7 +248,7 @@ class BTKAPI Brush {
         void set_gradient(const RadialGradient &g);
 
         BrushType type() const;
-        
+        GLColor   color() const;
     private:
         void begin_mut();
 
@@ -261,6 +270,7 @@ class BTKAPI Texture {
         bool empty() const;
         Size size() const;
         void update(const Rect *where, cpointer_t data, uint32_t pitch);
+        void set_interpolation_mode(InterpolationMode mode);
 
         Texture &operator =(Texture      &&);
         Texture &operator =(std::nullptr_t );
@@ -314,6 +324,10 @@ class BTKAPI TextLayout {
     friend class Painter;
 };
 
+/**
+ * @brief Native imaging effect for painter (maybe unavliable)
+ * 
+ */
 class BTKAPI PainterEffect {
     public:
         PainterEffect();
@@ -335,7 +349,28 @@ class BTKAPI PainterEffect {
     friend class Painter;
 };
 
-class BTKAPI PainterPath {
+/**
+ * @brief Receiver of path (method object)
+ * 
+ */
+class PainterPathSink {
+    public:
+        virtual void open() = 0;
+        virtual void close() = 0;
+
+        virtual void move_to(float x, float y) = 0;
+        virtual void line_to(float x, float y) = 0;
+        virtual void quad_to(float x1, float y1, float x2, float y2) = 0;
+        virtual void bezier_to(float x1, float y1, float x2, float y2, float x3, float y3) = 0;
+
+        virtual void close_path() = 0;
+};
+
+/**
+ * @brief Container of path, (implemented in native way)
+ * 
+ */
+class BTKAPI PainterPath : public PainterPathSink {
     public:
         PainterPath();
         PainterPath(PainterPath &&);
@@ -343,13 +378,13 @@ class BTKAPI PainterPath {
 
         // Before modifying paths, call open()
         // And after modifying paths, call close()
-        void open();
-        void close();
+        void open() override;
+        void close() override;
 
-        void move_to(float x, float y);
-        void line_to(float x, float y);
-        void quad_to(float x1, float y1, float x2, float y2);
-        void bezier_to(float x1, float y1, float x2, float y2, float x3, float y3);
+        void move_to(float x, float y) override;
+        void line_to(float x, float y) override;
+        void quad_to(float x1, float y1, float x2, float y2) override;
+        void bezier_to(float x1, float y1, float x2, float y2, float x3, float y3) override;
 
         // Point version
         void move_to(const FPoint &point);
@@ -361,11 +396,15 @@ class BTKAPI PainterPath {
         // void add_rect(float x, float y, float w, float h);
 
 
-        void close_path();
+        void close_path() override;
 
         // Query
         FRect bounding_box() const;
         bool  contains(float x, float y) const;
+        void  stream(PainterPathSink *sink) const;
+
+        // Transform
+        void  set_transform(const FMatrix &mat);
 
         PainterPath &operator =(PainterPath &&);
     private:
@@ -427,6 +466,7 @@ class BTKAPI Pen {
         void set_dash_pattern(float pattern) {
             set_dash_pattern(&pattern, 1);
         }
+        void set_dash_style(DashStyle style);
         void set_dash_offset(float offset);
         void set_miter_limit(float limit);
         void set_line_join(LineJoin join);
@@ -491,6 +531,7 @@ class BTKAPI Painter {
         void fill_rect(const FRect &);
         void fill_rounded_rect(const FRect &, float r);
         void fill_path(const PainterPath &paths);
+        void fill_mask(const Texture &mask, const FRect *dst, const FRect *src);
 
         // Scissor
         void push_scissor(float x, float y, float w, float h);
@@ -511,6 +552,8 @@ class BTKAPI Painter {
         void skew_x(float angle);
         void skew_y(float angle);
         void reset_transform();
+        void push_transform();
+        void pop_transform();
         auto transform_matrix() -> FMatrix;
 
         // Texture

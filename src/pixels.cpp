@@ -2,6 +2,7 @@
 
 #include <Btk/painter.hpp>
 #include <Btk/pixels.hpp>
+#include <array>
 
 #if  defined(_WIN32)
 #include <wincodec.h> //< Load image from file / memory
@@ -105,7 +106,25 @@ uint32_t PixBuffer::pixel_at(int x, int y) const {
     uint8_t bytes_per_pixel = this->bytes_per_pixel();
     const uint8_t *buf = static_cast<const uint8_t*>(_pixels) + (y * _pitch) + (x * bytes_per_pixel);
     uint32_t pix = 0;
-    Btk_memcpy(&pix, buf, bytes_per_pixel);
+
+    switch (bytes_per_pixel) {
+        case sizeof(uint8_t) : {
+            pix = *buf;
+            break;
+        } 
+        case sizeof(uint16_t) : {
+            pix = *reinterpret_cast<const uint16_t*>(buf);
+            break;
+        }
+        case sizeof(uint32_t) : {
+            pix = *reinterpret_cast<const uint32_t*>(buf);
+            break;
+        }
+        default : {
+            Btk_memcpy(&pix, buf, bytes_per_pixel);
+            break;
+        }
+    }
     return pix;
 }
 Color   PixBuffer::color_at(int x, int y) const {
@@ -123,10 +142,30 @@ void   PixBuffer::set_color(int x, int y, Color c) {
     pix |= (c.g << _gshift);
     pix |= (c.b << _bshift);
     pix |= (c.a << _ashift);
-
+    set_pixel(x, y, pix);
+}
+void   PixBuffer::set_pixel(int x, int y, uint32_t pix) {
     uint8_t bytes_per_pixel = this->bytes_per_pixel();
     uint8_t *buf = static_cast<uint8_t*>(_pixels) + (y * _pitch) + (x * bytes_per_pixel);
-    Btk_memcpy(buf, &pix, bytes_per_pixel);
+    
+    switch (bytes_per_pixel) {
+        case sizeof(uint8_t) : {
+            *buf = pix;
+            break;
+        } 
+        case sizeof(uint16_t) : {
+            *reinterpret_cast<uint16_t*>(buf) = pix;
+            break;
+        }
+        case sizeof(uint32_t) : {
+            *reinterpret_cast<uint32_t*>(buf) = pix;
+            break;
+        }
+        default : {
+            Btk_memcpy(buf, &pix, bytes_per_pixel);
+            break;
+        }
+    }
 }
 
 PixBuffer PixBuffer::clone() const {
@@ -163,7 +202,16 @@ PixBuffer PixBuffer::resize(int w, int h) const {
     );
     return buf;
 #else
-    return PixBuffer();
+    PixBuffer buf(w, h);
+
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            int src_x = _width  * (float(w) / float(x));
+            int src_y = _height * (float(h) / float(y));
+
+            buf.set_color(x, y, color_at(src_x, src_y));
+        }
+    }
 #endif
 }
 
@@ -178,6 +226,266 @@ PixBuffer PixBuffer::convert(PixFormat fmt) const {
     }
     
     return dst;
+}
+PixBuffer PixBuffer::filter2d(const double *kernel, int kw, int kh, uint8_t ft_alpha) const {
+    PixBuffer buf(_width, _height);
+    double sums[4];
+    
+    for (int y = 0; y < _height; y++) {
+        for (int x = 0; x < _width; x++) {
+            // Zero buffer
+            Btk_memset(sums, 0, sizeof(sums));
+
+            for (int ky = 0; ky < kh; ky ++) {
+                for (int kx = 0; kx < kw; kx ++) {
+                    int px = x - (kw) / 2 + kx;
+                    int py = y - (kh) / 2 + ky;
+
+                    Color color;
+
+                    // Map out of range coord
+                    if (px < 0) {
+                        px = -px;
+                    }
+                    if (py < 0) {
+                        py = -py;
+                    }
+                    if (px >= _width) {
+                        px = _width - (px - _width + 1);
+                    }
+                    if (py >= _height) {
+                        py = _height -(py - _height + 1);
+                    }
+                    color = color_at(px, py);
+
+                    sums[0] += color.r * kernel[ky * kw + kx];
+                    sums[1] += color.g * kernel[ky * kw + kx];
+                    sums[2] += color.b * kernel[ky * kw + kx];
+                    sums[3] += color.a * kernel[ky * kw + kx];
+                }
+            }
+            
+            for (auto &value : sums) {
+                value = clamp(value, 0.0, 255.0);
+            }
+            if (!ft_alpha) {
+                sums[3] = 255.0;
+            }
+
+            Color dst = Color(sums[0], sums[1], sums[2], sums[3]);
+            buf.set_color(x, y, dst);
+        }
+    }
+    return buf;
+}
+PixBuffer PixBuffer::blur(float r) const {
+    if (r <= 0) {
+        return ref();
+    }
+
+    // Fast blur algorithm from https://blog.ivank.net/fastest-gaussian-blur.html
+    PixBuffer dest(_width, _height);
+    PixBuffer source = clone();
+
+    auto make_guassion_box = [](float sigma, int nbox) -> std::array<int, 3> {
+        assert(nbox == 3);
+
+        auto ideal = std::sqrt(12 * sigma * sigma *nbox + 1);
+        int  wl = std::floor(ideal);
+
+        if (wl % 2 == 0) {
+            wl -= 1;
+        }
+
+        int wu = wl + 2;
+
+        ideal = (12 * sigma * sigma - nbox * wl * wl - 4 * nbox *wl - 3 * nbox) / (-4 * wl - 4);
+        int m = std::round(ideal);
+
+        std::array<int, 3> ret;
+        for (int i = 0;i < nbox; i ++) {
+            ret[i] = i < m ? wl : wu;
+        }
+        return ret;
+    };
+    auto round_color = [](int64_t sums[4], float factor) -> Color {
+        return Color(
+            std::round(sums[0] * factor),
+            std::round(sums[1] * factor),
+            std::round(sums[2] * factor),
+            std::round(sums[3] * factor)
+        );
+    };
+    auto do_boxlur_h = [&](PixBuffer &dst, const PixBuffer &src, int r) {
+        float factor = 1.0f / (r + r + 1);
+        for (int i = 0;i < src.height(); i++) {
+            int ti = i * src.width(), li = ti, ri = ti + r;
+            auto fv = src.color_at(ti, 0);
+            auto lv = src.color_at(ti + src.width() - 1, 0);
+
+            int64_t sums[4];
+            sums[0] = (r + 1) * int64_t(fv.r);
+            sums[1] = (r + 1) * int64_t(fv.g);
+            sums[2] = (r + 1) * int64_t(fv.b);
+            sums[3] = (r + 1) * int64_t(fv.a);
+
+            for(int j = 0  ; j <  r ; j++) {
+                auto c = src.color_at(ti + j, 0);
+                sums[0] += c.r;
+                sums[1] += c.g;
+                sums[2] += c.b;
+                sums[3] += c.a;
+            }
+            for(int j = 0  ; j <= r ; j++) {
+                auto c = src.color_at(ri++, 0);
+                sums[0] += c.r - fv.r;
+                sums[1] += c.g - fv.g;
+                sums[2] += c.b - fv.b;
+                sums[3] += c.a - fv.a;
+
+                dst.set_color(ti++, 0, round_color(sums, factor));
+            }
+            for(int j = r + 1; j < src.width() - r; j++) { 
+                auto a = src.color_at(ri++, 0);
+                auto b = src.color_at(li++, 0);
+
+                sums[0] += int64_t(a.r) - int64_t(b.r);
+                sums[1] += int64_t(a.g) - int64_t(b.g);
+                sums[2] += int64_t(a.b) - int64_t(b.b);
+                sums[3] += int64_t(a.a) - int64_t(b.a);
+
+                dst.set_color(ti++, 0, round_color(sums, factor));
+            }
+            for(int j = src.width() - r; j < src.width()  ; j++) { 
+                auto b = src.color_at(li++, 0);
+                sums[0] += int64_t(lv.r) - int64_t(b.r);
+                sums[1] += int64_t(lv.g) - int64_t(b.g);
+                sums[2] += int64_t(lv.b) - int64_t(b.b);
+                sums[3] += int64_t(lv.a) - int64_t(b.a);
+
+                dst.set_color(ti++, 0, round_color(sums, factor));
+            }
+
+        }
+    };
+    auto do_boxlur_v = [&](PixBuffer &dst, const PixBuffer &src, int r) {
+        float factor = 1.0f / (r + r + 1);
+        for (int i = 0;i < src.width(); i++) {
+            int ti = i, li = ti, ri = ti + r * src.width();
+            auto fv = src.color_at(ti, 0);
+            auto lv = src.color_at(ti + src.width() * (src.height() - 1), 0);
+
+            int64_t sums[4];
+            sums[0] = (r + 1) * int64_t(fv.r);
+            sums[1] = (r + 1) * int64_t(fv.g);
+            sums[2] = (r + 1) * int64_t(fv.b);
+            sums[3] = (r + 1) * int64_t(fv.a);
+
+            for(int j = 0  ; j <  r ; j++) {
+                auto c = src.color_at(ti + j * src.width(), 0);
+                sums[0] += c.r;
+                sums[1] += c.g;
+                sums[2] += c.b;
+                sums[3] += c.a;
+            }
+            for(int j = 0  ; j <= r ; j++) {
+                auto c = src.color_at(ri, 0);
+                sums[0] += c.r - fv.r;
+                sums[1] += c.g - fv.g;
+                sums[2] += c.b - fv.b;
+                sums[3] += c.a - fv.a;
+
+                dst.set_color(ti, 0, round_color(sums, factor));
+
+                ri += src.width();
+                ti += src.width();
+            }
+            for(int j = r + 1; j < src.height() - r; j++) { 
+                auto a = src.color_at(ri, 0);
+                auto b = src.color_at(li, 0);
+
+                sums[0] += int64_t(a.r) - int64_t(b.r);
+                sums[1] += int64_t(a.g) - int64_t(b.g);
+                sums[2] += int64_t(a.b) - int64_t(b.b);
+                sums[3] += int64_t(a.a) - int64_t(b.a);
+
+                dst.set_color(ti, 0, round_color(sums, factor));
+
+                li += src.width();
+                ri += src.width();
+                ti += src.width();
+            }
+            for(int j = src.height() - r; j < src.height()  ; j++) { 
+                auto b = src.color_at(li, 0);
+                sums[0] += int64_t(lv.r) - int64_t(b.r);
+                sums[1] += int64_t(lv.g) - int64_t(b.g);
+                sums[2] += int64_t(lv.b) - int64_t(b.b);
+                sums[3] += int64_t(lv.a) - int64_t(b.a);
+
+                dst.set_color(ti, 0, round_color(sums, factor));
+
+                li += src.width();
+                ti += src.width();
+            }
+        }
+    };
+    auto do_boxblur = [&](PixBuffer &dst, PixBuffer &src, int r) {
+        dst.bilt(src, nullptr, nullptr);
+        do_boxlur_h(src, dst, r);
+        do_boxlur_v(dst, src, r);
+    };
+    // for (int value : make_guassion_box(r, 3)) {
+    //     do_boxblur(buf, *this, (value - 1) / 2);
+    // }
+    auto box = make_guassion_box(r, 3);
+    do_boxblur(dest, source, (box[0] - 1) / 2);
+    do_boxblur(source, dest, (box[1] - 1) / 2);
+    do_boxblur(dest, source, (box[2] - 1) / 2);
+
+    return dest;
+}
+
+// TODO : Optomize
+void PixBuffer::bilt(const PixBuffer &buf, const Rect *_dst, const Rect *_src) {
+    if (_dst == nullptr && _src == nullptr && size() == buf.size() && format() == buf.format()) {
+        // All same, just memcpy
+        Btk_memcpy(_pixels, buf._pixels, _width * _height * bytes_per_pixel());
+        return;
+    }
+
+    Rect dst, src;
+    if (_dst) {
+        dst = *_dst;
+    }
+    else {
+        dst.x = 0;
+        dst.y = 0;
+        dst.w = _width;
+        dst.h = _height;
+    }
+    if (_src) {
+        src = *_src;
+    }
+    else {
+        src.x = 0;
+        src.y = 0;
+        src.w = buf.width();
+        src.h = buf.height();
+    }
+
+    // Begin bilt
+    for (int yoff = 0; yoff < dst.h; yoff++) {
+        for (int xoff = 0; xoff < dst.w; xoff++) {
+            int x = dst.x + xoff;
+            int y = dst.y + yoff;
+
+            // Map pixels (temp use Nearest)
+            int src_x = src.x + src.w * (float(dst.w) / float(xoff));
+            int src_y = src.y + src.h * (float(dst.h) / float(yoff));
+
+            set_color(x, y, buf.color_at(src_x, src_y));
+        }
+    }
 }
 
 // Write to
@@ -350,6 +658,21 @@ void PixBuffer::_init_format(PixFormat fmt) {
 
         _bpp = 24;
     }
+    else if (fmt == PixFormat::Gray8) {
+        // Pad Pad Pad 0A
+        _rmask = 0x0000000000;
+        _gmask = 0x0000000000;
+        _bmask = 0x0000000000;
+        _amask = 0x00000000FF;
+
+        _rshift = 0;
+        _gshift = 0;
+        _bshift = 0;
+        _ashift = 0;
+
+        _bpp = 8;
+    } 
+    _format = fmt;
 }
 
 
@@ -501,12 +824,14 @@ namespace {
         else if (_wcsicmp(ext, L"bmp") == 0) {
             fmt = &GUID_ContainerFormatBmp;
         }
+#if defined(_MSC_VER)
         else if (_wcsicmp(ext, L"raw") == 0) {
             fmt = &GUID_ContainerFormatRaw;
         }
         else if (_wcsicmp(ext, L"webp") == 0) {
             fmt = &GUID_ContainerFormatWebp;
         }
+#endif
         else if (_wcsicmp(ext, L"tiff") == 0) {
             fmt = &GUID_ContainerFormatTiff;
         }

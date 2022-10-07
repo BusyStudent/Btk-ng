@@ -7,16 +7,15 @@ using namespace BTK_NAMESPACE;
 
 int main() {
     UIContext ctxt;
-    Widget widget;
+    Frame  widget;
     Button btn(&widget);
 
     LerpAnimation<Size> s;
     s.set_start_value(Size(200, 200));
     s.set_end_value(Size(400, 500));
-    s.bind([&](Size s) {
-        widget.resize(s);
-        // std::cout << s << std::endl;
-    });
+
+
+    s.bind(&Widget::resize, &btn);
     s.set_duration(2000);
 
     widget.show();

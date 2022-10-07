@@ -48,7 +48,7 @@ class Canvas : public Widget {
             path.close_path();
             path.close();
 
-            dash_pen.set_dash_pattern({4.0f, 4.0f});
+            dash_pen.set_dash_style(DashStyle::DashDotDot);
             dash_pen.set_line_cap(LineCap::Round);
         }
 
@@ -142,6 +142,9 @@ class Canvas : public Widget {
             else {
                 progress.set_value(progress.value() + 1);
             }
+            FMatrix mat;
+            mat.translate(progress.value(), 0);
+            path.set_transform(mat);
 
             // repaint();
             return true;

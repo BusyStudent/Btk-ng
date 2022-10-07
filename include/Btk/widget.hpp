@@ -127,6 +127,8 @@ class BTKAPI Widget : public Object {
         bool    is_window() const;
         bool    is_root() const;
         auto    font() const -> const Font &;
+        auto    palette() const -> const Palette &;
+        auto    palette_group() const -> Palette::Group;
 
         int     width() const {
             return rect().w;
@@ -208,6 +210,8 @@ class BTKAPI Widget : public Object {
         }
         Widget    *child_at(u8string_view name) const;
 
+        // Query window
+        FSize      window_dpi() const;
 
         // Configure window
         void set_window_title(u8string_view title);
@@ -221,6 +225,7 @@ class BTKAPI Widget : public Object {
 
         // Mouse
         void capture_mouse(bool capture = true);
+        bool under_mouse() const;
 
         // Keyboard Text Input
         void set_textinput_rect(const Rect &rect);
@@ -239,6 +244,7 @@ class BTKAPI Widget : public Object {
     private:
         void window_init(); //< Create window if not created yet.
         void window_destroy(); //< Destroy window if created.
+        void rectangle_update(); //< rectangle is updated.
 
         UIContext  *_context    = nullptr; //< Pointer to UIContext
         Widget     *_parent     = nullptr; //< Parent widget
@@ -246,6 +252,7 @@ class BTKAPI Widget : public Object {
         WindowFlags _flags      = WindowFlags::Resizable; //< Window flags
         FocusPolicy _focus      = FocusPolicy::None; //< Focus policy
         SizePolicy  _size       = SizePolicy::Fixed; //< Size policy
+        Palette     _palette    = {}; //< Palette of widget     
         std::list<Widget *>           _children; //< Child widgets
         std::list<Widget *>::iterator _in_child_iter = {}; //< Child iterator
 
@@ -267,6 +274,7 @@ class BTKAPI Widget : public Object {
         uint8_t     _focused     = false; //< Has focused ?
         uint8_t     _drag_reject = false; //< Is drag rejected ?
         uint8_t     _pressed     = false; //< Is pressed ?
+        uint8_t     _entered     = false; //< Is entered ?
 
         // Event Dispatch (private)
         Widget      *mouse_current_widget = nullptr;//< Current widget under mouse
@@ -340,7 +348,6 @@ class BTKAPI RadioButton : public AbstractButton {
     private:
         bool _checked = false;
         bool _pressed = false;
-        bool _entered = false;
 };
 class BTKAPI Button      : public AbstractButton {
     public:
@@ -358,7 +365,6 @@ class BTKAPI Button      : public AbstractButton {
         Size size_hint() const override;
     private:
         bool _pressed = false;
-        bool _entered = false;
 };
 
 // Label
@@ -380,7 +386,21 @@ class BTKAPI Label : public Widget {
 
 // Frame 
 class BTKAPI Frame : public Widget {
+    public:
+        enum FrameStyle : uint8_t {
+            NoFrame,
+            VLine,
+            HLine,
+            Box,
+        };
 
+        Frame(Widget *parent = nullptr);
+        ~Frame();
+        
+        bool paint_event(PaintEvent &) override;
+    private:
+        FrameStyle _frame_style = Box;
+        float      _line_width  = 1.0f;
 };
 
 // TextEdit
@@ -454,7 +474,6 @@ class BTKAPI TextEdit : public Widget {
         bool     _has_sel   = false; //< Has selection ?
         bool     _has_focus = false; //< Has focus ?
         bool     _show_cursor = false; //< Show cursor ?
-        bool     _entered = false; //< Mouse entered ?
         timerid_t _timerid = 0;
 
         Signal<void()> _text_changed;
@@ -771,6 +790,9 @@ inline void Widget::set_maximum_size(Size s) {
 }
 inline void Widget::set_minimum_size(Size s) {
     set_minimum_size(s.w, s.h);
+}
+inline bool Widget::under_mouse() const {
+    return _entered;
 }
 
 BTK_NS_END

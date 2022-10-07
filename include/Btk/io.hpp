@@ -36,4 +36,12 @@ class IODevice : public IOStream {
         
 };
 
+class FileStream : public IOStream {
+    public:
+        FileStream();
+        ~FileStream();
+    private:
+        FILE *fp = nullptr;
+};
+
 BTK_NS_END

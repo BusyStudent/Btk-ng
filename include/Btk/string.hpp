@@ -372,6 +372,11 @@ class BTKAPI u8string {
             }
             return *this;
         }
+        template <typename ...Args>
+        u8string &append_fmt(const char_t *fmt, Args &&...args) {
+            append(format(fmt, std::forward<Args>(args)...));
+            return *this;
+        }
 
         // Replace
         void     replace(iterator start, iterator end, stdu8string_view str) {

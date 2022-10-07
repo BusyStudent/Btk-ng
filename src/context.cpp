@@ -13,6 +13,7 @@
 BTK_NS_BEGIN
 
 static UIContext  *ui_context = nullptr; //< Global UI context
+static EventType   ui_event   = EventType::User; //< Current Registered event
 
 void SetUIContext(UIContext *context) {
     ui_context = context;
@@ -25,8 +26,14 @@ UIContext::UIContext(GraphicsDriver *driv) {
     assert(!GetUIContext());
 
     driver = driv;
+    PaletteBreeze(&palette);
     StyleBreeze(&style);
     SetUIContext(this);
+
+#if !defined(NDEBUG)
+    puts(palette.to_string().c_str());
+#endif
+
 }
 UIContext::UIContext() {
 
@@ -35,8 +42,14 @@ UIContext::UIContext() {
 #else
     abort();
 #endif
+    PaletteBreeze(&palette);
     StyleBreeze(&style);
     SetUIContext(this);
+
+#if !defined(NDEBUG)
+    puts(palette.to_string().c_str());
+#endif
+
 }
 UIContext::~UIContext() {
     for(auto w : widgets) {
@@ -225,7 +238,14 @@ void StyleBreeze(Style *style) {
 
     style->shadow = linear;
 
-    
+}
+
+EventType RegisterEvent() {
+    auto cur = ui_event;
+    if (cur != EventType::UserMax) {
+        ui_event = EventType(uint32_t(ui_event) + 1);
+    }
+    return cur;
 }
 
 BTK_NS_END

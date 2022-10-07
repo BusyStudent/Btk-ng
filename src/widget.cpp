@@ -9,6 +9,7 @@ BTK_NS_BEGIN
 Widget::Widget() {
     _context = GetUIContext();
     _style   = &_context->style;
+    _palette = _context->palette;
     _font    = _style->font;
 
     BTK_ASSERT(_context);
@@ -67,6 +68,7 @@ void Widget::raise() {
         parent()->_children.push_front(this);
 
         _in_child_iter = parent()->_children.begin();
+        repaint();
     }
 }
 void Widget::lower() {
@@ -75,6 +77,7 @@ void Widget::lower() {
         parent()->_children.push_back(this);
 
         _in_child_iter = --parent()->_children.end();
+        repaint();
     }
 }
 void Widget::close() {
@@ -111,12 +114,8 @@ void Widget::resize(int w, int h) {
     event.set_old_size(old_w, old_h);
     handle(event);
 
-    // As same as move
-    if (_parent) {
-        if (_parent->mouse_current_widget == this) {
-            
-        }
-    }
+    // Check mouse layout etc...
+    rectangle_update();
 
     // We should repaint 
     repaint();
@@ -130,12 +129,8 @@ void Widget::move(int x, int y) {
     MoveEvent event(x, y);
     handle(event);
 
-    // Check parent if we are mouse is out
-    if (_parent) {
-        if (_parent->mouse_current_widget == this) {
-            // We need a way to get the mouse position
-        }
-    }
+    // Check mouse layout etc...
+    rectangle_update();
 
     repaint();
 }
@@ -285,6 +280,7 @@ bool Widget::handle(Event &event) {
             return mouse_release(event.as<MouseEvent>());
         }
         case Event::MouseEnter : {
+            _entered = true;
             if (mouse_current_widget) {
                 mouse_current_widget->handle(event);
             }
@@ -292,6 +288,7 @@ bool Widget::handle(Event &event) {
         }
         case Event::MouseLeave : {
             // Reset current widget
+            _entered = false;
             if (mouse_current_widget) {
                 mouse_current_widget->handle(event);
                 mouse_current_widget = nullptr;
@@ -506,6 +503,21 @@ Style  *Widget::style() const {
 auto   Widget::font() const -> const Font & {
     return _font;
 }
+auto   Widget::palette() const -> const Palette & {
+    return _palette;
+}
+auto   Widget::palette_group() const -> Palette::Group {
+    if (!_enabled) {
+        return Palette::Disable;
+    }
+    if (_focused) {
+        return Palette::Active;
+    }
+    if (under_mouse()) {
+        return Palette::Active;
+    }
+    return Palette::Inactive;
+}
 
 // Size Hint
 Size Widget::adjust_size() const {
@@ -636,6 +648,16 @@ Widget *Widget::window() const {
         return nullptr;
     }
     return p;
+}
+
+// Query window
+FSize Widget::window_dpi() const {
+    FSize dpi = {96.0f, 96.0f};
+    auto w = window();
+    if (w && w->_win) {
+        w->_win->query_value(AbstractWindow::Dpi, &dpi);
+    }
+    return dpi;
 }
 
 // Window configure
@@ -823,6 +845,60 @@ void Widget::window_destroy() {
         _painter_inited = false;
         delete _win;
         _win = nullptr;
+    }
+}
+void Widget::rectangle_update() {
+    // Check parent if we are mouse is out
+    bool has_mouse = false;
+    Point mouse;
+    if (_parent) {
+        // We need a way to get the mouse position
+        auto w = window();
+        if (w && w->_win) {
+            if (w->_win->query_value(AbstractWindow::MousePosition, &mouse)) {
+                has_mouse = true;
+            }
+        }
+    }
+
+    auto check_mouse = [&, this]() {
+        MotionEvent event(mouse.x, mouse.y);
+        auto &mouse_current = _parent->mouse_current_widget;
+
+        if (mouse_current) {
+            if (mouse_current->_rect.contains(mouse)) {
+                // Unchanged
+                return;
+            }
+            BTK_LOG(
+                "Widget::rectangle_update() mouse leave widget %p '%s'\n", 
+                mouse_current, 
+                Btk_typename(mouse_current)
+            );
+            event.set_type(Event::MouseLeave);
+            mouse_current->handle(event);
+            mouse_current = nullptr;
+        }
+        auto w = _parent->child_at(mouse.x, mouse.y);
+        if (w) {
+            BTK_LOG(
+                "Widget::rectangle_update() mouse enter widget %p '%s'\n", 
+                w, 
+                Btk_typename(w)
+            );
+            mouse_current = w;
+            event.set_type(Event::MouseEnter);
+            w->handle(event);
+        }
+    };
+
+    if (has_mouse) {
+        check_mouse();
+    }
+
+    if (_parent) {
+        Event event(Event::LayoutRequest);
+        _parent->handle(event);
     }
 }
 

@@ -47,7 +47,7 @@ class LerpAnimation : public Object {
             ts_end = ts_start + _duration;
             ts_cur = ts_start;
 
-            _timerid = add_timer(10);
+            _timerid = add_timer(5);
             _state = Playing;
         }
         void pause() {
@@ -78,6 +78,33 @@ class LerpAnimation : public Object {
         template <typename Callable>
         void bind(Callable &&cb) {
             run = cb;
+        }
+        // Member function
+        template <typename Class, typename Ret, class Prov>
+        void bind(Ret (Class::*fn)(const T &value), Prov *self) {
+            run = [=](const T &v) {
+                (self->*fn)(v);
+            };
+        }
+        template <typename Class, typename Ret, class Prov>
+        void bind(Ret (Class::*fn)(T value), Prov *self) {
+            run = [cb](const T &v) -> void {
+                (self->*fn)(v);
+            };
+        }
+        // Member variable 
+        template <typename Class, typename Var, class Prov>
+        void bind(Var (Class::*var), Prov *self) {
+            run = [=](const T &value) {
+                (self->*var) = value;
+            };
+        }
+        // Variable
+        template <typename Var>
+        void bind(Var *var) {
+            run = [=](const T &value) {
+                *var = value;
+            };
         }
     private:
         class Value {

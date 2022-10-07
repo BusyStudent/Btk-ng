@@ -50,8 +50,11 @@
         BTK_ASSERT(false && "Undefined fn : " #fn);\
         return FONS_INVALID;\
     }
+#define NVG_UNSUPPORT(fn) BTK_LOG("Nanovg backend unsupport " #fn "\n")
 
 namespace {
+    using namespace BTK_NAMESPACE;
+
     struct FONScontext {
         // hidden...
     };
@@ -109,6 +112,19 @@ namespace {
             }
     };
 
+    class GLFunctionsProxy {
+        public:
+            #define BTK_GL_PROCESS(pfn, name) \
+                template <typename ...Args> \
+                auto name(Args &&...args) { \
+                    return funcs->name(std::forward<Args>(args)...);\
+                }
+            BTK_OPENGLES3_FUNCTIONS
+            #undef  BTK_GL_PROCESS
+
+            GLFunctions *funcs;
+    };
+
     FONScontext *fonsCreateInternal(FONSparams *param);
     void         fonsDeleteInternal(FONScontext *ctx);
 
@@ -152,8 +168,8 @@ namespace {
 #define  NVG_NO_STB
 #define  NANOVG_GL_IMPLEMENTATION
 #define  NANOVG_GLES3
-#include "libs/nanovg_gl.hpp"
 #include "libs/nanovg.hpp"
+#include "libs/nanovg_gl.hpp"
 #include "libs/nanovg.cpp"
 
 
@@ -200,7 +216,7 @@ class FontGlyph {
         uint32_t idx; //< Glyph index
 };
 
-class PhyBlob : public Refable<PhyBlob>, public UnCopyable {
+class PhyBlob : public WeakRefable<PhyBlob>, public UnCopyable {
     public:
         PhyBlob() = default;
         PhyBlob(u8string_view fname);
@@ -218,7 +234,7 @@ class PhyBlob : public Refable<PhyBlob>, public UnCopyable {
         size_t    size = 0;
 };
 
-class PhyFont : public Refable<PhyFont>, public UnCopyable {
+class PhyFont : public WeakRefable<PhyFont>, public UnCopyable {
     public:
         PhyFont() = default;
         PhyFont(const Ref<PhyBlob> &blob);
@@ -478,7 +494,7 @@ auto PhyFont::metrics() -> FontMetrics {
         metrics.underline_position = face->underline_position >> 6;
         metrics.underline_thickness = face->underline_thickness >> 6;
     }
-
+    return metrics;
 }
 void PhyFont::set_size(float size, float xdpi, float ydpi) {
     FT_Set_Char_Size(
@@ -504,6 +520,20 @@ auto PhyFont::glyph_metrics(uint32_t idx) -> GlyphMetrics {
     m.advance_x   = slot->advance.x >> 6;
 
     return m;
+}
+auto PhyFont::glyph_render(uint32_t idx, void *buf, int pitch, int pen_x, int pen_y) -> void {
+    FT_Load_Glyph(face, idx, FT_LOAD_RENDER);
+    FT_GlyphSlot slot = face->glyph;
+
+    uint8_t *pixels = static_cast<uint8_t*>(buf);
+    for (int y = 0;y < slot->bitmap.rows; y++) {
+        for (int x = 0;x < slot->bitmap.width; x++) {
+            pixels[
+                (pen_y + y) * pitch +
+                (pen_x + x)
+            ] = slot->bitmap.buffer[y * slot->bitmap.width + x];
+        }
+    }
 }
 
 // Blob implementation
@@ -957,8 +987,15 @@ class FontImpl    : public Refable<FontImpl> {
     public:
         u8string     name; //< Logical name, System will match with name
         Ref<PhyFont> font;
-        float        size;
-        bool         bold;
+        float        size = 0.0f;
+        bool         bold = false;
+        bool         italic = false;
+};
+class PenImpl     : public Refable<PenImpl> {
+    public:
+        LineJoin     join = LineJoin::Miter;
+        LineCap      cap  = LineCap::Flat;
+        float        miter_limit = 10.0f;
 };
 
 class TextureImpl : public Trackable {
@@ -1114,6 +1151,11 @@ void Painter::draw_lines(const FPoint *fp, size_t n) {
     }
     nvgStroke(priv->nvg_ctxt);
 }
+void Painter::draw_text(u8string_view txt, float x, float y) {
+    nvgBeginPath(priv->nvg_ctxt);
+    nvgText(priv->nvg_ctxt, x, y, txt.data(), txt.data() + txt.size());
+    nvgStroke(priv->nvg_ctxt);
+}
 
 void Painter::fill_rect(float x, float y, float w, float h) {
     nvgBeginPath(priv->nvg_ctxt);
@@ -1148,6 +1190,104 @@ Painter Painter::FromWindow(AbstractWindow *win) {
     return Painter(new PainterImpl(win));
 }
 
+// Brush
+COW_IMPL(Brush);
+Brush::Brush() {
+    priv = nullptr;
+}
+
+void Brush::set_color(const GLColor &c) {
+    begin_mut();
+    priv->type = BrushType::Solid;
+    priv->data = c;
+}
+void Brush::set_image(const PixBuffer &buf) {
+    begin_mut();
+    priv->type = BrushType::Texture;
+    priv->data = buf;
+}
+void Brush::set_gradient(const LinearGradient &gr) {
+    begin_mut();
+    priv->type = BrushType::LinearGradient;
+    priv->data = gr;
+}
+void Brush::set_gradient(const RadialGradient &gr) {
+    begin_mut();
+    priv->type = BrushType::RadialGradient;
+    priv->data = gr;
+}
+
+GLColor Brush::color() const {
+    if (priv && priv->type == BrushType::Solid) {
+        return std::get<GLColor>(priv->data);
+    }
+    return Color::Black;
+}
+BrushType Brush::type() const {
+    if (!priv) {
+        return BrushType::Solid;
+    }
+    return priv->type;
+}
+
+// Font
+COW_IMPL(Font);
+Font::Font(u8string_view name, float size) {
+    priv = new FontImpl;
+
+    priv->name = name;
+    priv->size = size;
+
+    priv->ref();
+}
+Font::Font() {
+    priv = nullptr;
+}
+void  Font::set_size(float size) {
+    begin_mut();
+    priv->size = size;
+}
+void  Font::set_bold(bool b) {
+    begin_mut();
+    priv->bold = b;
+}
+void  Font::set_italic(bool i) {
+    begin_mut();
+    priv->italic = i;
+}
+float Font::size() const {
+    if (priv) {
+        return priv->size;
+    }
+    return 0;
+}
+
+// Pen
+COW_IMPL(Pen);
+Pen::Pen() {
+    priv = nullptr;
+}
+void Pen::set_dash_pattern(const float *, size_t) {
+    NVG_UNSUPPORT(Pen::set_dash_pattern);
+}
+void Pen::set_dash_offset(float offset) {
+    NVG_UNSUPPORT(Pen::set_dash_offset);
+}
+void Pen::set_dash_style(DashStyle) {
+    NVG_UNSUPPORT(Pen::set_dash_style);
+}
+void Pen::set_line_cap(LineCap cap) {
+    begin_mut();
+    priv->cap = cap;
+}
+void Pen::set_line_join(LineJoin j) {
+    begin_mut();
+    priv->join = j;
+}
+void Pen::set_miter_limit(float li) {
+    begin_mut();
+    priv->miter_limit = li;
+}
 
 BTK_NS_END
 

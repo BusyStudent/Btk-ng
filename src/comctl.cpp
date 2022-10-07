@@ -8,6 +8,29 @@
 
 BTK_NS_BEGIN
 
+Frame::Frame(Widget *parent) : Widget(parent) {}
+Frame::~Frame() {}
+
+bool Frame::paint_event(PaintEvent &) {
+    auto &painter = this->painter();
+    painter.set_stroke_width(_line_width);
+    switch (_frame_style) {
+        case NoFrame : break;
+        case Box : {
+            if (under_mouse()) {
+                painter.set_color(style()->border);
+            }
+            else {
+                painter.set_color(style()->highlight);
+            }
+            painter.draw_rect(rect());
+            break;
+        }
+    }
+    painter.set_stroke_width(1.0f);
+    return true;
+}
+
 Button::Button(Widget *parent, u8string_view txt) : AbstractButton(parent) {
     auto style = this->style();
     resize(style->button_width, style->button_height);
@@ -45,7 +68,7 @@ bool Button::paint_event(PaintEvent &event) {
     gc.set_color(c.r, c.g, c.b, c.a);
     gc.fill_rect(border);
 
-    if (_entered && !_pressed) {
+    if (under_mouse() && !_pressed) {
         c = style->highlight;
     }
     else{
@@ -53,7 +76,7 @@ bool Button::paint_event(PaintEvent &event) {
     }
 
     // Border
-    if (!(_flat && !_pressed && !_entered)) {
+    if (!(_flat && !_pressed && !under_mouse())) {
         // We didnot draw border on _flat mode
         gc.set_color(c.r, c.g, c.b, c.a);
         gc.draw_rect(border);
@@ -103,13 +126,11 @@ bool Button::mouse_release(MouseEvent &event) {
     return true;
 }
 bool Button::mouse_enter(MotionEvent &event) {
-    _entered = true;
     _howered.emit();
     repaint();
     return true;
 }
 bool Button::mouse_leave(MotionEvent &event) {
-    _entered = false;
     _pressed = false;
     repaint();
     return true;
@@ -150,7 +171,7 @@ bool RadioButton::paint_event(PaintEvent &) {
     }
     else {
         // We didnot draw border at checked
-        if (_entered) {
+        if (under_mouse()) {
             gc.set_color(style->highlight);
         }
         else {
@@ -192,13 +213,11 @@ bool RadioButton::mouse_release(MouseEvent &event) {
     return true;
 }
 bool RadioButton::mouse_enter(MotionEvent &event) {
-    _entered = true;
     _howered.emit();
     repaint();
     return true;
 }
 bool RadioButton::mouse_leave(MotionEvent &event) {
-    _entered = false;
     _pressed = false;
     repaint();
     return true;
@@ -219,6 +238,10 @@ TextEdit::TextEdit(Widget *parent,u8string_view s) : Widget(parent) {
         _lay.set_font(font());
         _lay.set_text(_text);
     });
+    if (!s.empty()) {
+        _lay.set_font(font());
+        _lay.set_text(_text);
+    }
 }
 TextEdit::~TextEdit() {}
 
@@ -254,12 +277,10 @@ bool TextEdit::timer_event(TimerEvent &event) {
     return true;
 }
 bool TextEdit::mouse_enter(MotionEvent &) {
-    _entered = true;
     repaint();
     return true;
 }
 bool TextEdit::mouse_leave(MotionEvent &) {
-    _entered = false;
     repaint();
     return true;
 }
@@ -475,7 +496,7 @@ bool TextEdit::paint_event(PaintEvent &) {
     // Border and background
     p.set_color(style->background);
     p.fill_rect(border);
-    if (_has_focus || _entered) {
+    if (_has_focus || under_mouse()) {
         p.set_color(style->highlight);
     }
     else {

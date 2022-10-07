@@ -78,10 +78,13 @@
     void type::swap(type &other) { \
         std::swap(priv, other.priv); \
     }
-// SAFE Release
+// SAFE Release / Reference
+#define COW_REFERENCE(ptr) \
+    ptr ? ptr->ref(), ptr : nullptr
 #define COW_RELEASE(ptr) \
     if (ptr) { \
         ptr->unref(); \
+        ptr = nullptr; \
     }
 
 // Generate COW impl
@@ -138,16 +141,6 @@ class Refable {
         Refable() = default;
         Refable(const Refable &) : Refable() {}
         Refable(Refable &&) : Refable() {}
-        ~Refable() {
-            // Destroy weak refs
-            if (_weak) {
-                _weak->_die = true;
-                _weak->unref();
-
-                _weak = nullptr;
-            }
-        }
-
 
         void ref() {
             ++_refcount;
@@ -164,6 +157,28 @@ class Refable {
             return _refcount;
         }
 
+        // Helper for Make a instance
+        template <typename ...Args>
+        static Ref<T> New(Args &&... args);
+    private:
+        int       _refcount = 0;
+};
+template <typename T>
+class WeakRefable : public Refable<T> {
+    public:
+        WeakRefable() : Refable<T>() {}
+        WeakRefable(const WeakRefable &r) : Refable<T>(r) {}
+        WeakRefable(WeakRefable &&r) : Refable<T>(r) {}
+        ~WeakRefable() {
+            // Destroy weak refs
+            if (_weak) {
+                _weak->_die = true;
+                _weak->unref();
+
+                _weak = nullptr;
+            }
+        }
+
         auto weakref() -> WeakData *{
             if (!_weak) {
                 _weak = new WeakData();
@@ -171,13 +186,8 @@ class Refable {
             }
             return _weak;
         }
-
-        // Helper for Make a instance
-        template <typename ...Args>
-        static Ref<T> New(Args &&... args);
     private:
         WeakData *_weak = nullptr; //< For weak reference
-        int       _refcount = 0;
     template <typename U>
     friend class WeakRef;
 };
@@ -293,8 +303,8 @@ class WeakRef {
         WeakRef(T *ptr) : ptr(ptr) {
             do_ref();
         }
-        WeakRef(const Ref<T> &r) : WeakRef(r.get()) {}
         WeakRef(const WeakRef &other) : WeakRef(other.ptr) {}
+        WeakRef(Ref<T> &r)       : WeakRef(r.get()) {}
         WeakRef(WeakRef &&other) : ptr(other.ptr), weak(other.weak) {
             other.weak = nullptr;
             other.ptr = nullptr;
@@ -333,6 +343,9 @@ class WeakRef {
             do_unref();
             ptr = nullptr;
             return *this;
+        }
+        WeakRef &operator =(Ref<T> &ref) {
+            return operator =(ref.get());
         }
 
         bool empty() const {

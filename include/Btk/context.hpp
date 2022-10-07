@@ -116,7 +116,7 @@ class GLContext : public GraphicsContext {
 };
 class VkContext : public GraphicsContext {
     public:
-
+        virtual pointer_t get_proc_address(const char_t *name) = 0;
 };
 class FbContext : public GraphicsContext {
     public:
@@ -134,15 +134,15 @@ class AbstractWindow : public Any {
             Maximize,
             Minimize,
         };
-        enum Query : int {
+        enum Value : int {
             NativeHandle,
-            Hwnd,
-            Hdc,
-            XConnection, //< Xcb  Connection
-            XDisplay,    //< Xlib Display
-            XWindow,     //< Window
-        };
-        enum Configure : int {
+            Hwnd,        //< Win32 Window Handle (*HWND)
+            Hdc,         //< Win32 Driver Context (*HDC)
+            XConnection, //< Xcb  Connection  (*xcb_connection_t*)
+            XDisplay,    //< Xlib Display     (*Display)
+            XWindow,     //< Window           (*Window)
+            Dpi,         //< Dpi              (*FSize)
+            MousePosition, //< MousePosition  (*Point)
             MaximumSize, //< args (*Size)
             MinimumSize, //< args (*Size)
         };
@@ -165,8 +165,8 @@ class AbstractWindow : public Any {
         // Flags control
         virtual bool       set_flags(WindowFlags flags) = 0;
         virtual bool       set_value(int conf, ...) = 0;
+        virtual bool       query_value(int query, ...) = 0;
 
-        virtual pointer_t  native_handle(int what) = 0;
         virtual widget_t   bind_widget(widget_t widget) = 0;
         virtual any_t      gc_create(const char_t *type) = 0;
         // [[deprecated("Use Painter::FromWindow()")]]
@@ -347,7 +347,7 @@ class BTKAPI UIContext : public Trackable {
         timerid_t timer_add(Object *obj, timertype_t t, uint32_t ms) {
             return driver->timer_add(obj, t, ms);
         }
-        bool      timer_del(Object *obj,timerid_t id) {
+        bool      timer_del(Object *obj, timerid_t id) {
             return driver->timer_del(obj, id);
         }
 
@@ -361,6 +361,7 @@ class BTKAPI UIContext : public Trackable {
         GraphicsDriver *driver = nullptr;
         EventQueue queue;//< For collecting events
         std::unordered_set<Widget *> widgets;
+        Palette palette;
         Style style;
     friend class Widget;
     friend class EventLoop;

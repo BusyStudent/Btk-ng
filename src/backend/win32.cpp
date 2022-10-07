@@ -59,6 +59,14 @@
 
 #define WIN_LOG(...) BTK_LOG(__VA_ARGS__)
 
+
+// HDPI API Support
+#if !defined(_DPI_AWARENESS_CONTEXTS_)
+#define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE     ((DPI_AWARENESS_CONTEXT)-3)
+DECLARE_HANDLE(DPI_AWARENESS_CONTEXT);
+#endif
+
+
 using Microsoft::WRL::ComPtr;
 using Win32Callback = void (*)(void *param);
 
@@ -72,6 +80,7 @@ using PFNwglSetSwapIntervalEXT = BOOL (WINAPI *)(int interval);
 LIB_BEGIN(Win32User32, "user32.dll")
     // 
     LIB_PROC4(BOOL(* WINAPI)(LPRECT, DWORD, BOOL, DWORD, UINT), AdjustWindowRectExForDpi)
+    LIB_PROC4(BOOL(* WINAPI)(DPI_AWARENESS_CONTEXT), SetProcessDpiAwarenessContext)
     LIB_PROC4(UINT(* WINAPI)(HWND), GetDpiForWindow)
     LIB_PROC4(UINT(* WINAPI)()    , GetDpiForSystem)
 LIB_END(Win32User32)
@@ -112,8 +121,8 @@ class Win32Window : public AbstractWindow {
 
         bool       set_flags(WindowFlags attr) override;
         bool       set_value(int conf, ...)    override;
+        bool       query_value(int what, ...)  override;
 
-        pointer_t  native_handle(int what) override;
         widget_t   bind_widget(widget_t w) override;
         any_t      gc_create(const char_t *type) override;
 
@@ -350,8 +359,10 @@ HBITMAP buffer_to_hbitmap(const PixBuffer &buf) {
 
 
 Win32Driver::Win32Driver() {
-    // Set DPI
-    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
+    // Set DPI if avliable
+    if (SetProcessDpiAwarenessContext) {
+        SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
+    }
     // Initialize the window class.
     WNDCLASSEXW wc = {};
     wc.cbSize = sizeof(WNDCLASSEX);
@@ -1437,6 +1448,61 @@ bool     Win32Window::set_value(int conf, ...) {
             maximum_size = *va_arg(varg, Size*);
             break;
         }
+        case MousePosition : {
+            auto pos = *va_arg(varg, Point*);
+            POINT p;
+            p.x = btk_to_client(pos.x);
+            p.y = btk_to_client(pos.y);
+            ClientToScreen(hwnd, &p);
+            ret = SetCursorPos(p.x, p.y);
+            break;
+        }
+        default : {
+            ret = false;
+            break;
+        }
+    }
+
+    va_end(varg);
+    return ret;
+}
+bool     Win32Window::query_value(int query, ...) {
+    va_list varg;
+    va_start(varg, query);
+    bool ret = true;
+
+    switch (query) {
+        case NativeHandle : {
+            [[fallthrough]];
+        }
+        case Hwnd : {
+            *va_arg(varg, HWND*) = hwnd;
+            break;
+        }
+        case Dpi : {
+            auto dpi = driver->GetDpiForWindow(hwnd);
+            auto psize = va_arg(varg, FSize*);
+            psize->w = dpi;
+            psize->h = dpi;
+            break;
+        }
+        case MousePosition : {
+            POINT pos;
+            if (!GetCursorPos(&pos)) {
+                ret = false;
+                break;
+            }
+            if (!ScreenToClient(hwnd, &pos)) {
+                ret = false;
+                break;
+            }
+            Point p;
+            p.x = client_to_btk(pos.x);
+            p.y = client_to_btk(pos.y);
+
+            *va_arg(varg, Point*) = p;
+            break;
+        }
         default : {
             ret = false;
             break;
@@ -1468,16 +1534,6 @@ void     Win32Window::start_textinput(bool v) {
     else {
         // Disable ime
         ImmAssociateContext(hwnd, nullptr);
-    }
-}
-
-pointer_t Win32Window::native_handle(int what) {
-    switch (what) {
-        case NativeHandle :
-        case Hwnd :
-            return hwnd;
-        default :
-            return nullptr;
     }
 }
 any_t     Win32Window::gc_create(const char_t *name) {

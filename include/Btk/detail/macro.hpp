@@ -54,6 +54,15 @@
 #define BTK_NOEXCEPT noexcept(false)
 #endif
 
+// RTTI macros
+#if defined(BTK_NO_RTTI)
+#define BTK_CASTABLE(type, ptr) true
+#define BTK_TYPEID(ref)         BTK_THROW(std::runtime_error("NO RTTI"))
+#else
+#define BTK_CASTABLE(type, ptr) dynamic_cast<type*>(ptr)
+#define BTK_TYPEID(ref)         typeid(ref)
+#endif
+
 // Bultin functions for speed optimization
 #if defined(__has_builtin) && defined(__GNUC__)
 #define Btk_memmove(dst, src, n)   __builtin_memmove(dst, src, n)

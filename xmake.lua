@@ -1,5 +1,6 @@
 add_rules("mode.debug","mode.release")
-lib_kind = "static"
+native_painter = true
+lib_kind       = "static"
 
 if is_plat("windows") then
     add_cxxflags("/utf-8")
@@ -18,6 +19,19 @@ option("tests")
     set_category("Debugging")
 option_end()
 
+option("nanovg_painter")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Use platfrom indepent painter")
+    set_category("Painter")
+option_end()
+
+
+-- Painter check
+if has_config("nanovg_painter") then
+    add_requires("freetype")
+end 
+
 
 -- Main Target
 
@@ -33,23 +47,34 @@ target("btk")
     add_headerfiles("include/(Btk/signal/*.hpp)")
     add_headerfiles("include/(Btk/*.hpp)")
 
+    -- Option check
+    if has_config("nanovg_painter") then 
+        add_packages("freetype")
+        add_files("src/painter/nvg_painter.cpp")
+        native_painter = false
+    end
+
     -- Backends
     if is_host("windows") and not is_plat("cross") then
+        -- Add native painer if
+        if native_painter then 
+            add_files("src/painter/d2d_painter.cpp")
+        end
         -- Make default driver
         add_defines("BTK_DRIVER=Win32DriverInfo")
-
         add_files("src/backend/win32.cpp")
-        add_files("src/painter/d2d_painter.cpp")
 
         -- Add windows specific libraries
-        add_links("user32", "shlwapi", "shell32", "imm32", "gdi32")
+        add_links("user32", "shlwapi", "shell32", "imm32", "gdi32", "ole32")
         add_links("windowscodecs", "d2d1", "dwrite", "uuid", "dxguid")
     else
+        -- Add native painer if
+        if native_painter then 
+            add_files("src/painter/cairo_painter.cpp")
+        end
         -- Make default driver
         add_defines("BTK_DRIVER=SDLDriverInfo")
-
         add_files("src/backend/sdl2.cpp")
-        add_files("src/painter/cairo_painter.cpp")
 
         -- Add X11 Support
         add_links("X11", "SDL2")
@@ -85,5 +110,13 @@ if has_config("tests") then
 
         add_includedirs("include")
         add_files("tests/test.cpp")
+    target_end()
+
+    target("pixproc")
+        set_kind("binary")
+        add_deps("btk")
+
+        add_includedirs("include")
+        add_files("tests/pixproc.cpp")
     target_end()
 end

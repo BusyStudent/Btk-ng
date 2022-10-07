@@ -6,6 +6,9 @@
 #include <Btk/pixels.hpp>
 #include <Btk/rect.hpp>
 
+// Import internal libs
+#include "../src/common/utils.hpp"
+
 using namespace BTK_NAMESPACE;
 
 TEST(StringTest, RunIterator) {
@@ -131,7 +134,43 @@ TEST(PixBufferTest, SetColor) {
 
     ctxt.run();
 }
+TEST(PixBufferTest, Grayscale) {
+    PixBuffer buf(PixFormat::Gray8, 500, 500);
+    for (int i = 0; i < 500; i++) {
+        for (int j = 0; j < 500; j++) {
+            Color c;
+            c.r = 0;
+            c.g = 0;
+            c.b = 0;
+            c.a = rand() % 254 + 1;
 
+            buf.set_color(i, j, c); 
+        }
+    }
+
+    for (int i = 0; i < 500; i++) {
+        for (int j = 0; j < 500; j++) {
+            auto c = buf.color_at(i, j);
+
+            ASSERT_EQ(c.r, 0);
+            ASSERT_EQ(c.g, 0);
+            ASSERT_EQ(c.b, 0);
+        }
+    }
+}
+
+TEST(RefTest, Weak) {
+    struct Data : public WeakRefable<Data> {
+
+    };
+
+    WeakRef<Data> weak;
+    {
+        auto data = Data::New();
+        weak = data;
+    }
+    ASSERT_EQ(weak.expired(), true);
+}
 
 
 int main(int argc, char **argv) {

@@ -50,6 +50,8 @@ namespace {
 
     using namespace BTK_NAMESPACE;
 
+    static_assert(sizeof(FMatrix) == sizeof(D2D1::Matrix3x2F));
+
     auto bounds_from_circle(float x, float y, float r) -> D2D1_RECT_F {
         return D2D1::RectF(
             x - r,
@@ -75,34 +77,24 @@ namespace {
         );
     }
 
-    auto btkfmt_to_d2d(PixFormat b) -> DXGI_FORMAT {
+    auto btkfmt_to_d2d(PixFormat b) -> D2D1_PIXEL_FORMAT {
         switch (b) {
             case PixFormat::RGBA32 : {
-                return DXGI_FORMAT_R8G8B8A8_UNORM;
+                return D2D1::PixelFormat(DXGI_FORMAT_R8G8B8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED);
+            }
+            case PixFormat::Gray8 : {
+                return D2D1::PixelFormat(DXGI_FORMAT_A8_UNORM, D2D1_ALPHA_MODE_STRAIGHT);
             }
             default : {
-                return DXGI_FORMAT_UNKNOWN;
+                return D2D1::PixelFormat();
             }
         }
     }
-    auto btkmat_to_d2d(const FMatrix &mat) -> D2D1_MATRIX_3X2_F {
-        if constexpr (std::is_same_v<decltype(mat.m), decltype(D2D1_MATRIX_3X2_F::m)>) {
-            return reinterpret_cast<const D2D1_MATRIX_3X2_F&>(mat);
-        }
-        else {
-            return D2D1::Matrix3x2F(
-                mat[0][0], mat[0][1],
-                mat[1][0], mat[1][1],
-                mat[2][0], mat[2][1]
-            );
-        }
+    auto btkmat_to_d2d(const FMatrix &mat) -> D2D1::Matrix3x2F {
+        return reinterpret_cast<const D2D1::Matrix3x2F&>(mat);
     }    
-    auto d2dmat_to_btk(const D2D1_MATRIX_3X2_F &mat) -> FMatrix {
-        return FMatrix(
-            mat.m11, mat.m12,
-            mat.m21, mat.m22,
-            mat.dx , mat.dy
-        );
+    auto d2dmat_to_btk(const D2D1::Matrix3x2F &mat) -> FMatrix {
+        return reinterpret_cast<const FMatrix&>(mat);
     }
 
     auto layout_translate_by_align(IDWriteTextLayout *layout, Btk::Alignment align, float *x, float *y) {
@@ -176,6 +168,33 @@ namespace {
         }
         surface1->ReleaseDC(nullptr);
     }
+
+    // class ID2D1SinkToBtkSink : public ID2D1GeometrySink {
+    //     public:
+    //         HRESULT QueryInterface(REFIID riid, void **lp) override {
+    //             if (riid == __uuidof(ID2D1GeometrySink)) {
+    //                 *lp = this;
+    //                 return S_OK;
+    //             }
+    //             if (riid == __uuidof(ID2D1SimplifiedGeometrySink)) {
+    //                 *lp = this;
+    //                 return S_OK;
+    //             }
+    //             return E_NOINTERFACE;
+    //         }
+    //         ULONG AddRef() override {
+    //             return 1;
+    //         }
+    //         ULONG Release() override {
+    //             return 0;
+    //         }
+
+    //         void AddLine(D2D1_POINT_2F point) override {
+    //             sink->move_to(point.x, point.y);
+    //         }
+    //     private:
+    //         PainterPathSink *sink;
+    // };
 }
 
 BTK_NS_BEGIN
@@ -220,8 +239,9 @@ class TextureImpl : public Trackable {
         // Slot for texture
         void painter_destroyed();
 
-        ComPtr<ID2D1Bitmap> bitmap;
-        ComPtr<ID2D1Effect> effect;
+        D2D1_BITMAP_INTERPOLATION_MODE mode = D2D1_BITMAP_INTERPOLATION_MODE_LINEAR;
+        ComPtr<ID2D1Bitmap>            bitmap;
+        ComPtr<ID2D1Effect>            effect;
 };
 
 class FontImpl : public Refable <FontImpl> {
@@ -240,6 +260,7 @@ class PenImpl : public Refable<PenImpl> {
     public:
         ID2D1StrokeStyle *lazy_eval();
 
+        DashStyle                dstyle = DashStyle::Custom;
         LineJoin                 join = LineJoin::Miter;
         LineCap                  cap  = LineCap::Flat;
         std::vector<FLOAT>       dashes;
@@ -326,6 +347,7 @@ class PainterImpl {
         void fill_rounded_rect(float x, float y, float w, float h, float r);
 
         void fill_path(PainterPathImpl *p);
+        void fill_mask(TextureImpl *t,  const FRect *dst, const FRect *src);
 
         // Scissor
         void push_scissor(float x, float y, float w, float h);
@@ -339,6 +361,8 @@ class PainterImpl {
         void skew_x(float angle);
         void skew_y(float angle);
         void reset_transform();
+        void push_transform();
+        void pop_transform();
         auto transform_matrix() -> FMatrix;
         
         // Texture
@@ -417,7 +441,8 @@ class PainterImpl {
         Signal<void()> signal_cleanup;
 
         // State of rendering target
-        std::stack<ComPtr<ID2D1RenderTarget>> target_stack;
+        // std::stack<ComPtr<ID2D1RenderTarget>> target_stack;
+        std::stack<D2D1::Matrix3x2F> matrix_stack;
 };
 
 inline PainterImpl::PainterImpl(HWND hwnd) {
@@ -1017,7 +1042,8 @@ inline void PainterImpl::begin() {
 }
 inline void PainterImpl::end() {
     assert(state.n_clip_rects == 0);
-    assert(target_stack.empty());
+    assert(matrix_stack.empty());
+    // assert(target_stack.empty());
 
     target->EndDraw();
 
@@ -1205,7 +1231,7 @@ inline void PainterImpl::draw_image(TextureImpl *tex,  const FRect *_dst, const 
     D2D1_RECT_F d2d_src = D2D1::RectF(src.x, src.y, src.x + src.w, src.y + src.h);
     D2D1_RECT_F d2d_dst = D2D1::RectF(dst.x, dst.y, dst.x + dst.w, dst.y + dst.h);
 
-    target->DrawBitmap(bitmap, &d2d_dst, state.alpha, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, &d2d_src);
+    target->DrawBitmap(bitmap, &d2d_dst, state.alpha, tex->mode, &d2d_src);
 }
 inline void PainterImpl::draw_lines(const FPoint *fp, size_t n) {
     // TODO : Optimize this
@@ -1274,9 +1300,11 @@ inline void PainterImpl::draw_text(IDWriteTextLayout *layout, float x, float y) 
     target->DrawTextLayout(D2D1::Point2F(x, y), layout, brush);
 }
 inline void PainterImpl::draw_path(PainterPathImpl *p) {
+    D2D1::Matrix3x2F pmat;
     auto style = state.stroke_style.Get();
-    auto path = p->path.Get();
-    auto &mat = p->mat;
+    auto path  = p->path.Get();
+    auto &mat  = p->mat;
+    bool trans = !mat.IsIdentity();
 
     D2D1_RECT_F rect;
     HRESULT hr;
@@ -1286,7 +1314,14 @@ inline void PainterImpl::draw_path(PainterPathImpl *p) {
 
     auto brush = get_brush(rect);
 
+    if (trans) {
+        target->GetTransform(&pmat);
+        target->SetTransform(mat *pmat);
+    }
     target->DrawGeometry(path, brush, state.stroke_width, style);
+    if (trans) {
+        target->SetTransform(pmat);
+    }
 }
 
 inline void PainterImpl::fill_rect(float x, float y, float w, float h) {
@@ -1311,16 +1346,54 @@ inline void PainterImpl::fill_rounded_rect(float x, float y, float w, float h, f
 }
 
 inline void PainterImpl::fill_path(PainterPathImpl *p) {
+    D2D1::Matrix3x2F pmat;
     auto path = p->path.Get();
     auto &mat = p->mat;
+    bool trans = !mat.IsIdentity();
     
     D2D1_RECT_F rect;
     HRESULT hr;
     hr = path->GetBounds(nullptr, &rect);
     auto brush = get_brush(rect);
 
+    if (trans) {
+        target->GetTransform(&pmat);
+        target->SetTransform(mat *pmat);
+    }
     target->FillGeometry(path, brush);
+    if (trans) {
+        target->SetTransform(pmat);
+    }
+}
+inline void PainterImpl::fill_mask(TextureImpl *tex,  const FRect *_dst, const FRect *_src) {
+    ID2D1Bitmap *mask = tex->bitmap.Get();
+    FRect src;
+    FRect dst;
 
+    assert(mask);
+
+    if (_dst) {
+        dst = *_dst;
+    }
+    else {
+        auto [w, h] = target->GetSize();
+        dst = FRect(0, 0, w, h);
+    }
+
+    if (_src) {
+        src = *_src;
+    }
+    else {
+        auto [w, h] = mask->GetSize();
+        src = FRect(0, 0, w, h);
+    }
+
+    D2D1_RECT_F d2d_src = D2D1::RectF(src.x, src.y, src.x + src.w, src.y + src.h);
+    D2D1_RECT_F d2d_dst = D2D1::RectF(dst.x, dst.y, dst.x + dst.w, dst.y + dst.h);
+
+    auto brush = get_brush(d2d_dst);
+
+    target->FillOpacityMask(mask, brush, D2D1_OPACITY_MASK_CONTENT_GRAPHICS, d2d_dst, d2d_src);
 }
 
 // Scissor
@@ -1336,13 +1409,7 @@ inline void PainterImpl::pop_scissor() {
 // Transform
 inline void PainterImpl::transform(const FMatrix &m) {
     D2D1::Matrix3x2F pmat;
-    D2D1::Matrix3x2F mat;
-    mat.m11 = m[0][0];
-    mat.m12 = m[0][1];
-    mat.m21 = m[1][0];
-    mat.m22 = m[1][1];
-    mat.dx = m[2][0];
-    mat.dy = m[2][1];
+    D2D1::Matrix3x2F mat = btkmat_to_d2d(m);
 
     target->GetTransform(&pmat);
     target->SetTransform(mat * pmat);
@@ -1375,14 +1442,25 @@ inline void PainterImpl::skew_y(float angle) {
 inline void PainterImpl::reset_transform() {
     target->SetTransform(D2D1::Matrix3x2F::Identity());
 }
+inline void PainterImpl::push_transform() {
+    D2D1::Matrix3x2F mat;
+    target->GetTransform(&mat);
+    matrix_stack.push(mat);
+}
+inline void PainterImpl::pop_transform() {
+    assert(!matrix_stack.empty());
+    auto mat = matrix_stack.top();
+    matrix_stack.pop();
+    target->SetTransform(mat);
+}
 inline auto PainterImpl::transform_matrix() -> FMatrix {
     D2D1::Matrix3x2F mat;
     target->GetTransform(&mat);
-    return FMatrix(mat.m11, mat.m12, mat.m21, mat.m22, mat.dx, mat.dy);
+    return d2dmat_to_btk(mat);
 }
 // Texture
 inline auto PainterImpl::create_texture(PixFormat fmt, int w, int h) -> TextureImpl *{
-    auto dxgi_fmt = btkfmt_to_d2d(fmt);
+    auto d2d_fmt = btkfmt_to_d2d(fmt);
 
     ComPtr<ID2D1Bitmap> bitmap;
     HRESULT hr;
@@ -1395,7 +1473,7 @@ inline auto PainterImpl::create_texture(PixFormat fmt, int w, int h) -> TextureI
             0,
             D2D1::BitmapProperties1(
                 D2D1_BITMAP_OPTIONS_TARGET,
-                D2D1::PixelFormat(dxgi_fmt, D2D1_ALPHA_MODE_PREMULTIPLIED)
+                d2d_fmt
             ),
             reinterpret_cast<ID2D1Bitmap1**>(bitmap.GetAddressOf())
         );
@@ -1404,7 +1482,7 @@ inline auto PainterImpl::create_texture(PixFormat fmt, int w, int h) -> TextureI
         hr = target->CreateBitmap(
             D2D1::SizeU(w, h),
             D2D1::BitmapProperties(
-                D2D1::PixelFormat(dxgi_fmt, D2D1_ALPHA_MODE_PREMULTIPLIED)
+                d2d_fmt
             ),
             bitmap.GetAddressOf()
         );
@@ -1558,6 +1636,7 @@ inline auto PenImpl::lazy_eval() -> ID2D1StrokeStyle *{
     if (style == nullptr) {
         D2D1_CAP_STYLE d2d_cap;
         D2D1_LINE_JOIN d2d_join;
+        D2D1_DASH_STYLE d2d_style;
         switch (cap) {
             case LineCap::Flat: d2d_cap = D2D1_CAP_STYLE_FLAT; break;
             case LineCap::Round: d2d_cap = D2D1_CAP_STYLE_ROUND; break;
@@ -1568,6 +1647,14 @@ inline auto PenImpl::lazy_eval() -> ID2D1StrokeStyle *{
             case LineJoin::Round: d2d_join = D2D1_LINE_JOIN_ROUND; break;
             case LineJoin::Bevel: d2d_join = D2D1_LINE_JOIN_BEVEL; break;
         }
+        switch (dstyle) {
+            case DashStyle::Custom : d2d_style = D2D1_DASH_STYLE_CUSTOM; break;
+            case DashStyle::Solid : d2d_style = D2D1_DASH_STYLE_SOLID; break;
+            case DashStyle::Dash  : d2d_style = D2D1_DASH_STYLE_DASH; break;
+            case DashStyle::Dot  : d2d_style = D2D1_DASH_STYLE_DOT; break;
+            case DashStyle::DashDot  : d2d_style = D2D1_DASH_STYLE_DASH_DOT; break;
+            case DashStyle::DashDotDot  : d2d_style = D2D1_DASH_STYLE_DASH_DOT_DOT; break;
+        }
 
         HRESULT hr = d2d_factory->CreateStrokeStyle(
             D2D1::StrokeStyleProperties(
@@ -1576,7 +1663,7 @@ inline auto PenImpl::lazy_eval() -> ID2D1StrokeStyle *{
                 d2d_cap,
                 d2d_join,
                 miter_limit,
-                D2D1_DASH_STYLE_CUSTOM,
+                d2d_style,
                 dash_offset
             ),
             dashes.data(),
@@ -1699,6 +1786,12 @@ void Painter::fill_path(const PainterPath &path) {
         priv->fill_path(path.priv);
     }
 }
+void Painter::fill_mask(const Texture &mask, const FRect *dst, const FRect *src) {
+    if (mask.empty()) {
+        return;
+    }
+    priv->fill_mask(mask.priv, dst, src);
+}
 
 void Painter::push_scissor(float x, float y, float w, float h) {
     priv->push_scissor(x, y, w, h);
@@ -1727,6 +1820,12 @@ void Painter::skew_y(float angle) {
 }
 void Painter::reset_transform() {
     priv->reset_transform();
+}
+void Painter::push_transform() {
+    priv->push_transform();
+}
+void Painter::pop_transform() {
+    priv->pop_transform();
 }
 auto Painter::transform_matrix() -> FMatrix {
     return priv->transform_matrix();
@@ -1758,7 +1857,12 @@ void Painter::operator =(Painter && p) {
 }
 
 Painter Painter::FromWindow(AbstractWindow *w) {
-    return FromHwnd(w->native_handle(AbstractWindow::Hwnd));
+    HWND hwnd;
+    if (w->query_value(AbstractWindow::Hwnd, &hwnd)) {
+        return FromHwnd(hwnd);
+    }
+    // ???
+    abort();
 }
 Painter Painter::FromHwnd(void * hwnd) {
     Painter p;
@@ -1824,6 +1928,17 @@ void Texture::update(const Rect *where, cpointer_t data, uint32_t pitch) {
 Size Texture::size() const {
     auto [w, h] = priv->bitmap->GetPixelSize();
     return Size(w, h);
+}
+void Texture::set_interpolation_mode(InterpolationMode m) {
+    D2D1_BITMAP_INTERPOLATION_MODE mode;
+    switch (m) {
+        case InterpolationMode::Nearest : mode = D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR; break;
+        case InterpolationMode::Linear : mode = D2D1_BITMAP_INTERPOLATION_MODE_LINEAR; break;
+    }
+
+    if (!empty()) {
+        priv->mode = mode;
+    }
 }
 
 Texture &Texture::operator =(Texture &&t) {
@@ -2058,6 +2173,14 @@ BrushType Brush::type() const {
     }
     return BrushType::Solid;
 }
+GLColor   Brush::color() const {
+    if (priv) {
+        if (priv->btype == BrushType::Solid) {
+            return std::get<GLColor>(priv->data);
+        }
+    }
+    return Color::Black;
+}
 
 // PainterEffect
 
@@ -2261,7 +2384,7 @@ FRect PainterPath::bounding_box() const {
     if (priv) {
         D2D1_RECT_F bbox;
         HRESULT hr = priv->path->GetBounds(
-            nullptr,
+            &priv->mat,
             &bbox
         );
         if (FAILED(hr)) {
@@ -2280,6 +2403,11 @@ bool  PainterPath::contains(float x, float y) const {
     }
     return false;
 }
+void  PainterPath::set_transform(const FMatrix &mat) {
+    if (priv) {
+        priv->mat = btkmat_to_d2d(mat);
+    }
+}
 
 PainterPath &PainterPath::operator =(PainterPath &&p) {
     delete priv;
@@ -2297,11 +2425,17 @@ void Pen::set_dash_pattern(const float *dahes, size_t n) {
     begin_mut();
     priv->style.Reset();
     priv->dashes.assign(dahes, dahes + n);
+    priv->dstyle = DashStyle::Custom;
 }
 void Pen::set_dash_offset(float offset) {
     begin_mut();
     priv->style.Reset();
     priv->dash_offset = offset;
+}
+void Pen::set_dash_style(DashStyle style) {
+    begin_mut();
+    priv->dashes.clear();
+    priv->dstyle = style;
 }
 void Pen::set_miter_limit(float limit) {
     begin_mut();

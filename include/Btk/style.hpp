@@ -6,6 +6,8 @@
 
 BTK_NS_BEGIN
 
+class PaletteImpl;
+
 class BTKAPI Palette {
     public:
         Palette();
@@ -22,6 +24,7 @@ class BTKAPI Palette {
             Window,
             Button,
             Input,
+            Border,
             Hightlight,
 
             Text,
@@ -30,19 +33,21 @@ class BTKAPI Palette {
 
             MaxRole,
         };
-
+        auto copy_group(const Palette &p, Group dst, Group src) -> void;
+        auto set_brush(Group gp, Role r, const Brush &brhs) -> void;
+        auto set_color(Group gp, Role r, const GLColor &cl) -> void;
         auto brush_at(Group gp, Role r) const -> const Brush &;
         auto color_at(Group gp, Role r) const -> GLColor;
-        auto set_brush(const Brush &brhs)     -> void;
+        auto empty()                    const -> bool;
+
+        auto to_string()    const -> u8string;
+        auto load(u8string_view conf) -> void;
 
         auto operator =(const Palette &) -> Palette &;
     private:
         void begin_mut();
 
-        struct Priv {
-            Brush brushs[MaxGroup][MaxRole];
-            int refcount = 1;
-        } *priv = nullptr;
+        PaletteImpl *priv = nullptr;
 };
 
 class Style {
@@ -101,5 +106,6 @@ class Style {
 };
 
 BTKAPI void StyleBreeze(Style *style);
+BTKAPI void PaletteBreeze(Palette *palette);
 
 BTK_NS_END

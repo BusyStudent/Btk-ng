@@ -53,13 +53,30 @@ class GLColor {
         constexpr operator Color() const noexcept;
 };
 
-enum class PixFormat : uint32_t {
+enum class InterpolationMode : uint32_t {
+    Nearest = 0,
+    Linear  = 1,
+};
+enum class PixFormat         : uint32_t {
     RGBA32 = 0, //< ABGR in little ed
     RGB24  = 1,
     BGRA32 = 2,
     BGR24  = 3,
+    Gray8  = 4, //< Grayscale
 };
 
+/**
+ * @brief Palette for index based image
+ * 
+ */
+class BTKAPI PixPalette {
+    public:
+        PixPalette();
+        ~PixPalette();
+
+    private:
+        // std::vector<Color> maps;
+};
 /**
  * @brief RGBA Pixel Buffer
  * 
@@ -154,7 +171,7 @@ class BTKAPI PixBuffer {
             return Size(_width, _height);
         }
         PixFormat format() const noexcept {
-            return bpp() == 32 ? PixFormat::RGBA32 : PixFormat::RGB24;
+            return _format;
         }
 
         // Configure attributes
@@ -162,14 +179,25 @@ class BTKAPI PixBuffer {
             _owned = managed;
         }
 
-        uint32_t pixel_at(int x,int y) const;
-        Color    color_at(int x,int y) const;
-        void     set_color(int x,int y,Color c);
+        uint32_t pixel_at(int x, int y) const;
+        Color    color_at(int x, int y) const;
+        void     set_color(int x, int y, Color c);
+        void     set_pixel(int x, int y, uint32_t c);
 
-        PixBuffer convert(PixFormat ) const;
-        PixBuffer resize(int w,int h) const;
+        // Transform / Filtering / Etc...
+        template <int W, int H>
+        PixBuffer filter2d(const double (&kerel)[W][H], uint8_t ft_alpha = 0) const;
+        PixBuffer filter2d(const double  *kernel, int w, int h, uint8_t ft_alpha = 0) const;
+        PixBuffer convert(PixFormat f) const;
+        PixBuffer resize(int w, int h) const;
+        PixBuffer blur(float r) const;
         PixBuffer clone() const;
         PixBuffer ref()   const;
+
+        // Draw / Fill / Bilt
+        void      bilt(const PixBuffer &buf, const Rect *dst, const Rect *src, const FMatrix &trans);
+        void      bilt(const PixBuffer &buf, const Rect *dst, const Rect *src);
+        void      fill(const Rect *dst, uint32_t pixel);
 
         // Write to file / memory / iostream
         bool      write_to(u8string_view path) const;
@@ -191,8 +219,9 @@ class BTKAPI PixBuffer {
         int       _pitch = 0;
 
         // Format
-        uint8_t  _bpp   : 7; //< Bits per pixel
-        uint8_t  _owned : 1; //< If true, the PixBuffer owns the pixels
+        PixFormat _format = {}; //< PixelFormat
+        uint8_t   _bpp   : 7; //< Bits per pixel
+        uint8_t   _owned : 1; //< If true, the PixBuffer owns the pixels
 
         // Mask / Shift
         uint32_t _rmask = 0;
@@ -280,6 +309,19 @@ inline PixBuffer::PixBuffer(int w, int h) :
 
 inline PixBuffer PixBuffer::ref() const {
     return *this;
+}
+
+template <int W, int H>
+inline PixBuffer PixBuffer::filter2d(const double (&kernel)[W][H], uint8_t ft_alpha) const {
+    double k[W * H];
+
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            k[y * W + x] = kernel[y][x];
+        }
+    }
+
+    return filter2d(k, W, H, ft_alpha);
 }
 
 BTK_NS_END

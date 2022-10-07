@@ -399,6 +399,11 @@ class Matrix3x2Impl {
             return !compare(m);
         }
 
+        // Helper
+        static Matrix3x2Impl<T> Identity() {
+            return {};
+        }
+
 };
 
 using Rect  = RectImpl<int>;
