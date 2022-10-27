@@ -94,6 +94,7 @@ class IODevice;
 
 class AbstractVideoSurface;
 class AbstractAudioDevice;
+class AbstractAnimation;
 class AbstractWindow;
 
 // Painting

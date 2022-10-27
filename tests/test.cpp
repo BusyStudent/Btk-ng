@@ -2,6 +2,7 @@
 #include <gtest/gtest.h>
 #include <Btk/painter.hpp>
 #include <Btk/context.hpp>
+#include <Btk/comctl.hpp>
 #include <Btk/string.hpp>
 #include <Btk/pixels.hpp>
 #include <Btk/rect.hpp>

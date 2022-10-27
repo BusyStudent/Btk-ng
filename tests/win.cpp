@@ -1,5 +1,6 @@
 #include <Btk/context.hpp>
 #include <Btk/widget.hpp>
+#include <Btk/comctl.hpp>
 #include <iostream>
 
 using namespace BTK_NAMESPACE;
@@ -48,20 +49,31 @@ class Canvas : public Widget {
             path.close_path();
             path.close();
 
+            arc_path.open();
+            arc_path.move_to(0, 0);
+            arc_path.arc_to(0, 50, 0, 100, 45);
+            arc_path.close();
+
             dash_pen.set_dash_style(DashStyle::DashDotDot);
             dash_pen.set_line_cap(LineCap::Round);
+
+            scroll.signal_value_changed().connect(&Canvas::repaint, this);
         }
 
         bool paint_event(PaintEvent &e) override {
             auto &gc = this->painter();
             // gc.set_brush(brush);
+            ytranslate = height() * (scroll.value() / 100.0f);
+
+            gc.push_transform();
+            gc.translate(0, -ytranslate);
             gc.set_color(Color::Gray);
 
             if (x == -1) {
                 x = this->width();
             }
             if (y == -1) {
-                y = this->height();
+                y = this->height() + ytranslate;
             }
 
             FPoint points [] = {
@@ -104,8 +116,15 @@ class Canvas : public Widget {
             gc.draw_path(path);
             gc.set_stroke_width(1);
 
+            gc.push_transform();
+            gc.translate(x, y);
+            gc.scale(2, 2);
+            gc.draw_path(arc_path);
+            gc.pop_transform();
+
             // Reset pen
             gc.set_pen(nullptr);
+            gc.pop_transform();
 
             return true;
         }
@@ -142,9 +161,10 @@ class Canvas : public Widget {
             else {
                 progress.set_value(progress.value() + 1);
             }
-            FMatrix mat;
-            mat.translate(progress.value(), 0);
-            path.set_transform(mat);
+            // FMatrix mat;
+            // mat.translate(progress.value(), 0);
+            // path.set_transform(mat);
+            dash_pen.set_dash_offset(progress.value());
 
             // repaint();
             return true;
@@ -157,6 +177,12 @@ class Canvas : public Widget {
             }
             return false;
         }
+        bool resize_event(ResizeEvent &event) override {
+            auto bar_w = scroll.size_hint().w;
+            scroll.move(event.width() - bar_w, 0);
+            scroll.resize(bar_w, event.height());
+            return true;
+        }
 
         int x = -1;
         int y = -1;
@@ -165,6 +191,7 @@ class Canvas : public Widget {
         int start_y = 0;
 
         float       stroke_width = 2.0f;
+        float       ytranslate   = 0.0f;
         bool        fullscreen = false;
 
         Brush       brush;
@@ -173,9 +200,11 @@ class Canvas : public Widget {
         Pen         dash_pen;
 
         TextLayout  txt_layout;
+        PainterPath arc_path;
         PainterPath path;
 
         ProgressBar progress = {this};
+        ScrollBar   scroll   = {this, Vertical};
 };
 class Editer : public Widget {
     public:

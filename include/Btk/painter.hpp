@@ -362,6 +362,7 @@ class PainterPathSink {
         virtual void line_to(float x, float y) = 0;
         virtual void quad_to(float x1, float y1, float x2, float y2) = 0;
         virtual void bezier_to(float x1, float y1, float x2, float y2, float x3, float y3) = 0;
+        virtual void arc_to(float x1, float y1, float x2, float y2, float radius) = 0;
 
         virtual void close_path() = 0;
 };
@@ -385,6 +386,7 @@ class BTKAPI PainterPath : public PainterPathSink {
         void line_to(float x, float y) override;
         void quad_to(float x1, float y1, float x2, float y2) override;
         void bezier_to(float x1, float y1, float x2, float y2, float x3, float y3) override;
+        void arc_to(float x1, float y1, float x2, float y2, float radius) override;
 
         // Point version
         void move_to(const FPoint &point);
@@ -393,10 +395,12 @@ class BTKAPI PainterPath : public PainterPathSink {
         void bezier_to(const FPoint &point1, const FPoint &point2, const FPoint &point3);
 
         // Helper for directly add shapes
-        // void add_rect(float x, float y, float w, float h);
-
+        void add_rect(float x, float y, float w, float h);
+        void add_line(float x1, float y1, float x2, float y2);
 
         void close_path() override;
+        
+        void clear();
 
         // Query
         FRect bounding_box() const;
@@ -661,6 +665,18 @@ inline void PainterPath::quad_to(const FPoint &p1, const FPoint &p2) {
 }
 inline void PainterPath::bezier_to(const FPoint &p1, const FPoint &p2, const FPoint &p3) {
     bezier_to(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+}
+
+inline void PainterPath::add_rect(float x, float y, float w, float h) {
+    move_to(x, y);
+    line_to(x + w, y);
+    line_to(x + w, y + h);
+    line_to(x, y + h);
+    close_path();
+}
+inline void PainterPath::add_line(float x1, float y1, float x2, float y2) {
+    move_to(x1, y1);
+    line_to(x2, y2);
 }
 
 

@@ -169,32 +169,90 @@ namespace {
         surface1->ReleaseDC(nullptr);
     }
 
-    // class ID2D1SinkToBtkSink : public ID2D1GeometrySink {
-    //     public:
-    //         HRESULT QueryInterface(REFIID riid, void **lp) override {
-    //             if (riid == __uuidof(ID2D1GeometrySink)) {
-    //                 *lp = this;
-    //                 return S_OK;
-    //             }
-    //             if (riid == __uuidof(ID2D1SimplifiedGeometrySink)) {
-    //                 *lp = this;
-    //                 return S_OK;
-    //             }
-    //             return E_NOINTERFACE;
-    //         }
-    //         ULONG AddRef() override {
-    //             return 1;
-    //         }
-    //         ULONG Release() override {
-    //             return 0;
-    //         }
+    class ID2D1SinkToBtkSink : public ID2D1GeometrySink {
+        public:
+            ID2D1SinkToBtkSink(PainterPathSink *s) : sink(s) {}
 
-    //         void AddLine(D2D1_POINT_2F point) override {
-    //             sink->move_to(point.x, point.y);
-    //         }
-    //     private:
-    //         PainterPathSink *sink;
-    // };
+            HRESULT QueryInterface(REFIID riid, void **lp) override {
+                if (riid == __uuidof(ID2D1GeometrySink)) {
+                    *lp = this;
+                    return S_OK;
+                }
+                if (riid == __uuidof(ID2D1SimplifiedGeometrySink)) {
+                    *lp = this;
+                    return S_OK;
+                }
+                return E_NOINTERFACE;
+            }
+            ULONG AddRef() override {
+                return 1;
+            }
+            ULONG Release() override {
+                return 0;
+            }
+
+            // ID2D1SimplifiedGeometrySink
+            void SetFillMode(D2D1_FILL_MODE m) override {
+                D2D_WARN("SetFillMode(D2D1_FILL_MODE m) not impl\n");
+            }
+            void SetSegmentFlags(D2D1_PATH_SEGMENT s) override {
+                D2D_WARN("SetSegmentFlags(D2D1_PATH_SEGMENT s) not impl\n");
+            }
+            void BeginFigure(D2D1_POINT_2F p, D2D1_FIGURE_BEGIN f) override {
+                if (f == D2D1_FIGURE_BEGIN_HOLLOW) {
+                    D2D_WARN("f == D2D1_FIGURE_BEGIN_HOLLOW\n");
+                }
+                sink->move_to(p.x, p.y);
+            }
+            void EndFigure(D2D1_FIGURE_END f) override {
+                if (f == D2D1_FIGURE_END_CLOSED) {
+                    // Explict close
+                    sink->close_path();
+                }
+            }
+            void AddLines(const D2D1_POINT_2F *fp, UINT32 n) override {
+                for (UINT32 i = 0; i < n; i ++) {
+                    AddLine(fp[i]);
+                }
+            }
+            void AddBeziers(const D2D1_BEZIER_SEGMENT *bs, UINT32 n) override {
+                for (UINT32 i = 0; i < n; i ++) {
+                    AddBezier(&bs[i]);
+                }
+            }
+            void AddQuadraticBeziers(const D2D1_QUADRATIC_BEZIER_SEGMENT *qs, UINT32 n) override {
+                for (UINT32 i = 0; i < n; i ++) {
+                    AddQuadraticBezier(&qs[i]);
+                }
+            }
+            HRESULT Close() override {
+                return S_OK;
+            }
+
+            // ID2D1GeometrySink
+            void AddLine(D2D1_POINT_2F point) override {
+                sink->line_to(point.x, point.y);
+            }
+            void AddBezier(const D2D1_BEZIER_SEGMENT *b) override {
+                sink->bezier_to(
+                    b->point1.x, b->point1.y,
+                    b->point2.x, b->point2.y,
+                    b->point3.x, b->point3.y
+                );
+            }
+            void AddQuadraticBezier(const D2D1_QUADRATIC_BEZIER_SEGMENT *q) override {
+                sink->quad_to(
+                    q->point1.x, q->point1.y,
+                    q->point2.x, q->point2.y
+
+                );
+            }
+            void AddArc(const D2D1_ARC_SEGMENT *a) override {
+                D2D_WARN("AddArc(const D2D1_ARC_SEGMENT *a) not impl\n");
+            }
+        private:
+            PainterPathSink *sink;
+    };
 }
 
 BTK_NS_BEGIN
@@ -2376,9 +2434,27 @@ void PainterPath::bezier_to(float x1, float y1, float x2, float y2, float x3, fl
         )
     );
 }
+void PainterPath::arc_to(float x1, float y1, float x2, float y2, float radius) {
+    // TODO :
+    // BTK_THROW(std::logic_error("Unimpl"));
+    BTK_ONCE(D2D_WARN("Bad impl for arc_to\n"));
+    priv->sink->AddArc(
+        D2D1::ArcSegment(
+            D2D1::Point2F(x2, y2),
+            D2D1::SizeF(radius, radius),
+            0.0f,
+            y1 < y2 ? D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE : D2D1_SWEEP_DIRECTION_CLOCKWISE,
+            D2D1_ARC_SIZE_SMALL
+        )
+    );
+}
 void PainterPath::close_path() {
     priv->sink->EndFigure(D2D1_FIGURE_END_CLOSED);
     priv->is_figure_open = false;
+}
+void PainterPath::clear() {
+    delete priv;
+    priv = nullptr;
 }
 FRect PainterPath::bounding_box() const {
     if (priv) {
@@ -2402,6 +2478,13 @@ bool  PainterPath::contains(float x, float y) const {
         return contains;
     }
     return false;
+}
+void  PainterPath::stream(PainterPathSink *s) const {
+    ID2D1SinkToBtkSink sink(s);
+    HRESULT hr = priv->path->Stream(&sink);
+    if (FAILED(hr)) {
+        D2D_WARN("ID2D1PathGeo stream() failed\n");
+    }
 }
 void  PainterPath::set_transform(const FMatrix &mat) {
     if (priv) {

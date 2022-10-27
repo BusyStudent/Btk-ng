@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <Windows.h>
 #include <wingdi.h>
+#include <ShlObj.h>
 #include <csignal>
 #include <memory>
 #include <tuple>
@@ -188,6 +189,8 @@ class Win32Driver : public GraphicsDriver, public Win32User32 {
         timerid_t timer_add(Object *object, timertype_t type, uint32_t ms) override;
         bool      timer_del(Object *object, timerid_t id) override;
 
+        bool      query_value(int query, ...) override;
+
         LRESULT   wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
         LRESULT   helper_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
 
@@ -246,6 +249,12 @@ class Win32GLContext : public GLContext {
         GL_WPROC    (wglGetExtensionsStringARB);
         GL_WPROC    (wglSetSwapIntervalEXT);
 
+};
+
+// FileDialog
+class Win32FileDialog : public AbstractDialog {
+    public:
+        ComPtr<IFileDialog> dialog;  
 };
 
 // For timer stored at object
@@ -750,8 +759,8 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
             if (win->mouse_last_x != -1 && win->mouse_last_y != -1) {
                 event.set_rel(
-                    point.x - win->mouse_last_x,
-                    point.y - win->mouse_last_y
+                    win->client_to_btk(point.x - win->mouse_last_x),
+                    win->client_to_btk(point.y - win->mouse_last_y)
                 );
             }
 
@@ -1192,6 +1201,27 @@ bool Win32Driver::timer_del(Object *object, timerid_t id) {
     object->set_userdata(name.c_str(), nullptr);
     return v;
 }
+bool Win32Driver::query_value(int query, ...) {
+    va_list varg;
+    va_start(varg, query);
+    bool ret = true;
+
+    switch (query) {
+        case SystemDpi : {
+            auto dpi = va_arg(varg, FPoint*);
+            dpi->x = GetDpiForSystem();
+            dpi->y = GetDpiForSystem();
+            break;
+        }
+        default : {
+            ret = false;
+            break;
+        }
+    }
+
+    va_end(varg);
+    return ret;
+}
 
 Win32Window::Win32Window(HWND h, Win32Driver *d) {
     hwnd = h;
@@ -1481,9 +1511,9 @@ bool     Win32Window::query_value(int query, ...) {
         }
         case Dpi : {
             auto dpi = driver->GetDpiForWindow(hwnd);
-            auto psize = va_arg(varg, FSize*);
-            psize->w = dpi;
-            psize->h = dpi;
+            auto pp = va_arg(varg, FPoint*);
+            pp->x = dpi;
+            pp->y = dpi;
             break;
         }
         case MousePosition : {

@@ -19,6 +19,13 @@ option("tests")
     set_category("Debugging")
 option_end()
 
+option("multimedia")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Enable multimedia support")
+    set_category("Plugins")
+option_end()
+
 option("nanovg_painter")
     set_default(false)
     set_showmenu(true)
@@ -37,6 +44,7 @@ end
 
 target("btk")
     set_kind(lib_kind)
+    add_files("src/widgets/*.cpp")
     add_files("src/*.cpp")
     add_includedirs("src")
     add_includedirs("include")
@@ -81,6 +89,23 @@ target("btk")
     end
 target_end()
 
+
+--Add ffmpeg coodes for play audio / video
+if has_config("multimedia") then
+    add_requires("ffmpeg")
+
+    target("btk_multimedia")
+        set_kind(lib_kind)
+        add_deps("btk")
+        add_packages("ffmpeg")
+        add_includedirs("src")
+        add_includedirs("include")
+
+        add_files("src/plugins/media.cpp")
+    target_end()
+
+end
+
 -- Enable google test if tests are enabled
 if has_config("tests") then
     add_requires("gtest")
@@ -118,5 +143,16 @@ if has_config("tests") then
 
         add_includedirs("include")
         add_files("tests/pixproc.cpp")
+    target_end()
+end
+
+-- FFMpeg test
+if has_config("multimedia") and has_config("tests") then 
+    target("player")
+        set_kind("binary")
+        add_deps("btk", "btk_multimedia")
+
+        add_files("./tests/media/player.cpp")
+        add_includedirs("include")
     target_end()
 end

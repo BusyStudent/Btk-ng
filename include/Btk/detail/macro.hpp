@@ -64,7 +64,7 @@
 #endif
 
 // Bultin functions for speed optimization
-#if defined(__has_builtin) && defined(__GNUC__)
+#if defined(__GNUC__)
 #define Btk_memmove(dst, src, n)   __builtin_memmove(dst, src, n)
 #define Btk_memcpy(dst, src, size) __builtin_memcpy(dst, src, size)
 #define Btk_memset(dst, val, size) __builtin_memset(dst, val, size)

@@ -42,6 +42,11 @@ class GraphicsDriver : public Any {
             OpenGL, //< Supports OpenGL
             Vulkan, //< Supports Vulkan
             Metal, //< Supports Metal
+            MultiWindow, //< Supports create more than one window
+        };
+        enum Query {
+            SystemDpi,   //< System dpi (*FPoint)
+            NumOfScreen, //< Number of screen (*int)
         };
 
 
@@ -56,6 +61,9 @@ class GraphicsDriver : public Any {
 
         // Dymaic factory
         // virtual any_t    instance_create(int what, ...) = 0;
+
+        // Query
+        virtual bool       query_value(int query, ...) = 0;
 
 
         // Timer
@@ -141,7 +149,7 @@ class AbstractWindow : public Any {
             XConnection, //< Xcb  Connection  (*xcb_connection_t*)
             XDisplay,    //< Xlib Display     (*Display)
             XWindow,     //< Window           (*Window)
-            Dpi,         //< Dpi              (*FSize)
+            Dpi,         //< Dpi              (*FPoint)
             MousePosition, //< MousePosition  (*Point)
             MaximumSize, //< args (*Size)
             MinimumSize, //< args (*Size)
@@ -257,6 +265,29 @@ class EventDispatcher {
         // virtual void      send(Event &) = 0;
         virtual timerid_t timer_add(timertype_t type, uint32_t ms) = 0;
         virtual bool      timer_del(timerid_t id) = 0;
+
+        virtual bool      send(Event *event, void (*dtor)(Event *) = nullptr) = 0;
+        virtual pointer_t alloc(size_t n) = 0;
+
+        virtual void      interrupt() = 0;
+        virtual int       run() = 0;
+
+        template <typename T>
+        inline  bool      send(T &&event) {
+            // Construct event
+            using Ty = std::decay_t<T>;
+            auto addr = alloc(sizeof(Ty));
+            new (addr) Ty(std::forward<T>(event));
+
+            if constexpr (std::is_trivially_destructible_v<Ty>) {
+                return send(static_cast<Event*>(addr), nullptr);
+            }
+            else {
+                return send(static_cast<Event*>(addr), [](Event *ev) {
+                    static_cast<Ty*>(ev)->~Ty();
+                });
+            }
+        }
 };
 
 BTK_FLAGS_OPERATOR(EventWalk, int);
@@ -356,11 +387,17 @@ class BTKAPI UIContext : public Trackable {
         void      set_font(const Font &f) {
             style.font = f;
         }
+
+        // Query
+        auto      ui_thread_id() const -> std::thread::id {
+            return thread_id;
+        }
     private:
         PainterInitializer painter_init;
         GraphicsDriver *driver = nullptr;
         EventQueue queue;//< For collecting events
         std::unordered_set<Widget *> widgets;
+        std::thread::id thread_id;
         Palette palette;
         Style style;
     friend class Widget;

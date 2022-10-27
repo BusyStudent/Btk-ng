@@ -222,6 +222,40 @@ class RectImpl {
             );
         }
 
+        // Align calc
+        template <typename Elem>
+        RectImpl<Elem> apply_align(const RectImpl<Elem> &box, Alignment alig) const {
+            RectImpl<Elem> result = box;
+
+            // Horizontal
+            if (uint8_t(alig & Alignment::Left)) {
+                result.w = w;
+            }
+            else if (uint8_t(alig & Alignment::Right)) {
+                result.x = result.x + result.w - w;
+                result.w = w;
+            }
+            else if (uint8_t(alig & Alignment::Center)) {
+                result.x = result.x + result.w / 2 - w / 2;
+                result.w = w;
+            }
+
+            // Vertical
+            if (uint8_t(alig & Alignment::Top)) {
+                result.h = perfered.h;
+            }
+            else if (uint8_t(alig & Alignment::Bottom)) {
+                result.y = result.y + result.h - h;
+                result.h = h;
+            }
+            else if (uint8_t(alig & Alignment::Middle)) {
+                result.y = result.y + result.h / 2 - h / 2;
+                result.h = h;
+            }
+
+            return result;
+        }
+
         // Get
         SizeImpl<T>  size() const {
             return SizeImpl<T>(w, h);

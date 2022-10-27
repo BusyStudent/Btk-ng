@@ -84,6 +84,10 @@ class Style {
         int   slider_width; //< Default slider width
         int   slider_height; //< Default slider height
 
+        // ScrollBar
+        int   scrollbar_width;
+        int   scrollbar_height;
+        
         // Margin
         float margin; //< Default margin
 

@@ -1,5 +1,5 @@
 #include <Btk/context.hpp>
-#include <Btk/widget.hpp>
+#include <Btk/comctl.hpp>
 
 using namespace BTK_NAMESPACE;
 
@@ -11,18 +11,17 @@ class Test : public Widget {
 
             auto ctrl = new BoxLayout(TopToBottom);
             global.add_layout(ctrl);
+            global.add_widget(&view, 1);
 
             auto lay = new BoxLayout(TopToBottom);
             auto btn = new Button("Filter2D");
             ctrl->add_layout(lay, 1);
+            ctrl->add_stretch(2);
             ctrl->add_widget(btn, 0, Alignment::Center | Alignment::Middle);
 
             btn->signal_clicked().connect([this]() {
-                auto m = PixBuffer::FromFile("icon.jpeg").filter2d(kernel);
-                auto view = new ImageView;
-                view->set_keep_aspect_ratio(true);
-                view->set_image(m);
-                view->show();
+                view.set_keep_aspect_ratio(true);
+                view.set_image(source.filter2d(kernel));
             });
 
             for (int y = 0;y < 3; y ++) {
@@ -49,12 +48,16 @@ class Test : public Widget {
                     });
                 }
             }
+
+            view.set_image(source);
         }
 
         void param_changed() {
 
         }
     public:
+        PixBuffer source = PixBuffer::FromFile("icon.jpeg");
+        ImageView view;
         BoxLayout global{LeftToRight};
         double kernel[3][3] = {0.0};
 };

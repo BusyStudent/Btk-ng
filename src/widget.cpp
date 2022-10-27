@@ -651,11 +651,14 @@ Widget *Widget::window() const {
 }
 
 // Query window
-FSize Widget::window_dpi() const {
-    FSize dpi = {96.0f, 96.0f};
+FPoint Widget::window_dpi() const {
+    FPoint dpi = {96.0f, 96.0f};
     auto w = window();
     if (w && w->_win) {
         w->_win->query_value(AbstractWindow::Dpi, &dpi);
+    }
+    else {
+        driver()->query_value(GraphicsDriver::SystemDpi, &dpi);
     }
     return dpi;
 }

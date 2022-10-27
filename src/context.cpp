@@ -34,6 +34,7 @@ UIContext::UIContext(GraphicsDriver *driv) {
     puts(palette.to_string().c_str());
 #endif
 
+    thread_id = std::this_thread::get_id(); 
 }
 UIContext::UIContext() {
 
@@ -50,6 +51,7 @@ UIContext::UIContext() {
     puts(palette.to_string().c_str());
 #endif
 
+    thread_id = std::this_thread::get_id(); 
 }
 UIContext::~UIContext() {
     for(auto w : widgets) {
@@ -169,75 +171,6 @@ timestamp_t GetTicks() {
     using namespace std::chrono;
     return duration_cast<milliseconds>(steady_clock::now().time_since_epoch()).count();
 #endif
-}
-
-// Style
-void StyleBreeze(Style *style) {
-    style->background = Color(252, 252, 252);
-    style->window     = Color(239, 240, 241);
-    // style->button     = Color(238, 240, 241);
-    style->border     = Color(188, 190, 191);
-    style->highlight  = Color(61 , 174, 233);
-    style->selection  = Color(61 , 174, 233);
-
-    style->text           = Color(0, 0, 0);
-    style->highlight_text = Color(255, 255, 255);
-
-    // Button default size
-    style->button_width = 88;
-    style->button_height = 32;
-    // Button radius
-    style->button_radius = 0;
-
-    style->radio_button_circle_pad = 4;
-    style->radio_button_circle_inner_pad = 4;
-    style->radio_button_circle_r = 8;
-    style->radio_button_text_pad = 4;
-
-    // Progress bar
-    style->progressbar_width = 100;
-    style->progressbar_height = 20;
-
-    // Slider
-    style->slider_height = 20;
-    style->slider_width  = 20;
-    // style->slider_bar_height = 10;
-    // style->slider_bar_width  = 10;
-
-    style->margin = 2.0f;
-
-    // Set font family and size
-// #if defined(_WIN32)
-#if 0
-    // Query current system font
-    LOGFONTW lf;
-    GetObjectW(GetStockObject(DEFAULT_GUI_FONT), sizeof(LOGFONTW), &lf);
-    auto nameu8 = u8string::from(lf.lfFaceName);
-
-    style->font = Font(nameu8, std::abs(lf.lfHeight));
-#else
-    style->font = Font("", 12);
-#endif
-    
-    // Icon
-    style->icon_width = 16;
-    style->icon_height = 16;
-
-    // Window default
-    style->window_height = 100;
-    style->window_width  = 100;
-
-    // Shadow
-    style->shadow_radius = 4;
-    style->shadow_offset_x = 2;
-    style->shadow_offset_y = 2;
-
-    LinearGradient linear;
-    linear.add_stop(0, Color::Gray);
-    linear.add_stop(1, Color::Transparent);
-
-    style->shadow = linear;
-
 }
 
 EventType RegisterEvent() {

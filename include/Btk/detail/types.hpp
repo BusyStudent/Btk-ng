@@ -3,6 +3,7 @@
 #include <Btk/defs.hpp>
 #include <type_traits>
 #include <typeinfo>
+#include <cstring>
 
 #if !defined(BTK_NO_RTTI) && defined(__GNUC__)
 
@@ -62,10 +63,27 @@ namespace {
             return typeid(v).name();
         }
     }
+    inline
+    const char *_Btk_typeinfo_name(const std::type_info &info) noexcept {
+        const char struct_prefix[] = "struct ";
+        const char class_prefix[]  = "class ";
+        auto name = typeid(info).name();
+
+        if (strncmp(name, struct_prefix, sizeof(struct_prefix) - 1) == 0) {
+            name += sizeof(struct_prefix) - 1;
+        }
+        else if (strncmp(name, class_prefix, sizeof(class_prefix) - 1) == 0) {
+            name += sizeof(class_prefix) - 1;
+        }
+
+        return name;
+    }
 }
 
-#define Btk_typename _Btk_typename
+#define Btk_typeinfo_name _Btk_typeinfo_name
+#define Btk_typename      _Btk_typename
 
 #else
-#define Btk_typename(x) "<No RTTI, Unknown>"
+#define Btk_typeinfo_name(x) "<No RTTI, Unknown>"
+#define Btk_typename(x)      "<No RTTI, Unknown>"
 #endif

@@ -119,6 +119,9 @@ ObjectImpl *Object::implment() const {
 UIContext  *Object::ui_context() const {
     return implment()->ctxt;
 }
+bool        Object::ui_thread() const {
+    return ui_context()->ui_thread_id() == std::this_thread::get_id();
+}
 
 // Timer
 timerid_t  Object::add_timer(timertype_t t,uint32_t ms) {
@@ -143,6 +146,13 @@ void       Object::defer_delete() {
         delete static_cast<Object *>(obj);
     });
     event.set_user(this);
+    ctxt->send_event(event);
+}
+void       Object::defer_call(DeferRoutinue rt, pointer_t user) {
+    auto ctxt = ui_context();
+    CallEvent event;
+    event.set_func(rt);
+    event.set_user(user);
     ctxt->send_event(event);
 }
 
