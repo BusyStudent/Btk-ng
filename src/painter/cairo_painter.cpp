@@ -1,3 +1,4 @@
+#include "Btk/pixels.hpp"
 #include "build.hpp"
 #include "common/utils.hpp"
 
@@ -776,6 +777,12 @@ void Painter::reset_transform() {
     cairo_matrix_invert(&mat);
     cairo_transform(priv->cr, &mat);
 }
+void Painter::push_transform() {
+    cairo_save(priv->cr);
+}
+void Painter::pop_transform() {
+    cairo_restore(priv->cr);
+}
 
 // Resize
 void Painter::notify_resize(int w, int h) {
@@ -783,12 +790,16 @@ void Painter::notify_resize(int w, int h) {
 }
 
 Painter Painter::FromWindow(AbstractWindow *w) {
-    pointer_t display = w->native_handle(AbstractWindow::XDisplay);
-    pointer_t window  = w->native_handle(AbstractWindow::XWindow);
+    Display *display;
+    Window   window;
+
+    w->query_value(AbstractWindow::XDisplay, &display);
+    w->query_value(AbstractWindow::XWindow , &window);
+
     if (display && window) {
         return Painter::FromXlib(
             display, 
-            window
+            reinterpret_cast<void*>(window)
         );
     }
     BTK_THROW(std::runtime_error("Unsupported backend"));
@@ -1171,6 +1182,21 @@ void Brush::set_image(const PixBuffer &buf) {
 
     cairo_surface_destroy(surf);
 }
+GLColor   Brush::color() const {
+    if (priv && priv->type == BrushType::Solid) {
+        double r, g, b, a;
+        if (cairo_pattern_get_rgba(priv->pat, &r, &g, &b, &a) == CAIRO_STATUS_SUCCESS) {
+            return GLColor(r, g, b, a);
+        }
+    }
+    return Color::Black;
+}
+BrushType Brush::type() const {
+    if (priv) {
+        return priv->type;
+    }
+    return BrushType::Solid;
+}
 
 // Texture
 Texture::Texture() {
@@ -1381,6 +1407,10 @@ void PainterPath::line_to(float x, float y) {
 void PainterPath::quad_to(float x1, float y1, float x2, float y2) {
     cairo_curve_to(mem_cr, x1, y1, x1, y1, x2, y2);
 }
+void PainterPath::arc_to(float x1, float y1, float x2, float y2, float radius) {
+    // cairo_arc(cairo_t *cr, double xc, double yc, double radius, double angle1, double angle2)
+    // TODO :
+}
 void PainterPath::bezier_to(float x1, float y1, float x2, float y2, float x3, float y3) {
     cairo_curve_to(mem_cr, x1, y1, x2, y2, x3, y3);
 }
@@ -1414,6 +1444,20 @@ void Pen::set_dash_pattern(const float *pat, size_t n) {
 
     for (size_t i = 0;i < n; i++) {
         priv->dashes.push_back(pat[i]);
+    }
+}
+void Pen::set_dash_style(DashStyle style) {
+    begin_mut();
+    priv->dashes.clear();
+
+    switch (style) {
+        case DashStyle::DashDot : {
+            priv->dashes = {2.0, 1.0};
+        }
+        case DashStyle::Dot : {
+            priv->dashes = {1.0, 1.0};
+            break;
+        }
     }
 }
 void Pen::set_dash_offset(float offset) {

@@ -242,7 +242,7 @@ class RectImpl {
 
             // Vertical
             if (uint8_t(alig & Alignment::Top)) {
-                result.h = perfered.h;
+                result.h = h;
             }
             else if (uint8_t(alig & Alignment::Bottom)) {
                 result.y = result.y + result.h - h;

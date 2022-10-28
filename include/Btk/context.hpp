@@ -8,6 +8,7 @@
 #include <Btk/pixels.hpp>
 #include <Btk/event.hpp>
 #include <unordered_set>
+#include <thread>
 #include <atomic>
 #include <deque>
 

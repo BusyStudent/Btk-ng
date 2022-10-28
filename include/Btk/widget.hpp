@@ -7,6 +7,7 @@
 #include <Btk/defs.hpp>
 #include <Btk/rect.hpp>
 
+#include <climits>
 #include <bitset>
 #include <list>
 

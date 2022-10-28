@@ -51,7 +51,7 @@ class SDLDriver ;
 class SDLFont   ;
 class SDLWindow : public AbstractWindow {
     public:
-        SDLWindow(SDL_Window *w, SDLDriver *dr, WindowFlags f) : win(w), driver(dr), flags(f) {}
+        SDLWindow(SDL_Window *w, SDLDriver *dr, WindowFlags f);
         ~SDLWindow();
 
         // Overrides from WindowContext
@@ -72,8 +72,9 @@ class SDLWindow : public AbstractWindow {
 
         // Flags control
         bool       set_flags(WindowFlags flags) override;
+        bool       set_value(int what, ...)   override;
+        bool       query_value(int what, ...) override;
 
-        pointer_t  native_handle(int what) override;
         widget_t   bind_widget(widget_t w) override;
         any_t      gc_create(const char_t *type) override;
 
@@ -83,6 +84,7 @@ class SDLWindow : public AbstractWindow {
         SDLDriver  *driver = nullptr;
         Widget     *widget = nullptr;
         WindowFlags flags  = {};
+        SDL_SysWMinfo info;
     friend class SDLDriver;
 };
 
@@ -107,6 +109,7 @@ class SDLDriver : public GraphicsDriver {
         timerid_t timer_add(Object *obj, timertype_t, uint32_t ms) override;
         bool      timer_del(Object *obj, timerid_t id) override;
 
+        bool      query_value(int what, ...) override;
     private:
         timestamp_t init_time = 0;
         UIContext  *context = nullptr;
@@ -129,6 +132,7 @@ class SDLGLContext : public GLContext {
         void end() override;
         void swap_buffers() override;
 
+        bool      make_current() override;
         bool      initialize(const GLFormat &) override;
         bool      set_swap_interval(int v) override;
         Size      get_drawable_size() override;
@@ -467,9 +471,33 @@ timerid_t SDLDriver::timer_add(Object *obj, timertype_t, uint32_t ms) {
     data->id = id;
     return id;
 }
+bool   SDLDriver::query_value(int what, ...) {
+    va_list varg;
+    va_start(varg, what);
+    bool ret = true;
+
+    switch (what) {
+        // case SystemDpi : {
+
+        // }
+        default : {
+            ret = false;
+            break;
+        }
+    }
+
+    va_end(varg);
+    return ret;
+}
 
 // Window
+SDLWindow::SDLWindow(SDL_Window *w, SDLDriver *dr, WindowFlags f) : win(w), driver(dr), flags(f) {
+    SDL_GetVersion(&info.version);
 
+    if (!SDL_GetWindowWMInfo(win, &info)) {
+        BTK_THROW(std::runtime_error(SDL_GetError()));
+    }
+}
 SDLWindow::~SDLWindow() {
     // Remove self from driver
     driver->window_del(this);
@@ -494,7 +522,7 @@ void SDLWindow::resize(int w, int h) {
 }
 void SDLWindow::show(int v) {
     switch (v) {
-        default : [[fallthrough]]
+        default : [[fallthrough]];
         case Show : SDL_ShowWindow(win); break;
         case Hide : SDL_HideWindow(win); break;
         case Restore  : SDL_RestoreWindow(win); break;
@@ -591,33 +619,105 @@ widget_t SDLWindow::bind_widget(widget_t widget) {
     this->widget = widget;
     return ret;
 }
-pointer_t SDLWindow::native_handle(int what) {
-    SDL_SysWMinfo info;
-    SDL_GetVersion(&info.version);
+bool     SDLWindow::query_value(int what, ...) {
+    va_list varg;
+    va_start(varg, what);
+    bool ret = true;
 
-    if (!SDL_GetWindowWMInfo(win, &info)) {
-        BTK_THROW(std::runtime_error(SDL_GetError()));
-    }
-
+    switch (what) {
+        // Platform data query
 #if defined(_WIN32)
-    if (what == NativeHandle || what == Hwnd) {
-        return info.info.win.window;
-    }
-    if (what == Hdc) {
-        return info.info.win.hdc;
-    }
+        case NativeHandle : 
+        case Hwnd :
+            *va_arg(varg, HWND*) = info.info.win.window;
+            break;
+        case Hdc :
+            *va_arg(varg, HDC*) = info.info.win.hdc; 
+            break;
 #elif defined(__gnu_linux__)
-    if (what == NativeHandle || what == XWindow) {
-        return reinterpret_cast<pointer_t>(info.info.x11.window);
-    }
-    if (what == XDisplay) {
-        return info.info.x11.display;
-    }
+        case NativeHandle :
+        case XWindow :
+            *va_arg(varg, Window*) = info.info.x11.window;
+            break;
+        case XDisplay :
+            *va_arg(varg, Display**) = info.info.x11.display;
+            break;
 #else
 #error "Unsupport backend"
 #endif
-    // Unmatched
-    return nullptr;
+        case MousePosition : {
+            int x, y;
+            int wx, wy;
+            SDL_GetMouseState(&x, &y);
+            SDL_GetWindowPosition(win, &wx, &wy);
+
+            auto p = va_arg(varg, Point*);
+            p->x = wx - x;
+            p->y = wy - y;
+            break;
+        }
+        case Dpi : {
+            float ddpi, hdpi, vdpi;
+            auto idx = SDL_GetWindowDisplayIndex(win);
+            if (SDL_GetDisplayDPI(idx, &ddpi, &hdpi, &vdpi) != 0) {
+                ret = false;
+                break;
+            }
+            
+            auto p = va_arg(varg, FPoint*);
+            p->x = hdpi;
+            p->y = vdpi;
+            break;
+        }
+        case MaximumSize : {
+            auto [w, h] = *va_arg(varg, Size*);
+            SDL_SetWindowMaximumSize(win, w, h);
+            break;
+        }
+        case MinimumSize : {
+            auto [w, h] = *va_arg(varg, Size*);
+            SDL_SetWindowMinimumSize(win, w, h);
+            break;
+        }
+        default : {
+            ret = false;
+            break;
+        }
+    }
+
+// #if defined(_WIN32)
+//     if (what == NativeHandle || what == Hwnd) {
+//         return info.info.win.window;
+//     }
+//     if (what == Hdc) {
+//         return info.info.win.hdc;
+//     }
+// #elif defined(__gnu_linux__)
+//     if (what == NativeHandle || what == XWindow) {
+//         return reinterpret_cast<pointer_t>(info.info.x11.window);
+//     }
+//     if (what == XDisplay) {
+//         return info.info.x11.display;
+//     }
+// #else
+// #error "Unsupport backend"
+// #endif
+    va_end(varg);
+    return ret;
+}
+bool    SDLWindow::set_value(int what, ...) {
+    va_list varg;
+    va_start(varg, what);
+    bool ret = true;
+
+    switch (what) {
+        default : {
+            ret = false;
+            break;
+        }
+    }
+    va_end(varg);
+    return ret;
 }
 any_t   SDLWindow::gc_create(const char_t *what) {
     // Create GC
@@ -634,6 +734,7 @@ any_t   SDLWindow::gc_create(const char_t *what) {
         // Get Framebuffer
         return nullptr;
     }    
+    return nullptr;
 }
 
 uint32_t SDLWindow::id() const {
@@ -680,6 +781,9 @@ void SDLGLContext::end() {
 }
 void SDLGLContext::swap_buffers() {
     SDL_GL_SwapWindow(win);
+}
+bool SDLGLContext::make_current() {
+    return SDL_GL_MakeCurrent(win, ctxt);
 }
 bool SDLGLContext::set_swap_interval(int interval) {
     return SDL_GL_SetSwapInterval(interval) == 0;

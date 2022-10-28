@@ -50,6 +50,7 @@ target("btk")
     add_includedirs("include")
 
     -- Package
+    add_headerfiles("include/(Btk/widgets/*.hpp)")
     add_headerfiles("include/(Btk/plugins/*.hpp)")
     add_headerfiles("include/(Btk/detail/*.hpp)")
     add_headerfiles("include/(Btk/signal/*.hpp)")
@@ -85,7 +86,7 @@ target("btk")
         add_files("src/backend/sdl2.cpp")
 
         -- Add X11 Support
-        add_links("X11", "SDL2")
+        add_links("X11", "SDL2", "pthread")
     end
 target_end()
 
