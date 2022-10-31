@@ -61,7 +61,7 @@ class GraphicsDriver : public Any {
         // Cursor
 
         // Dymaic factory
-        // virtual any_t    instance_create(int what, ...) = 0;
+        virtual any_t      instance_create(const char_t *what, ...) = 0;
 
         // Query
         virtual bool       query_value(int query, ...) = 0;
@@ -182,10 +182,14 @@ class AbstractWindow : public Any {
         // virtual Painter    painter_create() = 0;
 };
 
-class AbstractDialog : public Any {
+class AbstractFileDialog : public Any {
     public:
-        virtual int  run() = 0;
-        virtual void add_action(Any *) = 0;
+        virtual int        run() = 0;
+        virtual bool       initialize(bool save) = 0;
+        virtual void       set_dir(u8string_view dir) = 0;
+        virtual void       set_title(u8string_view title) = 0;
+        virtual void       set_allow_multi(bool v) = 0;
+        virtual StringList result() = 0;
 };
 
 
@@ -405,8 +409,11 @@ class BTKAPI UIContext : public Trackable {
     friend class EventLoop;
 };
 
-BTKAPI UIContext *GetUIContext();
-BTKAPI void       SetUIContext(UIContext *context);
+BTKAPI auto GetUIContext()                    -> UIContext *;
+BTKAPI auto SetUIContext(UIContext *context)  -> void;
+
+BTKAPI auto GetDispatcher()                   -> EventDispatcher *;
+BTKAPI auto SetDispatcher(EventDispatcher *)  -> void;
 
 inline EventLoop::EventLoop() : EventLoop(GetUIContext()) {}
 inline driver_t   GetDriver() {

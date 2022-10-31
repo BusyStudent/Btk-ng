@@ -93,12 +93,12 @@ target_end()
 
 --Add ffmpeg coodes for play audio / video
 if has_config("multimedia") then
-    add_requires("ffmpeg")
+    add_requires("ffmpeg", "miniaudio", "libsdl")
 
     target("btk_multimedia")
         set_kind(lib_kind)
         add_deps("btk")
-        add_packages("ffmpeg")
+        add_packages("ffmpeg", "miniaudio", "libsdl")
         add_includedirs("src")
         add_includedirs("include")
 

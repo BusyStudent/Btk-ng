@@ -32,6 +32,7 @@ class VideoWidget : public AbstractVideoSurface, public Widget {
         bool write(PixFormat fmt, cpointer_t data, int pitch, int w, int h) override;
         bool end() override;
 
+        bool    playing = false;
         Color   background = Color::Black;
         Size    native_resolution = {0, 0};
         Texture texture;
@@ -62,8 +63,15 @@ class MediaPlayer : public Object {
         void set_media(const MediaContent &content);
         void set_url(u8string_view url);
 
+        void set_position(double ms);
+
+        auto duration() const -> double;
+        auto position() const -> double;
+
         // Signals
-        auto signal_error() -> Signal<void()> &;
+        auto signal_error()            -> Signal<void()>       &;
+        auto signal_duration_changed() -> Signal<void(double)> &;
+        auto signal_position_changed() -> Signal<void(double)> &;
     private:
         MediaPlayerImpl *priv;
 };

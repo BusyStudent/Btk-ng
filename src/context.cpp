@@ -12,14 +12,22 @@
 
 BTK_NS_BEGIN
 
+thread_local
+static EventDispatcher *th_dispatcher = nullptr; //< Thread event dispatcher
 static UIContext  *ui_context = nullptr; //< Global UI context
 static EventType   ui_event   = EventType::User; //< Current Registered event
 
-void SetUIContext(UIContext *context) {
+auto SetUIContext(UIContext *context) -> void{
     ui_context = context;
 }
-UIContext *GetUIContext() {
+auto GetUIContext() -> UIContext *{
     return ui_context;
+}
+auto GetDispatcher() -> EventDispatcher * {
+    return th_dispatcher;
+}
+auto SetDispatcher(EventDispatcher *d) -> void {
+    th_dispatcher = d;
 }
 
 UIContext::UIContext(GraphicsDriver *driv) {

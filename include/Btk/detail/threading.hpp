@@ -8,6 +8,7 @@
 #else
 #include <atomic>
 #include <thread>
+#include <mutex>
 #endif
 
 BTK_NS_BEGIN
@@ -59,28 +60,30 @@ class SpinLock {
 };
 #else
 // Fallback spinlock by std::atomic
-class SpinLock {
-    public:
-        SpinLock() noexcept = default;
-        SpinLock(const SpinLock &) = delete;
-        ~SpinLock() = default;
+// class SpinLock {
+//     public:
+//         SpinLock() noexcept = default;
+//         SpinLock(const SpinLock &) = delete;
+//         ~SpinLock() = default;
 
-        void lock() noexcept {
-            while (_lock.test_and_set(std::memory_order_acquire)) {
-                while (_lock.test_and_set(std::memory_order_acquire)) {
-                    std::this_thread::yield();
-                }
-            }
-        }
-        void unlock() noexcept {
-            _lock.clear(std::memory_order_release);
-        }
-        bool try_lock() noexcept {
-            return _lock.test_and_set(std::memory_order_acquire) == false;
-        }
-    private:
-        std::atomic_flag _lock = ATOMIC_FLAG_INIT;
-};
+//         void lock() noexcept {
+//             while (_lock.test_and_set(std::memory_order_acquire)) {
+//                 while (_lock.test_and_set(std::memory_order_acquire)) {
+//                     std::this_thread::yield();
+//                 }
+//             }
+//         }
+//         void unlock() noexcept {
+//             _lock.clear(std::memory_order_release);
+//         }
+//         bool try_lock() noexcept {
+//             return _lock.test_and_set(std::memory_order_acquire) == false;
+//         }
+//     private:
+//         std::atomic_flag _lock = ATOMIC_FLAG_INIT;
+// };
+using SpinLock = std::mutex;
+
 #endif
 
 BTK_NS_END

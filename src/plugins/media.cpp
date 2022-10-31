@@ -18,11 +18,37 @@ extern "C" {
     #include <libavutil/audio_fifo.h>
     #include <libavutil/imgutils.h>
     #include <libavutil/avutil.h>
+
+// #define BTK_MINIAUDIO
+#if defined(BTK_MINIAUDIO)
+    #define  MA_IMPLEMENTATION
+    #define  MA_USE_STDINT
+    #define  MA_NO_DECODING
+    #define  MA_NO_ENCODING
+    #define  MA_NO_GENERATION
+    #define  MA_API static
+    #define  MA_DEBUG_OUTPUT
+    #include <miniaudio.h>
+#else
+    #include <SDL2/SDL_audio.h>
+    #include <SDL2/SDL.h>
+#endif
 }
+
+// TODO : Seek operation
+// TODO : Improve sync algo
+// FIXME : Miniaudio playback is broken
+
+// Avoid macro from windows.h
+#undef max
+#undef min
+
+// Debug macro
+#define PLAYER_LOG(...) BTK_LOG("[Player]" __VA_ARGS__)
 
 BTK_NS_BEGIN
 
-namespace {
+namespace { 
     template <typename T, auto Alloc, auto Free>
     class FFTraits {
         public:
@@ -50,7 +76,9 @@ namespace {
     }
     template <typename T, auto Free>
     void FFPtr2Warp(T *ptr) {
-        Free(&ptr);
+        if (ptr) {
+            Free(&ptr);
+        }
     }
 
     template <typename T, auto Alloc, auto Free>
@@ -87,6 +115,9 @@ class MediaPlaylist    : public MediaContentImpl {
 class MediaPlayerImpl  : public Object {
     public:
         using State = MediaPlayer::State;
+        using PacketQueue = std::queue<AVPacketPtr>;
+        using FrameQueue = std::queue<AVFramePtr>;
+        using DataBuffer = std::vector<uint8_t>;
 
         MediaPlayerImpl();
         ~MediaPlayerImpl();
@@ -95,6 +126,9 @@ class MediaPlayerImpl  : public Object {
         void stop();
         void pause();
         void resume();
+
+        double duration() const;
+        double position() const;
 
         AVFormatContextPtr container   = {};
         AVCodecContextPtr  video_ctxt  = {};
@@ -120,17 +154,47 @@ class MediaPlayerImpl  : public Object {
         int   video_stream = -1;
         int   audio_stream = -1;
 
+        timestamp_t    video_ticks = 0; //< The time player write out the frame
+        double         video_prev_pts = 0; //< Prev video timestamps
+        bool           video_has_prev = false;
+        bool           video_frame_unused = false; //< Because of sync, prev frame was decoded, but not used
+        PacketQueue    video_packet_queue;
+        std::mutex     video_mtx; //< For Protect video_frame2
+
+#if     defined(BTK_MINIAUDIO)
+        ma_device      audio_device;
+#else
+        SDL_AudioDeviceID audio_device;
+#endif
+        DataBuffer     audio_buffer;
+        FrameQueue     audio_frame_queue;
+        bool           audio_device_inited = false;
+        bool           audio_frame_encough = false;
+        size_t         audio_buffer_used = 0;
+        std::mutex     audio_mtx; //< For Protect audio frame queue
+        
+        std::atomic<double> audio_pts = 0;
+
         Signal<void()> signal_played;
         Signal<void()> signal_paused;
         Signal<void()> signal_stopped;
         Signal<void()> signal_error;
 
-        // Video frames queue
-
-        bool timer_event(TimerEvent &) override;
         void codec_thread();
-        void proc_video();
+        void proc_video(); //< Return true means need sleep
         void proc_audio();
+
+        bool video_decode();
+        void video_cleanup();
+
+        void audio_callback(void* out, uint32_t frame);
+        bool audio_fillbuffer();
+        bool audio_decode();
+
+        // AudioDevice
+        void audio_device_init();
+        void audio_device_destroy();
+        void audio_device_pause(bool v);
 };
 
 
@@ -141,15 +205,23 @@ MediaPlayerImpl::MediaPlayerImpl() {
     thrd = std::thread(&MediaPlayerImpl::codec_thread, this);
 }
 MediaPlayerImpl::~MediaPlayerImpl() {
+    audio_device_destroy();
+
     state = State::Stopped;
     running = false;
     cond.notify_one();
     thrd.join();
+
+    video_cleanup();
 }
 
 void MediaPlayerImpl::codec_thread() {
     while (running) {
         if (state != State::Playing) {
+            if (state == State::Stopped) {
+                video_cleanup();
+            }
+
             // Wait for sth changed
             std::unique_lock lk(mutx);
             cond.wait(lk, [this]() {
@@ -159,64 +231,203 @@ void MediaPlayerImpl::codec_thread() {
         if (!container) {
             continue;
         }
+        // FIXME : Process last frame if
         while (av_read_frame(container.get(), packet.get()) >= 0 && state == State::Playing) {
             // Process
-            double pts = packet->pts * av_q2d(packet->time_base);
             if (packet->stream_index == video_stream) {
                 proc_video();
             }
             else if (packet->stream_index == audio_stream) {
-
+                proc_audio();
             }
-
-            // Done
-            av_packet_unref(packet.get());
         }
 
         // EOF
         if (state == State::Playing) {
             state = State::Stopped;
-            defer_call(&Signal<void()>::emit, &signal_error);
+
+            // Notify
+            if (video_output) {
+                defer_call(&AbstractVideoSurface::end, video_output);
+            }
+            defer_call(&Signal<void()>::emit, &signal_stopped);
         }
     }
 }
 void MediaPlayerImpl::proc_video() {
-    if (!video_output) {
+    if (!video_output || !video_ctxt) {
         // No need to proc, drop
         return;
     }
+    // Push packet to queue
+    AVPacketPtr pack = AVPacketPtr::Alloc();
+    av_packet_ref(pack.get(), packet.get());
+    video_packet_queue.emplace(std::move(pack));
 
-    int ret = avcodec_send_packet(video_ctxt.get(), packet.get());
+    // Try run out the packet
+    while (video_decode()) {
+        int ret;
+
+        // Unpack info
+        auto time_base = av_q2d(container->streams[video_stream]->time_base);
+        auto pts = video_frame->pts * time_base;
+        auto ticks = GetTicks();
+
+        assert(time_base != 0.0);
+
+        if (video_has_prev) {
+            // FIXME : Sync video to audio, this way is little dirty
+            if (audio_pts > pts + 0.1) {
+                // audio is quicker
+                PLAYER_LOG("[Video codec] Too last, drop frame %lf\n", pts);
+                video_has_prev = false;
+                continue;
+            }
+            // Convert to ms
+            auto pts_diff = (pts - video_prev_pts) * 1000;
+            auto ticks_diff = ticks - video_ticks;
+            auto diff = pts_diff - ticks_diff;
+
+            if (diff > 0.01) {
+                // We need sleep
+                if (!audio_frame_encough) {
+                    video_frame_unused = true;
+                    return;
+                }
+                // Encough audio frame, we can sleep now
+                int64_t ms = diff;
+
+                // Wait, exception play status changed & no audio frame
+                std::unique_lock lk(mutx);
+                cond.wait_for(lk, std::chrono::milliseconds(ms));
+
+                if (!audio_frame_encough) {
+                    video_frame_unused = true;
+                    return;
+                }
+                if (state != State::Playing) {
+                    video_has_prev = false;
+                    return;
+                }
+            }
+            else if (diff < 1.0 / 30) {
+                video_has_prev = false;
+                PLAYER_LOG("[Video codec] Too last, drop frame %lf\n", pts);
+                continue;
+            }
+        }
+
+        // PLAYER_LOG("[Video codec] video frame pts %lf\n", pts);
+
+        video_frame_unused = false;
+        // Process frame
+        video_mtx.lock();
+        ret = sws_scale(
+            video_cvt.get(),
+            video_frame->data,
+            video_frame->linesize,
+            0,
+            video_ctxt->height,
+            video_frame2->data,
+            video_frame2->linesize
+        );
+        video_mtx.unlock();
+        // sws_scale_frame(video_cvt.get(), video_frame2.get(), video_frame.get());
+
+        // Push to surface
+        video_ticks = GetTicks();
+        video_prev_pts = pts;
+        defer_call([this]() {
+            std::lock_guard locker(video_mtx);
+            video_output->write(PixFormat::RGBA32, video_frame2->data[0], video_frame2->linesize[0], video_ctxt->width, video_ctxt->height);
+        });
+
+        video_has_prev = true;
+
+    }
+}
+bool MediaPlayerImpl::video_decode() {
+    if (video_frame_unused) {
+        return true;
+    }
+
+    int ret;
+
+    do {
+        ret = avcodec_receive_frame(video_ctxt.get(), video_frame.get());
+        if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
+            if (video_packet_queue.empty()) {
+                // No Packet
+                return false;
+            }
+
+            // Need packet
+            ret = avcodec_send_packet(video_ctxt.get(), video_packet_queue.front().get());
+            if (ret != 0) {
+                // Error
+                return false;
+            }
+            av_packet_unref(video_packet_queue.front().get());
+            video_packet_queue.pop();
+            continue;
+        }
+        else if (ret != 0) {
+            // Codec Error
+            return false;
+        }
+        else {
+            return true;
+        }
+    }
+    while(!video_packet_queue.empty());
+    // No Packet
+    return false;
+}
+void MediaPlayerImpl::video_cleanup() {
+    while (!video_packet_queue.empty()) {
+        av_packet_unref(video_packet_queue.front().get());
+        video_packet_queue.pop();
+    }
+}
+void MediaPlayerImpl::proc_audio() {
+    if (!audio_ctxt) {
+        return;
+    }
+
+    int ret = avcodec_send_packet(audio_ctxt.get(), packet.get());
     if (ret != 0) {
         // Error
         return;
     }
-    ret = avcodec_receive_frame(video_ctxt.get(), video_frame.get());
+    ret = avcodec_receive_frame(audio_ctxt.get(), audio_frame.get());
     if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
         // We need more packet
         return;
     }
 
-    // Process frame
-    ret = sws_scale(
-        video_cvt.get(),
-        video_frame->data,
-        video_frame->linesize,
-        0,
-        video_ctxt->height,
-        video_frame2->data,
-        video_frame2->linesize
-    );
-    // sws_scale_frame(video_cvt.get(), video_frame2.get(), video_frame.get());
+    auto time_base = av_q2d(container->streams[audio_stream]->time_base);
+    auto pts = audio_frame->pts * time_base;
 
-    // Push to surface
-    defer_call([this]() {
-        video_output->write(PixFormat::RGBA32, video_frame2->data[0], video_frame2->linesize[0], video_ctxt->width, video_ctxt->height);
-    });
+    // Got frame, push to audio player thread
+    std::lock_guard locker(audio_mtx);
+    audio_frame_queue.push(std::move(audio_frame));
+    audio_frame = AVFramePtr::Alloc();
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    audio_frame_encough = audio_frame_queue.size() > 200;
+
+    // Done
+    av_packet_unref(packet.get());
 }
+// bool MediaPlayerImpl::audio_decode() {
+//     int ret = avcodec_receive_frame(audio_ctxt.get(), audio_frame.get());
+//     while () {
+
+//     }
+// }
 void MediaPlayerImpl::play() {
+    if (state != State::Stopped) {
+        stop();
+    }
     if (video_url.empty()) {
         return;
     }
@@ -273,79 +484,383 @@ void MediaPlayerImpl::play() {
     }
 
     // Prepare codec
-    auto codec = avcodec_find_decoder(container->streams[video_stream]->codecpar->codec_id);
-    if (codec) {
-        video_ctxt.reset(avcodec_alloc_context3(codec));
-        if (!video_ctxt) {
-            // Error
-            signal_error.emit();
-            return;
-        }
-        ret = avcodec_parameters_to_context(video_ctxt.get(), container->streams[video_stream]->codecpar);
-        if (ret < 0) {
-            // Error
-            signal_error.emit();
-            return;
-        }
-        video_codec = video_ctxt->codec;
-        ret = avcodec_open2(video_ctxt.get(), video_codec, nullptr);
-        if (ret < 0) {
-            // Error
-            signal_error.emit();
-            return;
-        }
+    const AVCodec *codec;
 
-        // Prepare buffer
-        video_frame  = AVFramePtr::Alloc();
-        video_frame2 = AVFramePtr::Alloc();
+    if (video_stream >= 0){
+        codec = avcodec_find_decoder(container->streams[video_stream]->codecpar->codec_id);
+        if (codec) {
+            video_ctxt.reset(avcodec_alloc_context3(codec));
+            if (!video_ctxt) {
+                // Error
+                signal_error.emit();
+                return;
+            }
+            ret = avcodec_parameters_to_context(video_ctxt.get(), container->streams[video_stream]->codecpar);
+            if (ret < 0) {
+                // Error
+                signal_error.emit();
+                return;
+            }
+            video_codec = video_ctxt->codec;
+            ret = avcodec_open2(video_ctxt.get(), video_codec, nullptr);
+            if (ret < 0) {
+                // Error
+                signal_error.emit();
+                return;
+            }
 
-        video_cvt.reset(
-            sws_getContext(
-                video_ctxt->width,
-                video_ctxt->height,
-                video_ctxt->pix_fmt,
-                video_ctxt->width,
-                video_ctxt->height,
+            // Prepare buffer
+            video_frame  = AVFramePtr::Alloc();
+            video_frame2 = AVFramePtr::Alloc();
+
+            video_cvt.reset(
+                sws_getContext(
+                    video_ctxt->width,
+                    video_ctxt->height,
+                    video_ctxt->pix_fmt,
+                    video_ctxt->width,
+                    video_ctxt->height,
+                    AV_PIX_FMT_RGBA,
+                    0,
+                    nullptr,
+                    nullptr,
+                    nullptr
+                )
+            );
+            assert(video_cvt);
+
+            size_t n     = av_image_get_buffer_size(AV_PIX_FMT_RGBA, video_ctxt->width, video_ctxt->height, 32);
+            uint8_t *buf = static_cast<uint8_t*>(av_malloc(n));
+
+            av_image_fill_arrays(
+                video_frame2->data,
+                video_frame2->linesize,
+                buf,
                 AV_PIX_FMT_RGBA,
-                0,
-                nullptr,
-                nullptr,
-                nullptr
-            )
-        );
-        assert(video_cvt);
+                video_ctxt->width, video_ctxt->height,
+                32
+            );
 
-        size_t n     = av_image_get_buffer_size(AV_PIX_FMT_RGBA, video_ctxt->width, video_ctxt->height, 32);
-        uint8_t *buf = static_cast<uint8_t*>(av_malloc(n));
+            // Cleanup prev
+            video_ticks = 0;
+            video_prev_pts = 0.0;
+            video_has_prev = false;
 
-        av_image_fill_arrays(
-            video_frame2->data,
-            video_frame2->linesize,
-            buf,
-            AV_PIX_FMT_RGBA,
-            video_ctxt->width, video_ctxt->height,
-            32
-        );
+            // Notify video output if
+            if (video_output) {
+                PixFormat fmt = PixFormat::RGBA32;
+                video_output->begin(&fmt);
+                
+                assert(fmt == PixFormat::RGBA32);
+            }
+        }
+    }
+    if (audio_stream >= 0) {
+        codec = avcodec_find_decoder(container->streams[audio_stream]->codecpar->codec_id);
+        if (codec) {
+            audio_ctxt.reset(avcodec_alloc_context3(codec));
+            if (!audio_ctxt) {
+                // Error
+                signal_error.emit();
+                return;
+            }
+            ret = avcodec_parameters_to_context(audio_ctxt.get(), container->streams[audio_stream]->codecpar);
+            if (ret < 0) {
+                // Error
+                signal_error.emit();
+                return;
+            }
+            audio_codec = audio_ctxt->codec;
+            ret = avcodec_open2(audio_ctxt.get(), audio_codec, nullptr);
+            if (ret < 0) {
+                // Error
+                signal_error.emit();
+                return;
+            }
+
+            // Prepare audio device
+            audio_device_init();
+        }
     }
 
     // All done, let start
     state = State::Playing;
     cond.notify_one();
 }
+void MediaPlayerImpl::audio_callback(void *out, uint32_t byte) {
+    // byte = 2 * byte * sizeof(int32_t);
+
+    // // First check buffer has encough data
+    // size_t avliable = audio_buffer.size() - audio_buffer_used;
+    // size_t ncopyed  = min<size_t>(avliable, byte);
+
+    // Btk_memcpy(out, audio_buffer.data(), ncopyed);
+
+    // // Move 
+    // out = static_cast<uint8_t*>(out) + ncopyed;
+    // audio_buffer_used += ncopyed;
+    // byte -= ncopyed;
+
+    // if (byte) {
+    //     // Still has data need to
+    //     std::lock_guard locker(audio_mtx);
+    //     if (!audio_frame_queue.empty()) {
+
+    //     }
+    // }
+    // if (byte) {
+    //     // No more data :(
+    //     Btk_memset(out, 0, byte);
+    // }
+#if !defined(NDEBUG)
+    static double prev_pts = 0;
+#endif
+
+    while (byte > 0 && state == State::Playing) {
+        // First check buffer has encough data
+        size_t avliable = audio_buffer.size() - audio_buffer_used;
+        size_t ncopyed  = min<size_t>(avliable, byte);
+
+        Btk_memcpy(out, audio_buffer.data(), ncopyed);
+
+        // Move 
+        out = static_cast<uint8_t*>(out) + ncopyed;
+        byte -= ncopyed;
+        audio_buffer_used += ncopyed;
+
+        audio_pts = audio_pts + double(ncopyed) / (2 * audio_ctxt->channels * audio_ctxt->sample_rate);
+
+        if (byte) {
+            // We need more data
+            if (!audio_fillbuffer()) {
+                // No more data :(
+                break;
+            }
+        }
+
+#if !defined(NDEBUG)
+        if (prev_pts != audio_pts) {
+            prev_pts = audio_pts;
+            // PLAYER_LOG("[Audio Thread] audio pts %lf\n", prev_pts);
+        }
+#endif
+    }
+    if (byte) {
+        // Make silence
+        // PLAYER_LOG("[Audio Thread] make %u byte data into slience\n", byte);
+        Btk_memset(out, 0, byte);
+    }
+}
+bool MediaPlayerImpl::audio_fillbuffer() {
+    std::unique_lock locker(audio_mtx);
+    while (audio_frame_queue.empty()) {
+
+        // Try wait for codec thread
+        audio_frame_encough = false;
+        locker.unlock();
+        cond.notify_one();
+        locker.lock();
+
+    }
+    // Resampling
+    auto frame = audio_frame_queue.front().get();
+
+    // Buffer should be fully used
+    // assert(audio_buffer_used == audio_buffer.size());
+    if (audio_buffer_used != audio_buffer.size()) {
+        PLAYER_LOG("[Audio Thread] Warning audio_buffer_used != audio_buffer.size()\n");
+    }
+
+    // Setting up 
+    int64_t in_channal_layout = (audio_ctxt->channels ==
+                        av_get_channel_layout_nb_channels(audio_ctxt->channel_layout)) ?
+                        audio_ctxt->channel_layout :
+                        av_get_default_channel_layout(audio_ctxt->channels);
+    
+
+    auto    out_channal_layout = in_channal_layout;
+    auto    out_sample_fmt     = AV_SAMPLE_FMT_S32;
+    auto    out_channals       = audio_ctxt->channels;
+
+    if (in_channal_layout < 0) {
+        audio_frame_queue.pop();
+        return false;
+    }
+
+    SwrContext *cvt = swr_alloc();
+
+    // Set convert args
+    av_opt_set_int(cvt, "in_channel_layout", in_channal_layout, 0);
+    av_opt_set_int(cvt, "in_sample_rate", audio_ctxt->sample_rate, 0);
+    av_opt_set_sample_fmt(cvt, "in_sample_fmt", audio_ctxt->sample_fmt, 0);
+
+    av_opt_set_int(cvt, "out_channel_layout", out_channal_layout, 0);
+    av_opt_set_int(cvt, "out_sample_rate", audio_ctxt->sample_rate, 0);
+    av_opt_set_sample_fmt(cvt, "out_sample_fmt", out_sample_fmt, 0);
+
+    if (swr_init(cvt) < 0) {
+        swr_free(&cvt);
+        audio_frame_queue.pop();
+        return true;
+    }
+
+    auto nsamples = av_rescale_rnd(
+        frame->nb_samples,
+        audio_ctxt->sample_rate,
+        audio_ctxt->sample_rate,
+        AV_ROUND_UP
+    );
+    assert(nsamples > 0);
+
+    int samples_size;
+    int ret = av_samples_get_buffer_size(
+        &samples_size,
+        out_channals,
+        nsamples,
+        out_sample_fmt,
+        1
+    );
+    assert(ret >= 0);
+
+    audio_buffer.resize(samples_size);
+    audio_buffer_used = 0;
+
+    // Begin convert
+    uint8_t *outaddr = audio_buffer.data();
+
+    ret = swr_convert(
+        cvt,
+        &outaddr,
+        audio_buffer.size(),
+        (const uint8_t**)frame->data,
+        frame->nb_samples
+    );
+
+    assert(ret >= 0);
+    
+    audio_pts = frame->pts * av_q2d(container->streams[audio_stream]->time_base);
+
+    // Done
+    swr_free(&cvt);
+    audio_frame_queue.pop();
+    return true;
+}
+void MediaPlayerImpl::audio_device_init() {
+
+#if defined(BTK_MINIAUDIO)
+    ma_device_config conf = ma_device_config_init(ma_device_type_playback);
+    conf.dataCallback = [](ma_device *dev, void *out, const void *in, ma_uint32 nframe) {
+        static_cast<MediaPlayerImpl*>(dev->pUserData)->audio_callback(
+            out,
+            nframe * ma_get_bytes_per_frame(
+                dev->playback.format,
+                dev->playback.channels
+            )
+        );
+    };
+    conf.pUserData = this;
+    conf.playback.format = ma_format_s32;
+    conf.playback.channels = audio_ctxt->channels;
+    conf.sampleRate = audio_ctxt->sample_rate;
+
+    if (ma_device_init(nullptr, &conf, &audio_device) == MA_SUCCESS) {
+        ma_device_start(&audio_device);
+        audio_device_inited = true;
+    }
+#else
+    std::once_flag once;
+    std::call_once(once, SDL_Init, SDL_INIT_AUDIO);
+
+    SDL_AudioSpec spec = {};
+    spec.callback = [](void *user, uint8_t *out, int len) {
+        return static_cast<MediaPlayerImpl*>(user)->audio_callback(out, len);
+    };
+    spec.channels = audio_ctxt->channels;
+    spec.format = AUDIO_S32;
+    spec.freq = audio_ctxt->sample_rate;
+    spec.samples = 1024;
+    spec.userdata = this;
+    // spec.
+
+    audio_device = SDL_OpenAudioDevice(nullptr, false, &spec, nullptr, 0);
+    assert(audio_device > 0);
+
+    PLAYER_LOG("[SDL Audio backend] %s\n", SDL_GetCurrentAudioDriver());
+
+    SDL_PauseAudioDevice(audio_device, 0);
+    audio_device_inited = true;
+#endif
+}
+void MediaPlayerImpl::audio_device_pause(bool v) {
+    if (audio_device_inited) {
+#if defined(BTK_MINIAUDIO)
+        if (v) {
+            ma_device_stop(&audio_device);
+        }
+        else {
+            ma_device_start(&audio_device);
+        }
+#else
+        SDL_PauseAudioDevice(audio_device, v);
+#endif
+    }
+}
+void MediaPlayerImpl::audio_device_destroy() {
+    if (audio_device_inited) {
+#if defined(BTK_MINIAUDIO)
+        ma_device_uninit(&audio_device);
+#else
+        SDL_CloseAudioDevice(audio_device);
+        audio_device = 0;
+#endif
+        audio_device_inited = false;
+        while (!audio_frame_queue.empty()) {
+            audio_frame_queue.pop();
+        }
+
+        audio_buffer.clear();
+        audio_buffer_used = 0;
+        audio_pts = 0;
+    }
+}
 void MediaPlayerImpl::pause() {
+    audio_device_pause(true);
+
     state = State::Paused;
     cond.notify_one();
 }
 void MediaPlayerImpl::resume() {
+    audio_device_pause(false);
+
     state = State::Playing;
     cond.notify_one();
 }
 void MediaPlayerImpl::stop() {
     state = State::Stopped;
     cond.notify_one();
+
+    audio_device_destroy();
+
+    if (video_output) {
+        video_output->end();
+    }
 }
-bool MediaPlayerImpl::timer_event(TimerEvent &) {
-    return true;
+
+double MediaPlayerImpl::duration() const {
+    if (container) {
+        return double(container->duration) / AV_TIME_BASE;
+    }
+    return 0.0;
+}
+double MediaPlayerImpl::position() const {
+    // May be we need to think a better to calc it
+    if (audio_stream >= 0) {
+        return audio_pts;
+    }
+    if (video_stream >= 0) {
+        return video_prev_pts;
+    }
+    return 0.0;
 }
 
 // VideoWidget
@@ -382,15 +897,22 @@ bool VideoWidget::paint_event(PaintEvent &) {
 }
 bool VideoWidget::begin(PixFormat *fmt) {
     *fmt = PixFormat::RGBA32;
+    playing = true;
     return true;
 }
 bool VideoWidget::end() {
-    native_resolution = {0, 0};
+    playing = false;
+    texture.clear();
+    repaint();
     return true;
 }
 bool VideoWidget::write(PixFormat fmt, cpointer_t data, int pitch, int w, int h) {
     assert(fmt == PixFormat::RGBA32);
     assert(ui_thread());
+
+    if (!playing) {
+        return false;
+    }
 
     native_resolution = {w, h};
     if (texture.empty() || texture.size() != native_resolution) {
@@ -398,7 +920,6 @@ bool VideoWidget::write(PixFormat fmt, cpointer_t data, int pitch, int w, int h)
         // texture.set_interpolation_mode(InterpolationMode::Nearest);
     }
     texture.update(nullptr, data, pitch);
-
     repaint();
     return true;
 }
@@ -428,6 +949,17 @@ void MediaPlayer::set_url(u8string_view url) {
 }
 void MediaPlayer::set_video_output(AbstractVideoSurface *v) {
     priv->video_output = v;
+}
+
+auto MediaPlayer::signal_error() -> Signal<void()> & {
+    return priv->signal_error;
+}
+
+double MediaPlayer::duration() const {
+    return priv->duration();
+}
+double MediaPlayer::position() const {
+    return priv->position();
 }
 
 BTK_NS_END
