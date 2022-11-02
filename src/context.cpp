@@ -33,7 +33,8 @@ auto SetDispatcher(EventDispatcher *d) -> void {
 UIContext::UIContext(GraphicsDriver *driv) {
     assert(!GetUIContext());
 
-    driver = driv;
+    _dispatcher = GetDispatcher(); 
+    _driver     = driv;
     PaletteBreeze(&palette);
     StyleBreeze(&style);
     SetUIContext(this);
@@ -47,10 +48,11 @@ UIContext::UIContext(GraphicsDriver *driv) {
 UIContext::UIContext() {
 
 #if defined(BTK_DRIVER)
-    driver = BTK_DRIVER.create();
+    _driver = BTK_DRIVER.create();
 #else
     abort();
 #endif
+    _dispatcher = GetDispatcher();
     PaletteBreeze(&palette);
     StyleBreeze(&style);
     SetUIContext(this);
@@ -62,17 +64,14 @@ UIContext::UIContext() {
     thread_id = std::this_thread::get_id(); 
 }
 UIContext::~UIContext() {
-    for(auto w : widgets) {
-        delete w;
-    }
-    delete driver;
+    delete _driver;
 
     if (GetUIContext() == this) {
         SetUIContext(nullptr);
     }
 }
-bool UIContext::run() {
-    EventLoop loop(this);
+int UIContext::run() {
+    EventLoop loop(_dispatcher);
     return loop.run();
 }
 
@@ -110,30 +109,16 @@ bool  EventQueue::poll(Event **event) {
     return *event;
 }
 
-bool EventLoop::run() {
-    auto &driver = ctxt->driver;
-    auto &queue  = ctxt->queue; 
-    Event *event;
-    while (running) {
-        driver->pump_events(ctxt);
-
-        while(queue.poll(&event)) {
-            dispatch(event);
-            delete event;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    return false;
-}
-void EventLoop::dispatch(Event *event) {
+bool EventDispatcher::dispatch(Event *event) {
+    bool ret = true;
     switch (event->type()) {
         case Event::Quit : {
-            running = false;
+            interrupt();
             break;
         }
         case Event::Timer : {
             auto t = static_cast<TimerEvent*>(event);
-            t->object()->handle(*event);
+            ret = t->object()->handle(*event);
             break;
         }
         case Event::Call : {
@@ -155,14 +140,15 @@ void EventLoop::dispatch(Event *event) {
                 //     break;
                 // }
 
-                w->handle(*event);
+                ret = w->handle(*event);
                 break;
             }
-
-            BTK_LOG("EventLoop::dispatch: unknown event type\n");
+            ret = false;
+            BTK_LOG("EventDispatcher::dispatch: unknown event type\n");
             break;
         }
     }
+    return ret;
 }
 
 timestamp_t GetTicks() {

@@ -543,7 +543,7 @@ window_t Widget::winhandle() const {
     return nullptr;
 }
 driver_t Widget::driver() const {
-    return _context->graphics_driver();
+    return _context->driver();
 }
 Painter &Widget::painter() const {
     // if (priv->gc == nullptr) {

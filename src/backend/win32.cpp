@@ -8,6 +8,7 @@
 #include <ShlObj.h>
 #include <csignal>
 #include <memory>
+#include <stack>
 #include <tuple>
 #include <wrl.h>
 
@@ -34,8 +35,8 @@
 #undef min
 #undef max
 
-#define WM_CALL    (WM_APP + 0x100)
-#define WM_REPAINT (WM_APP + 0x101)
+#define BTK_CALL    (WM_APP + 0x100)
+#define BTK_EVENT   (WM_APP + 0x101)
 
 // OpenGL support
 #define GL_LIB(x)    HMODULE library = LoadLibraryA(x)
@@ -98,6 +99,13 @@ using namespace BTK_NAMESPACE;
 
 class Win32Driver ;
 class Win32Window ;
+
+// For timer stored at object
+class Win32Timer  {
+    public:
+        HANDLE  handle = INVALID_HANDLE_VALUE; //< Valid if CreateTimerQueueTimer 
+        Object *object = nullptr;
+};
 
 class Win32Window : public AbstractWindow {
     public:
@@ -173,11 +181,37 @@ class Win32Window : public AbstractWindow {
         WINDOWPLACEMENT prev_placement;
 };
 
-class Win32Driver : public GraphicsDriver, public Win32User32 {
+class Win32Dispatcher : public EventDispatcher {
+    public:
+        Win32Dispatcher();
+        ~Win32Dispatcher();
+
+        timerid_t timer_add(Object *object, timertype_t type, uint32_t ms) override;
+        bool      timer_del(Object *object, timerid_t id) override;
+
+        pointer_t alloc(size_t n) override;
+        bool      send(Event *event, EventDtor dtor) override;
+
+        void      interrupt() override;
+        int       run()       override;
+
+        BOOL      post_message(UINT msg, WPARAM wp, LPARAM lp);
+        VOID      post_quit_message(UINT value);
+    private:
+        LRESULT   helper_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
+        using     TimersMap   = std::unordered_map<timerid_t, Win32Timer>;  //< pair<id,  Win32Timer>
+        using     StateStack  = std::stack<std::pair<bool, int>>;       //< pair<Running, StatusCode>
+
+        StateStack states      = {};
+        TimersMap  timers      = {}; //< Map TimerID to object
+        HWND       helper_hwnd = {}; //< Helper window for timer
+    friend class Win32Driver;
+};
+
+class Win32Driver     : public GraphicsDriver, public Win32User32 {
     public:
         Win32Driver();
         ~Win32Driver();
-
 
         window_t window_create(const char_t *title, int width, int height, WindowFlags flags) override;
         void     window_add(Win32Window *w);
@@ -188,28 +222,15 @@ class Win32Driver : public GraphicsDriver, public Win32User32 {
         void     clipboard_set(const char_t *text) override;
         u8string clipboard_get() override;
 
-        timerid_t timer_add(Object *object, timertype_t type, uint32_t ms) override;
-        bool      timer_del(Object *object, timerid_t id) override;
-
         bool      query_value(int query, ...) override;
 
         LRESULT   wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
-        LRESULT   helper_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
-
-
-        void      pump_events(UIContext *ctxt) override;
-        
 
         std::unordered_map<HWND, Win32Window*> windows;
 
-        // TODO : a better way to do this?
-        std::unordered_map<timerid_t, Object*> timers;
-
-        UIContext *context = {};
-
         // Platform data
-        DWORD      working_thread_id = GetCurrentThreadId();
-        HWND       helper_hwnd = {}; //< Helper window for timer
+        Win32Dispatcher dispatcher;
+        DWORD           working_thread_id = GetCurrentThreadId();
 };
 
 class Win32GLContext : public GLContext {
@@ -266,12 +287,6 @@ class Win32FileDialog : public AbstractFileDialog {
         ComPtr<IFileDialog> dialog;
 };
 
-// For timer stored at object
-class Win32Timer : public Any {
-    public:
-        HANDLE handle;
-};
-
 // For invoke a call in GUI Thread and wait the result
 template <typename Callable, typename ...Args>
 class Win32Call : public std::tuple<Args...> {
@@ -321,7 +336,8 @@ class Win32Call : public std::tuple<Args...> {
 };
 
 // Global instance of the driver.
-static Win32Driver *win32_driver = nullptr;
+static Win32Driver     *win32_driver = nullptr;
+static Win32Dispatcher *win32_dispatcher = nullptr;
 
 // Helper function 
 size_t utf8_to_utf16(const char_t *utf8, size_t u8len, wchar_t *utf16, size_t u16len) {
@@ -337,9 +353,8 @@ auto   gui_thread_call(Callable &&c, Args &&...args) {
     );
 
     // Post the message to the helper window.
-    PostMessage(
-        win32_driver->helper_hwnd,
-        WM_CALL,
+    win32_dispatcher->post_message(
+        BTK_CALL,
         reinterpret_cast<WPARAM>(Win32Call<Callable, Args...>::Call),
         reinterpret_cast<LPARAM>(&call)
     );
@@ -375,33 +390,16 @@ HBITMAP buffer_to_hbitmap(const PixBuffer &buf) {
     return hbitmap;
 }
 
-
-Win32Driver::Win32Driver() {
-    // Set DPI if avliable
-    if (SetProcessDpiAwarenessContext) {
-        SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
-    }
-    // Initialize the window class.
-    WNDCLASSEXW wc = {};
-    wc.cbSize = sizeof(WNDCLASSEX);
-    wc.style = CS_HREDRAW | CS_VREDRAW;
-    wc.lpfnWndProc = [](HWND w, UINT m, WPARAM wp, LPARAM lp) {
-        return win32_driver->wnd_proc(w, m, wp, lp);
-    };
-    wc.hInstance = GetModuleHandle(nullptr);
-    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    wc.lpszClassName = L"BtkWindow";
-    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    wc.hbrBackground = (HBRUSH)0;
-    wc.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
-    wc.hIconSm = LoadIcon(nullptr, IDI_APPLICATION);
-    RegisterClassExW(&wc);
-
+Win32Dispatcher::Win32Dispatcher() {
+    SetDispatcher(this);
 
     // Initialize helper window class
+    WNDCLASSEXW wc = {};
+    wc.cbSize = sizeof(WNDCLASSEX);
+    wc.hInstance = GetModuleHandle(nullptr);
     wc.lpszClassName = L"BtkHelper";
     wc.lpfnWndProc = [](HWND w, UINT m, WPARAM wp, LPARAM lp) {
-        return win32_driver->helper_wnd_proc(w, m, wp, lp);
+        return win32_dispatcher->helper_wnd_proc(w, m, wp, lp);
     };
 
     // Reg it
@@ -423,7 +421,201 @@ Win32Driver::Win32Driver() {
         nullptr
     );
 
-    assert(helper_hwnd);
+    assert(helper_hwnd != nullptr);
+
+    win32_dispatcher = this;
+}
+Win32Dispatcher::~Win32Dispatcher() {
+    if (GetDispatcher() == this) {
+        SetDispatcher(nullptr);
+    }
+    DestroyWindow(helper_hwnd);
+
+    win32_dispatcher = nullptr;
+}
+timerid_t Win32Dispatcher::timer_add(Object *object, timertype_t t, uint32_t ms) {
+    timerid_t id;
+    timerid_t offset = 0;
+    HANDLE    handle = INVALID_HANDLE_VALUE; //< System timer handle
+    if (t == TimerType::Precise) {
+        offset = TIMER_PRECISE;
+    }
+    // Random a id
+    do {
+        id = rand();
+        id %= TIMER_PRECISE; //< Avoid overflow
+        id += offset;//< Add offset if is precise timer
+    }
+    while(timers.find(id) != timers.end());
+
+    if (!offset) {
+        // Coarse timer
+        // Let system add it
+        id = SetTimer(
+            helper_hwnd, 
+            id,
+            ms,
+            nullptr
+        );
+
+        if (id == 0) {
+            WIN_LOG("SetTimer failed\n");
+            return 0;
+        }
+    }
+    else {
+        // Use winapi
+        auto cb = [](void *id, BOOLEAN) -> void {
+            win32_dispatcher->post_message(
+                WM_TIMER,
+                reinterpret_cast<WPARAM>(id),
+                0
+            );
+        };
+        if (!CreateTimerQueueTimer(&handle, nullptr, cb, reinterpret_cast<void*>(id), ms, ms, WT_EXECUTEDEFAULT)) {
+            // Unsupported ?
+            WIN_LOG("CreateTimerQueueTimer failed");
+            // Back to coarse timer
+            return timer_add(object, timertype_t::Coarse, ms);
+        }
+    }
+
+    // Register to timer map
+    timers[id].handle = handle;
+    timers[id].object = object;
+    return id;
+}
+bool      Win32Dispatcher::timer_del(Object *object, timerid_t id) {
+    bool ret = false;
+    auto iter = timers.find(id);
+    if (iter == timers.end()) {
+        return false;
+    }
+
+    // Got
+    if (TIMER_IS_COARSE(id)) {
+        // Timer from SetTimer
+        ret = KillTimer(helper_hwnd, id);
+    }
+    else {
+        // Timer from CreateTimerQueueTimer
+        ret = DeleteTimerQueueTimer(nullptr, iter->second.handle, nullptr);
+        assert(ret);
+    }
+
+    timers.erase(iter);
+
+    return ret;
+}
+LRESULT   Win32Dispatcher::helper_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
+    switch (msg) {
+        case WM_TIMER : {
+            // Check if is timer event , and it is on the list of timers.
+            if (timers.find(wparam) != timers.end()) {
+
+                auto id     = wparam;
+                auto object = timers[id].object;
+
+                TimerEvent event(object, id);
+                event.set_timestamp(GetTicks());
+
+                object->handle(event);
+                return 0;
+            }
+            else {
+                //??? 
+                WIN_LOG("Unregitered WM_TIMER id => %d\n", int(wparam));
+            }
+            return 0;
+        }
+        case BTK_CALL : {
+            auto callback = reinterpret_cast<Win32Callback>(wparam);
+            auto param    = reinterpret_cast<void *>(lparam);
+            callback(param);
+            return 0;
+        }
+        case BTK_EVENT : {
+            auto eventptr  = reinterpret_cast<Event*>(wparam);
+            auto eventdtor = reinterpret_cast<EventDtor>(lparam);
+
+            dispatch(eventptr);
+
+            if (eventdtor) {
+                eventdtor(eventptr);
+            }
+
+            Btk_free(eventptr);
+            return 0;
+        }
+        default : {
+            return DefWindowProcW(hwnd, msg, wparam, lparam);
+        }
+    }
+}
+pointer_t Win32Dispatcher::alloc(size_t n) {
+    return Btk_malloc(n);
+}
+bool      Win32Dispatcher::send(Event *event, EventDtor dtor) {
+    return post_message(
+        BTK_EVENT,
+        reinterpret_cast<WPARAM>(event),
+        reinterpret_cast<LPARAM>(dtor)
+    );
+}
+int       Win32Dispatcher::run() {
+    // Push Kepp <Running, Normal exit code>
+    states.push({true, EXIT_SUCCESS});
+    
+    MSG msg;
+    while (GetMessageW(&msg, nullptr, 0, 0) && states.top().first) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+
+    if (msg.message == WM_QUIT) {
+        states.top().second = msg.wParam;
+    }
+    int code = states.top().second;
+
+    // Restore
+    states.pop();
+    return code;
+}
+void    Win32Dispatcher::interrupt() {
+    if (!states.empty()) {
+        states.top().first = true;
+    }
+}
+BOOL    Win32Dispatcher::post_message(UINT msg, WPARAM wp, LPARAM lp) {
+    return PostMessageW(
+        helper_hwnd,
+        msg,
+        wp,
+        lp
+    );
+}
+
+
+Win32Driver::Win32Driver() {
+    // Set DPI if avliable
+    if (SetProcessDpiAwarenessContext) {
+        SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
+    }
+    // Initialize the window class.
+    WNDCLASSEXW wc = {};
+    wc.cbSize = sizeof(WNDCLASSEX);
+    wc.style = CS_HREDRAW | CS_VREDRAW;
+    wc.lpfnWndProc = [](HWND w, UINT m, WPARAM wp, LPARAM lp) {
+        return win32_driver->wnd_proc(w, m, wp, lp);
+    };
+    wc.hInstance = GetModuleHandle(nullptr);
+    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wc.lpszClassName = L"BtkWindow";
+    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wc.hbrBackground = (HBRUSH)0;
+    wc.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
+    wc.hIconSm = LoadIcon(nullptr, IDI_APPLICATION);
+    RegisterClassExW(&wc);
 
     // Initialize the IME
 
@@ -611,7 +803,6 @@ Win32Driver::Win32Driver() {
 
 }
 Win32Driver::~Win32Driver() {
-    DestroyWindow(helper_hwnd);
     win32_driver = nullptr;
 }
 
@@ -628,10 +819,10 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     Win32Window *win = it->second;
     Widget *widget   = win->widget;
     switch (msg) {
-        case WM_QUIT : {
-            context->send_event(QuitEvent(wparam));
-            break;
-        }
+        // case WM_QUIT : {
+        //     context->send_event(QuitEvent(wparam));
+        //     break;
+        // }
         case WM_CLOSE : {
             CloseEvent event;
             event.accept(); //< Default is to accept the close event.
@@ -650,16 +841,11 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
                     WIN_LOG("Quitting\n");
                     PostQuitMessage(0);
                     
-                    Event e(Event::Quit);
-                    context->send_event(e);
+                    // Event e(Event::Quit);
+                    // context->send_event(e);
                 }
             }
             break;
-        }
-        // Repaint from BtkWindow
-        case WM_REPAINT : {
-            win->repaint_in_progress = false;
-            [[fallthrough]];
         }
         case WM_PAINT : {
             PaintEvent event;
@@ -986,38 +1172,6 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     }
     return 0;
 }
-LRESULT Win32Driver::helper_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
-    switch (msg) {
-        case WM_TIMER : {
-            // Check if is timer event , and it is on the list of timers.
-            if (timers.find(wparam) != timers.end()) {
-
-                auto id     = wparam;
-                auto object = timers[id];
-
-                TimerEvent event(object, id);
-                event.set_timestamp(GetTicks());
-
-                object->handle(event);
-                return 0;
-            }
-            else {
-                //??? 
-                WIN_LOG("Unregitered WM_TIMER id => %d\n", int(wparam));
-            }
-            return 0;
-        }
-        case WM_CALL : {
-            auto callback = reinterpret_cast<Win32Callback>(wparam);
-            auto param    = reinterpret_cast<void *>(lparam);
-            callback(param);
-            return 0;
-        }
-        default : {
-            return DefWindowProcW(hwnd, msg, wparam, lparam);
-        }
-    }
-}
 window_t Win32Driver::window_create(const char_t *title, int width, int height, WindowFlags flags) {
     if (working_thread_id != GetCurrentThreadId()) {
         return gui_thread_call([&, this](){
@@ -1090,16 +1244,8 @@ void  Win32Driver::window_add(Win32Window *win) {
 void  Win32Driver::window_del(Win32Window *win) {
     windows.erase(win->hwnd);
 }
-void  Win32Driver::pump_events(UIContext *ctxt) {
-    context = ctxt;
-    MSG msg;
-    while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
-    }
-}
 void  Win32Driver::clipboard_set(const char_t *text) {
-    if (!OpenClipboard(helper_hwnd)) {
+    if (!OpenClipboard(win32_dispatcher->helper_hwnd)) {
         return;
     }
     if (!text) {
@@ -1119,7 +1265,7 @@ void  Win32Driver::clipboard_set(const char_t *text) {
 }
 u8string Win32Driver::clipboard_get() {
     u8string text;
-    if (OpenClipboard(helper_hwnd)) {
+    if (OpenClipboard(win32_dispatcher->helper_hwnd)) {
         HANDLE h = GetClipboardData(CF_UNICODETEXT);
         if (h) {
             wchar_t *wtext = (wchar_t *)GlobalLock(h);
@@ -1130,85 +1276,6 @@ u8string Win32Driver::clipboard_get() {
         CloseClipboard();
     }
     return text;
-}
-timerid_t Win32Driver::timer_add(Object *object, timertype_t t, uint32_t ms) {
-    timerid_t id;
-    timerid_t offset = 0;
-    if (t == TimerType::Precise) {
-        offset = TIMER_PRECISE;
-    }
-    // Random a id
-    do {
-        id = rand();
-        id %= TIMER_PRECISE; //< Avoid overflow
-        id += offset;//< Add offset if is precise timer
-    }
-    while(timers.find(id) != timers.end());
-
-    if (!offset) {
-        // Coarse timer
-        // Let system add it
-        id = SetTimer(
-            helper_hwnd, 
-            id,
-            ms,
-            nullptr
-        );
-
-        if (id == 0) {
-            WIN_LOG("SetTimer failed\n");
-            return 0;
-        }
-    }
-    else {
-        // Use winapi
-        auto cb = [](void *id, BOOLEAN) -> void {
-            PostMessageW(
-                win32_driver->helper_hwnd,
-                WM_TIMER,
-                reinterpret_cast<WPARAM>(id),
-                0
-            );
-        };
-        HANDLE t;
-        if (!CreateTimerQueueTimer(&t, nullptr, cb, reinterpret_cast<void*>(id), ms, ms, WT_EXECUTEDEFAULT)) {
-            // Unsupported ?
-            WIN_LOG("CreateTimerQueueTimer failed");
-            // Back to coarse timer
-            return timer_add(object, timertype_t::Coarse, ms);
-        }
-        // Store to object
-        auto name = u8string::format("_wt_%p", id);
-        auto wt   = new Win32Timer;
-        wt->handle = t;
-        object->set_userdata(name.c_str(), wt);
-    }
-
-    // Register to timer map
-    timers[id] = object;
-    return id;
-}
-bool Win32Driver::timer_del(Object *object, timerid_t id) {
-    timers.erase(id);
-    if (TIMER_IS_COARSE(id)) {
-        // Create from SetTimer
-        return KillTimer(helper_hwnd, id);
-    }
-    // Create from CreateTimerQueueTimer
-    WIN_LOG("del timer %p\n", id);
-    auto name = u8string::format("_wt_%p", id);
-    auto wt   = (Win32Timer *)object->userdata(name.c_str());
-    // Make sure it is our timer
-    assert(wt);
-    if (!wt) {
-        return false;
-    }
-    // Delete timer
-    BOOL v = DeleteTimerQueueTimer(nullptr, wt->handle, nullptr);
-    // Remove from object
-    delete wt;
-    object->set_userdata(name.c_str(), nullptr);
-    return v;
 }
 bool Win32Driver::query_value(int query, ...) {
     va_list varg;

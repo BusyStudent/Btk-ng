@@ -5,8 +5,8 @@ lib_kind       = "static"
 if is_plat("windows") then
     add_cxxflags("/utf-8")
 elseif is_plat("linux") then
-    add_requires("pango", "pangocairo", "cairo")
-    add_packages("pango", "pangocairo", "cairo")
+    add_requires("pango", "pangocairo", "cairo", "libsdl")
+    add_packages("pango", "pangocairo", "cairo", "libsdl")
 end
 
 set_languages("c++17")
@@ -86,7 +86,7 @@ target("btk")
         add_files("src/backend/sdl2.cpp")
 
         -- Add X11 Support
-        add_links("X11", "SDL2", "pthread")
+        add_links("X11", "pthread")
     end
 target_end()
 

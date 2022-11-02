@@ -48,7 +48,8 @@ class MediaPlayer : public Object {
         enum State {
             Playing,
             Paused,
-            Stopped
+            Stopped,
+            Seeking
         };
 
         MediaPlayer();

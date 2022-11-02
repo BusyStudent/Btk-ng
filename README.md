@@ -80,3 +80,12 @@ int main() {
 - [ ] Compelete Nanovg Painter
 - [ ] Compelete CMake build file
 - [ ] Improve Style
+- [ ] SDL Hi-DPI Support
+
+## Install
+
+- Linux 
+
+```sh
+$ apt install libcairo2-dev libpango1.0-dev libsdl2-dev
+```

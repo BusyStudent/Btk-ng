@@ -24,6 +24,9 @@ using namespace BTK_NAMESPACE;
 #define SDL_GC_FLOAT  SDL_VERSION_ATLEAST(2, 0, 1)
 #define SDL_GC_VERTEX SDL_VERSION_ATLEAST(2, 0, 18)
 
+// Event
+#define SDL_TIMER_EVENT (SDL_LASTEVENT - 10086)
+
 // Type checker
 
 static_assert(offsetof(SDL_Point, x) == offsetof(Point, x));
@@ -48,7 +51,14 @@ static_assert(offsetof(SDL_FRect, h) == offsetof(FRect, h));
 
 
 class SDLDriver ;
-class SDLFont   ;
+class SDLWindow ;
+
+class SDLTimer {
+    public:
+        SDL_TimerID timer  = 0;
+        Object     *object = nullptr;
+};
+
 class SDLWindow : public AbstractWindow {
     public:
         SDLWindow(SDL_Window *w, SDLDriver *dr, WindowFlags f);
@@ -80,12 +90,44 @@ class SDLWindow : public AbstractWindow {
 
         uint32_t   id() const;
     private:
+        float       vdpi;
+        float       hdpi;
+        float       ddpi;
+
         SDL_Window *win = nullptr;
         SDLDriver  *driver = nullptr;
         Widget     *widget = nullptr;
         WindowFlags flags  = {};
         SDL_SysWMinfo info;
+    friend class SDLDispatcher;
     friend class SDLDriver;
+};
+
+class SDLDispatcher : public EventDispatcher {
+    public:
+        SDLDispatcher(SDLDriver *driver);
+        ~SDLDispatcher();
+
+        timerid_t timer_add(Object *obj, timertype_t, uint32_t ms) override;
+        bool      timer_del(Object *obj, timerid_t id) override;
+
+        pointer_t alloc(size_t n) override;
+        bool      send(Event *event, EventDtor dtor) override;
+
+        void      interrupt() override;
+        int       run() override;
+    private:
+        bool      dispatch_sdl(SDL_Event *event);
+        void      dispatch_sdl_window(SDL_Event *event);
+
+        using TimersMap = std::unordered_map<timerid_t, SDLTimer>;
+
+        SDLDriver *driver = nullptr;
+        TimersMap  timers;
+
+        Uint32    alloc_events = SDL_RegisterEvents(2);
+        Uint32    btk_event    = alloc_events;
+        Uint32    interrupt_event = alloc_events + 1;
 };
 
 class SDLDriver : public GraphicsDriver {
@@ -101,19 +143,15 @@ class SDLDriver : public GraphicsDriver {
         void     clipboard_set(const char_t *str) override;
         u8string clipboard_get() override;
 
-        void     pump_events(UIContext *) override;
-
-        int      sdl_event_filter(SDL_Event *event);
-        void     tr_window_event(SDL_Event *evemt);
-
-        timerid_t timer_add(Object *obj, timertype_t, uint32_t ms) override;
-        bool      timer_del(Object *obj, timerid_t id) override;
+        // void     pump_events(UIContext *) override;
+        // int      sdl_event_filter(SDL_Event *event);
+        // void     tr_window_event(SDL_Event *evemt);
+        any_t    instance_create(const char_t *what, ...) override;
 
         bool      query_value(int what, ...) override;
     private:
+        SDLDispatcher dispatcher {this};
         timestamp_t init_time = 0;
-        UIContext  *context = nullptr;
-        EventQueue *event_queue = nullptr;
 
         float xdpi = 0;
         float ydpi = 0;
@@ -121,6 +159,7 @@ class SDLDriver : public GraphicsDriver {
         // Map ID -> AbstractWindow
         std::unordered_map<uint32_t, SDLWindow *> windows;
     friend class SDLGraphicsContext;
+    friend class SDLDispatcher;
 };
 
 class SDLGLContext : public GLContext {
@@ -145,42 +184,31 @@ class SDLGLContext : public GLContext {
         SDL_GLContext  prev_ctxt = nullptr;
 };
 
-
-// Driver
-
-SDLDriver::SDLDriver() {
-    SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
-
-    SDL_Init(SDL_INIT_VIDEO);
-    init_time = GetTicks();
-
-    // Query DPI
-    SDL_GetDisplayDPI(0, nullptr, &xdpi, &ydpi);
-
-    BTK_LOG(" xdpi : %f, ydpi : %f\n", xdpi, ydpi);
+SDLDispatcher::SDLDispatcher(SDLDriver *d) : driver(d) {
+    SetDispatcher(this);
 }
-SDLDriver::~SDLDriver() {
-    SDL_Quit();
+SDLDispatcher::~SDLDispatcher() {
+    if (GetDispatcher() == this) {
+        SetDispatcher(nullptr);
+    }
 }
-
-int SDLDriver::sdl_event_filter(SDL_Event *event) {
+bool SDLDispatcher::dispatch_sdl(SDL_Event *event) {
     timestamp_t time = GetTicks();
-    
 
     switch(event->type){
         case SDL_QUIT : {
             Event tr_event;
             tr_event.set_timestamp(GetTicks());
             tr_event.set_type(Event::Quit);
-            context->send_event(tr_event);
+            interrupt();
             break;
         }
         case SDL_WINDOWEVENT : {
-            tr_window_event(event);
+            dispatch_sdl_window(event);
             break;
         }
         case SDL_MOUSEMOTION : {
-            SDLWindow *win = windows[event->window.windowID];
+            SDLWindow *win = driver->windows[event->window.windowID];
 
             MotionEvent tr_event(event->motion.x, event->motion.y);
             tr_event.set_rel(event->motion.xrel, event->motion.yrel);
@@ -193,7 +221,7 @@ int SDLDriver::sdl_event_filter(SDL_Event *event) {
             [[fallthrough]];
         }
         case SDL_MOUSEBUTTONUP: {
-            SDLWindow *win = windows[event->window.windowID];
+            SDLWindow *win = driver->windows[event->window.windowID];
             if (win == nullptr) {
                 BTK_LOG("winid %d not found\n", event->window.windowID);
                 break;
@@ -230,7 +258,7 @@ int SDLDriver::sdl_event_filter(SDL_Event *event) {
             [[fallthrough]];
         }
         case SDL_KEYUP: {
-            SDLWindow *win = windows[event->window.windowID];
+            SDLWindow *win = driver->windows[event->window.windowID];
             auto type = (event->type == SDL_KEYDOWN) ? Event::KeyPress : Event::KeyRelease;
 
             auto keycode = SDLTranslateKey(event->key.keysym.sym);
@@ -244,7 +272,7 @@ int SDLDriver::sdl_event_filter(SDL_Event *event) {
             break;
         }
         case SDL_MOUSEWHEEL : {
-            SDLWindow *win = windows[event->text.windowID];
+            SDLWindow *win = driver->windows[event->text.windowID];
             auto x = event->wheel.x;
             auto y = event->wheel.y;
             if (event->wheel.direction == SDL_MOUSEWHEEL_FLIPPED) {
@@ -262,7 +290,7 @@ int SDLDriver::sdl_event_filter(SDL_Event *event) {
             break;
         }
         case SDL_TEXTINPUT : {
-            SDLWindow *win = windows[event->text.windowID];
+            SDLWindow *win = driver->windows[event->text.windowID];
             
             TextInputEvent tr_event(event->text.text);
             tr_event.set_widget(win->widget);
@@ -273,14 +301,15 @@ int SDLDriver::sdl_event_filter(SDL_Event *event) {
         }
         default: {
             //BTK_LOG("unhandled event %d\n", event->type);
+            return false;
         }
     }
-    return 0;
+    return true;
 }
-void SDLDriver::tr_window_event(SDL_Event *event) {
+void SDLDispatcher::dispatch_sdl_window(SDL_Event *event) {
     // Get window from map
-    auto iter = windows.find(event->window.windowID);
-    if (iter == windows.end()) {
+    auto iter = driver->windows.find(event->window.windowID);
+    if (iter == driver->windows.end()) {
         return;
     }
     SDLWindow *win = iter->second;
@@ -347,13 +376,13 @@ void SDLDriver::tr_window_event(SDL_Event *event) {
 
             if (event.is_accepted()) {
                 SDL_HideWindow(win->win);
-                windows.erase(win->id());
+                driver->windows.erase(win->id());
 
-                if (windows.empty()) {
-                    QuitEvent event;
-                    context->send_event(event);
+                if (driver->windows.empty()) {
+                    interrupt();
                 }
             }
+            break;
         }
         default : {
             break;
@@ -361,14 +390,124 @@ void SDLDriver::tr_window_event(SDL_Event *event) {
     }
 }
 
-void SDLDriver::pump_events(UIContext *ctxt) {
-    context = ctxt;
+int SDLDispatcher::run() {
+    int retcode = EXIT_SUCCESS;
+
     SDL_Event event;
-    while (SDL_PollEvent(&event)) {
-        sdl_event_filter(&event);
+    while (SDL_WaitEvent(&event)) {
+        if (!dispatch_sdl(&event)) {
+            // It cannot handle it, event defined by ous
+
+            if (event.type == btk_event) {
+                auto btkevent = reinterpret_cast<Event*>(event.user.data1);
+                auto dtor = reinterpret_cast<EventDtor>(event.user.data2);
+
+                dispatch(btkevent);
+
+                if (dtor) {
+                    dtor(btkevent);
+                }
+
+                SDL_free(btkevent);
+                continue;
+            }
+            if (event.type == interrupt_event) {
+                break;
+            }
+            if (event.type == SDL_TIMER_EVENT) {
+                auto timerid = reinterpret_cast<timerid_t>(event.user.data1);
+                auto timestamp = reinterpret_cast<timestamp_t>(event.user.data2);
+                auto iter = timers.find(timerid);
+                if (iter != timers.end()) {
+                    auto object = iter->second.object;
+                    TimerEvent tevent(
+                        object,
+                        timerid
+                    );
+                    tevent.set_timestamp(timestamp);
+
+                    dispatch(&tevent);
+                }
+                continue;
+            }
+        }
     }
+
+    return retcode;
+}
+void SDLDispatcher::interrupt() {
+    SDL_Event event;
+    event.type = interrupt_event;
+    SDL_PushEvent(&event);
+}
+void*SDLDispatcher::alloc(size_t n) {
+    return SDL_malloc(n);
+}
+bool SDLDispatcher::send(Event *event, EventDtor dtor) {
+    SDL_Event sdlevent;
+    sdlevent.type = btk_event;
+    sdlevent.user.data1 = event;
+    sdlevent.user.data2 = reinterpret_cast<void*>(dtor);
+
+    return SDL_PushEvent(&sdlevent) == 1;
 }
 
+bool SDLDispatcher::timer_del(Object *obj, timerid_t id) {
+    BTK_UNUSED(obj);
+
+    auto iter = timers.find(id);
+    if (iter != timers.end()) {
+        auto timer = iter->second.timer;
+        timers.erase(iter);
+        return SDL_RemoveTimer(timer);
+    }
+    return false;
+}
+timerid_t SDLDispatcher::timer_add(Object *obj, timertype_t, uint32_t ms) {
+    // Alloc id
+    timerid_t id;
+    do {
+        id = std::rand();
+    }
+    while(timers.find(id) != timers.end());  
+
+    SDL_TimerID timer = SDL_AddTimer(ms, [](Uint32 interval, void *id) -> Uint32 {
+        SDL_Event event;
+        event.type = SDL_TIMER_EVENT;
+        event.user.data1 = id;
+        event.user.data2 = reinterpret_cast<void*>(GetTicks());
+
+        SDL_PushEvent(&event);
+        return interval;
+    }, reinterpret_cast<void*>(id));
+
+    if (timer == 0) {
+        return 0;
+    }
+
+    timers[id].object = obj;
+    timers[id].timer  = timer;
+
+    return id;
+}
+
+// Driver
+SDLDriver::SDLDriver() {
+    // TODO IMPL IT
+    // SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "system");
+    SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
+
+    SDL_Init(SDL_INIT_VIDEO);
+    init_time = GetTicks();
+
+    // Query DPI
+    SDL_GetDisplayDPI(0, nullptr, &xdpi, &ydpi);
+
+    BTK_LOG(" xdpi : %f, ydpi : %f\n", xdpi, ydpi);
+}
+SDLDriver::~SDLDriver() {
+    SDL_Quit();
+}
 window_t SDLDriver::window_create(const char_t * title, int width, int height,WindowFlags flags){
     // Translate flags to SDL flags
     uint32_t sdl_flags = SDL_WINDOW_ALLOW_HIGHDPI;
@@ -409,68 +548,6 @@ u8string SDLDriver::clipboard_get() {
 void SDLDriver::clipboard_set(const char_t *str) {
     SDL_SetClipboardText(str);
 }
-bool SDLDriver::timer_del(Object *obj, timerid_t id) {
-    BTK_UNUSED(obj);
-
-    auto ctxt = context;
-    if (ctxt == nullptr) {
-        ctxt = GetUIContext();
-    }
-    bool v = SDL_RemoveTimer(id) == SDL_TRUE;
-
-    // Walk queue, drop timer if it's in there
-    ctxt->walk_event([&](Event &ev){
-        if (ev.type() == Event::Timer) {
-            auto tev = static_cast<TimerEvent&>(ev);
-            if (tev.timerid() == id) {
-                return EventWalk::Drop;
-            }
-        }
-        return EventWalk::Continue;
-    });
-    return v;
-}
-timerid_t SDLDriver::timer_add(Object *obj, timertype_t, uint32_t ms) {
-    struct TimerData {
-        UIContext *ctxt;
-        Object *obj;
-        timerid_t id;
-    };
-    auto data = new TimerData();
-    data->obj = obj;
-    data->ctxt = context;
-    data->id = 0;
-
-    if (data->ctxt == nullptr) {
-        data->ctxt = GetUIContext();
-    }
-    BTK_ASSERT_MSG(data->ctxt, "No UI context");
-
-    //Add sdl_timer
-    auto cb = [](uint32_t ms,void *user) {
-        auto up = static_cast<TimerData*>(user);
-        auto ctxt = up->ctxt;
-        auto obj = up->obj;
-        auto id  = up->id;
-
-        if (id != 0) {
-            // BTK_LOG("SDL: Send timer event\n");
-
-            TimerEvent event(obj, id);
-            event.set_timestamp(GetTicks());
-            ctxt->send_event(event);
-        }
-
-        return ms;
-    };
-    auto id = SDL_AddTimer(ms, cb, data);
-    if (id == 0) {
-        BTK_LOG("SDL: Failed to start timer => %s\n", SDL_GetError());
-        delete data;
-    }
-    data->id = id;
-    return id;
-}
 bool   SDLDriver::query_value(int what, ...) {
     va_list varg;
     va_start(varg, what);
@@ -489,6 +566,9 @@ bool   SDLDriver::query_value(int what, ...) {
     va_end(varg);
     return ret;
 }
+any_t SDLDriver::instance_create(const char_t *what, ...) {
+    return nullptr;
+}
 
 // Window
 SDLWindow::SDLWindow(SDL_Window *w, SDLDriver *dr, WindowFlags f) : win(w), driver(dr), flags(f) {
@@ -496,6 +576,14 @@ SDLWindow::SDLWindow(SDL_Window *w, SDLDriver *dr, WindowFlags f) : win(w), driv
 
     if (!SDL_GetWindowWMInfo(win, &info)) {
         BTK_THROW(std::runtime_error(SDL_GetError()));
+    }
+
+    float ddpi, hdpi, vdpi;
+    auto idx = SDL_GetWindowDisplayIndex(win);
+    if (SDL_GetDisplayDPI(idx, &ddpi, &hdpi, &vdpi) != 0) {
+        ddpi = 96.0f;
+        hdpi = 96.0f;
+        vdpi = 96.0f;
     }
 }
 SDLWindow::~SDLWindow() {
@@ -656,14 +744,7 @@ bool     SDLWindow::query_value(int what, ...) {
             p->y = wy - y;
             break;
         }
-        case Dpi : {
-            float ddpi, hdpi, vdpi;
-            auto idx = SDL_GetWindowDisplayIndex(win);
-            if (SDL_GetDisplayDPI(idx, &ddpi, &hdpi, &vdpi) != 0) {
-                ret = false;
-                break;
-            }
-            
+        case Dpi : {            
             auto p = va_arg(varg, FPoint*);
             p->x = hdpi;
             p->y = vdpi;

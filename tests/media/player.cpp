@@ -1,6 +1,7 @@
 #include <Btk/widgets/textedit.hpp>
 #include <Btk/widgets/button.hpp>
 #include <Btk/widgets/dialog.hpp>
+#include <Btk/widgets/slider.hpp>
 #include <Btk/context.hpp>
 #include <Btk/media.hpp>
 
@@ -13,6 +14,7 @@ class Player : public Widget {
             lay.attach(this);
             lay.add_layout(sub);
             lay.add_widget(&video, 10);
+            lay.add_widget(&slider);
 
             sub->add_widget(&edit, 1);
             sub->add_widget(&play);
@@ -25,10 +27,13 @@ class Player : public Widget {
                 FileDialog dialog;
                 dialog.set_option(FileDialog::Open);
                 dialog.run();
-                
-                edit.set_text(dialog.result()[0]);
-                player.set_url(dialog.result()[0]);
-                player.play();
+
+                auto result = dialog.result();
+                if (!result.empty()) {
+                    edit.set_text(dialog.result()[0]);
+                    player.set_url(dialog.result()[0]);
+                    player.play();
+                }
             });
             pause.set_text("Pause");
             pause.signal_clicked().connect(&MediaPlayer::pause, &player);
@@ -42,6 +47,21 @@ class Player : public Widget {
                 player.set_url(edit.text());
                 player.play();
             });
+            player.signal_error().connect([&]() {
+                set_window_title("Player Error");
+            });
+            player.signal_position_changed().connect([&](double pos) {
+                set_window_title(u8string::format("Player position %lf : %lf", pos, player.duration()));
+                slider.set_value(pos);
+            });
+            player.signal_duration_changed().connect([&](double dur) {
+                slider.set_range(0, dur);
+            });
+
+            slider.signal_value_changed().connect([&]() {
+                player.set_position(slider.value());
+            });
+
             show();
         }
     private:
@@ -52,6 +72,7 @@ class Player : public Widget {
         Button      pause;
         Button      resume;
         Button      stop;
+        Slider      slider;
         VideoWidget video;
 };
 
@@ -64,5 +85,5 @@ int main() {
     VideoWidget v;
     v.show();
 
-    ctxt.run();
+    return ctxt.run();
 }

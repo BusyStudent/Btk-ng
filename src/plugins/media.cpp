@@ -126,9 +126,9 @@ class MediaPlayerImpl  : public Object {
         void stop();
         void pause();
         void resume();
+        void set_position(double position);
 
         double duration() const;
-        double position() const;
 
         AVFormatContextPtr container   = {};
         AVCodecContextPtr  video_ctxt  = {};
@@ -148,8 +148,11 @@ class MediaPlayerImpl  : public Object {
         std::thread             thrd;
         std::condition_variable cond;
 
-        std::atomic<State> state   = State::Stopped;
-        std::atomic<bool>  running = true;
+        std::atomic<State>  state   = State::Stopped;
+        std::atomic<bool>   running = true;
+
+        std::atomic<double> position = 0.0;
+        timestamp_t         position_start = 0;
 
         int   video_stream = -1;
         int   audio_stream = -1;
@@ -175,6 +178,8 @@ class MediaPlayerImpl  : public Object {
         
         std::atomic<double> audio_pts = 0;
 
+        Signal<void(double)> signal_duration_changed;
+        Signal<void(double)> signal_position_changed;
         Signal<void()> signal_played;
         Signal<void()> signal_paused;
         Signal<void()> signal_stopped;
@@ -183,6 +188,8 @@ class MediaPlayerImpl  : public Object {
         void codec_thread();
         void proc_video(); //< Return true means need sleep
         void proc_audio();
+
+        void clock_update();
 
         bool video_decode();
         void video_cleanup();
@@ -219,6 +226,13 @@ void MediaPlayerImpl::codec_thread() {
     while (running) {
         if (state != State::Playing) {
             if (state == State::Stopped) {
+                position = 0;
+                position_start = 0;
+                audio_pts = 0;
+
+                if (!signal_position_changed.empty()) {
+                    defer_call(&Signal<void(double)>::emit, &signal_position_changed, 0.0);
+                }
                 video_cleanup();
             }
 
@@ -227,12 +241,20 @@ void MediaPlayerImpl::codec_thread() {
             cond.wait(lk, [this]() {
                 return !running || state == State::Playing;
             });
+
+            if (state == State::Playing) {
+                // Restore timestamp
+                position_start = GetTicks() - position * 1000;
+                BTK_LOG("[Video thread] Restore to Playing mode, position %lf, position_start %ld\n", position.load(), position_start);
+            }
         }
         if (!container) {
             continue;
         }
         // FIXME : Process last frame if
         while (av_read_frame(container.get(), packet.get()) >= 0 && state == State::Playing) {
+            // Update position
+            clock_update();
             // Process
             if (packet->stream_index == video_stream) {
                 proc_video();
@@ -266,6 +288,8 @@ void MediaPlayerImpl::proc_video() {
 
     // Try run out the packet
     while (video_decode()) {
+        clock_update();
+
         int ret;
 
         // Unpack info
@@ -277,9 +301,11 @@ void MediaPlayerImpl::proc_video() {
 
         if (video_has_prev) {
             // FIXME : Sync video to audio, this way is little dirty
-            if (audio_pts > pts + 0.1) {
+            if (position > pts + 0.1) {
                 // audio is quicker
-                PLAYER_LOG("[Video codec] Too last, drop frame %lf\n", pts);
+                PLAYER_LOG("[Video codec] Too last, drop %c frame %lf\n", av_get_picture_type_char(video_frame->pict_type) ,pts);
+                PLAYER_LOG("[Video codec] Player position %lf\n", position.load());
+                PLAYER_LOG("[Video codec] audio position %lf\n", audio_pts.load());
                 video_has_prev = false;
                 continue;
             }
@@ -300,6 +326,7 @@ void MediaPlayerImpl::proc_video() {
                 // Wait, exception play status changed & no audio frame
                 std::unique_lock lk(mutx);
                 cond.wait_for(lk, std::chrono::milliseconds(ms));
+                clock_update();
 
                 if (!audio_frame_encough) {
                     video_frame_unused = true;
@@ -313,6 +340,8 @@ void MediaPlayerImpl::proc_video() {
             else if (diff < 1.0 / 30) {
                 video_has_prev = false;
                 PLAYER_LOG("[Video codec] Too last, drop frame %lf\n", pts);
+                PLAYER_LOG("[Video codec] Player position %lf\n", position.load());
+                PLAYER_LOG("[Video codec] audio position %lf\n", audio_pts.load());
                 continue;
             }
         }
@@ -388,6 +417,18 @@ void MediaPlayerImpl::video_cleanup() {
         av_packet_unref(video_packet_queue.front().get());
         video_packet_queue.pop();
     }
+}
+void MediaPlayerImpl::clock_update() {
+    double new_position = double(GetTicks() - position_start) / 1000;
+
+    // Emit signal if
+    if (int64_t(new_position) != int64_t(position.load())) {
+        if (!signal_position_changed.empty()) {
+            defer_call(&Signal<void(double)>::emit, &signal_position_changed, position.load());
+        }
+    }
+
+    position = new_position;
 }
 void MediaPlayerImpl::proc_audio() {
     if (!audio_ctxt) {
@@ -581,6 +622,10 @@ void MediaPlayerImpl::play() {
             // Prepare audio device
             audio_device_init();
         }
+    }
+
+    if (duration() != 0.0) {
+        defer_call(&Signal<void(double)>::emit, &signal_duration_changed, duration());
     }
 
     // All done, let start
@@ -846,19 +891,42 @@ void MediaPlayerImpl::stop() {
     }
 }
 
+void MediaPlayerImpl::set_position(double pos) {
+    // TODO : 
+    // if (!container) {
+    //     return;
+    // }
+
+    // int64_t where = pos * AV_TIME_BASE;
+    // State s = state.load();
+
+    // where = clamp<int64_t>(pos, 0, container->duration);
+
+    // pause();
+
+
+    // if (audio_stream >= 0) {
+    //     if (av_seek_frame(container.get(), audio_stream, where, AVSEEK_FLAG_BACKWARD) < 0) {
+    //         abort();
+    //     }
+    // }
+    // if (video_stream) {
+    //     if (av_seek_frame(container.get(), video_stream, where, AVSEEK_FLAG_BACKWARD) < 0) {
+    //         abort();
+    //     }
+    // }
+
+    // position = pos;
+
+    // // Resume
+    // state = s;
+    // cond.notify_one();
+    
+}
+
 double MediaPlayerImpl::duration() const {
     if (container) {
         return double(container->duration) / AV_TIME_BASE;
-    }
-    return 0.0;
-}
-double MediaPlayerImpl::position() const {
-    // May be we need to think a better to calc it
-    if (audio_stream >= 0) {
-        return audio_pts;
-    }
-    if (video_stream >= 0) {
-        return video_prev_pts;
     }
     return 0.0;
 }
@@ -950,7 +1018,16 @@ void MediaPlayer::set_url(u8string_view url) {
 void MediaPlayer::set_video_output(AbstractVideoSurface *v) {
     priv->video_output = v;
 }
+void MediaPlayer::set_position(double pos) {
+    priv->set_position(pos);
+}
 
+auto MediaPlayer::signal_duration_changed() -> Signal<void(double)> & {
+    return priv->signal_duration_changed;
+}
+auto MediaPlayer::signal_position_changed() -> Signal<void(double)> & {
+    return priv->signal_position_changed;
+}
 auto MediaPlayer::signal_error() -> Signal<void()> & {
     return priv->signal_error;
 }
@@ -959,7 +1036,7 @@ double MediaPlayer::duration() const {
     return priv->duration();
 }
 double MediaPlayer::position() const {
-    return priv->position();
+    return priv->position;
 }
 
 BTK_NS_END

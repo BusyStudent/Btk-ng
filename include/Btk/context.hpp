@@ -61,18 +61,10 @@ class GraphicsDriver : public Any {
         // Cursor
 
         // Dymaic factory
-        virtual any_t      instance_create(const char_t *what, ...) = 0;
+        virtual any_t    instance_create(const char_t *what, ...) = 0;
 
         // Query
-        virtual bool       query_value(int query, ...) = 0;
-
-
-        // Timer
-        virtual timerid_t  timer_add(Object *object, timertype_t type, uint32_t ms) = 0;
-        virtual bool       timer_del(Object *object, timerid_t id) = 0;
-
-        // Event collect
-        virtual void       pump_events(UIContext *) = 0;
+        virtual bool     query_value(int query, ...) = 0;
 };
 
 // Provide more details of desktop
@@ -259,19 +251,24 @@ class EventHolder {
         void (*destroy)(Event *) = nullptr;//< Destroy function for the event
 };
 
+using      EventDtor = void (*)(Event *);
 enum class EventWalk {
     Continue = 0,
     Stop     = 1,
     Drop     = 1 << 1,
 };
 
+/**
+ * @brief Interface to access EventQueue
+ * 
+ */
 class EventDispatcher {
     public:
-        // virtual void      send(Event &) = 0;
-        virtual timerid_t timer_add(timertype_t type, uint32_t ms) = 0;
-        virtual bool      timer_del(timerid_t id) = 0;
+        // Timer
+        virtual timerid_t timer_add(Object *object, timertype_t type, uint32_t ms) = 0;
+        virtual bool      timer_del(Object *object, timerid_t id) = 0;
 
-        virtual bool      send(Event *event, void (*dtor)(Event *) = nullptr) = 0;
+        virtual bool      send(Event *event, EventDtor dtor = nullptr) = 0;
         virtual pointer_t alloc(size_t n) = 0;
 
         virtual void      interrupt() = 0;
@@ -293,6 +290,8 @@ class EventDispatcher {
                 });
             }
         }
+
+        BTKAPI bool      dispatch(Event *);
 };
 
 BTK_FLAGS_OPERATOR(EventWalk, int);
@@ -336,18 +335,17 @@ class BTKAPI EventQueue {
 class BTKAPI EventLoop : public Trackable {
     public:
         EventLoop();
-        EventLoop(UIContext *ctxt) : ctxt(ctxt) {}
+        EventLoop(EventDispatcher *dispatcher) : dispatcher(dispatcher) {}
         ~EventLoop() = default;
 
-        bool run();
+        int  run() {
+            return dispatcher->run();
+        }
         void stop() {
-            running = false;
+            return dispatcher->interrupt();
         }
     private:
-        void dispatch(Event *);
-
-        UIContext *ctxt = nullptr;
-        bool running = true;
+        EventDispatcher *dispatcher;
 };
 
 class BTKAPI UIContext : public Trackable {
@@ -361,47 +359,43 @@ class BTKAPI UIContext : public Trackable {
 
         template <typename T>
         void send_event(const T &event) {
-            queue.push(new T(event));
+            _dispatcher->send(event);
         }
-        template <typename T>
-        void walk_event(T &&callback) {
-            queue.walk(std::forward<T>(callback));
-        }
+        // template <typename T>
+        // void walk_event(T &&callback) {
+        //     queue.walk(std::forward<T>(callback));
+        // }
 
-        //Expose Loop
+        // Expose Loop
+        int  run();
 
-        bool run();
-
-        //Expose Driver
-
-        GraphicsDriver *graphics_driver() {
-            return driver;
+        // Expose Driver
+        auto driver()     -> GraphicsDriver * {
+            return _driver;
         }
-        EventQueue     &event_queue() {
-            return queue;
+        auto dispatcher() -> EventDispatcher *{
+            return _dispatcher;
         }
-        timerid_t timer_add(Object *obj, timertype_t t, uint32_t ms) {
-            return driver->timer_add(obj, t, ms);
+        auto timer_add(Object *obj, timertype_t t, uint32_t ms) -> timerid_t {
+            return _dispatcher->timer_add(obj, t, ms);
         }
-        bool      timer_del(Object *obj, timerid_t id) {
-            return driver->timer_del(obj, id);
+        auto timer_del(Object *obj, timerid_t id)               -> bool      {
+            return _dispatcher->timer_del(obj, id);
         }
 
         // Configure
-        
-        void      set_font(const Font &f) {
+        void set_font(const Font &f) {
             style.font = f;
         }
 
         // Query
-        auto      ui_thread_id() const -> std::thread::id {
+        auto ui_thread_id() const -> std::thread::id {
             return thread_id;
         }
     private:
         PainterInitializer painter_init;
-        GraphicsDriver *driver = nullptr;
-        EventQueue queue;//< For collecting events
-        std::unordered_set<Widget *> widgets;
+        EventDispatcher *_dispatcher = nullptr;
+        GraphicsDriver  *_driver = nullptr;
         std::thread::id thread_id;
         Palette palette;
         Style style;
@@ -415,9 +409,13 @@ BTKAPI auto SetUIContext(UIContext *context)  -> void;
 BTKAPI auto GetDispatcher()                   -> EventDispatcher *;
 BTKAPI auto SetDispatcher(EventDispatcher *)  -> void;
 
-inline EventLoop::EventLoop() : EventLoop(GetUIContext()) {}
+inline auto GetUIDisplatcher()                -> EventDispatcher * {
+    return GetUIContext()->dispatcher();
+}
+
+inline EventLoop::EventLoop() : EventLoop(GetDispatcher()) {}
 inline driver_t   GetDriver() {
-    return GetUIContext()->graphics_driver();
+    return GetUIContext()->driver();
 }
 
 BTK_NS_END
