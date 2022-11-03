@@ -5,6 +5,13 @@
 #include <SDL2/SDL.h>
 #include <unordered_map>
 
+// Import compile platfrom common headers
+
+#if defined(_WIN32)
+#include "common/win32/dialog.hpp"
+#endif
+
+
 // Remove xlib macro 
 
 #undef KeyPress
@@ -25,6 +32,7 @@ using namespace BTK_NAMESPACE;
 #define SDL_GC_VERTEX SDL_VERSION_ATLEAST(2, 0, 18)
 
 // Event
+
 #define SDL_TIMER_EVENT (SDL_LASTEVENT - 10086)
 
 // Type checker
@@ -89,10 +97,17 @@ class SDLWindow : public AbstractWindow {
         any_t      gc_create(const char_t *type) override;
 
         uint32_t   id() const;
+
+        int        btk_to_sdl(int value) const;
+        int        sdl_to_btk(int value) const;
+
+        Point      btk_to_sdl(Point what) const;
+        Point      sdl_to_btk(Point what) const;
     private:
-        float       vdpi;
-        float       hdpi;
-        float       ddpi;
+        float       vdpi = 96.0f;
+        float       hdpi = 96.0f;
+        float       ddpi = 96.0f;
+        bool        dpi_scaling = true;
 
         SDL_Window *win = nullptr;
         SDLDriver  *driver = nullptr;
@@ -210,8 +225,14 @@ bool SDLDispatcher::dispatch_sdl(SDL_Event *event) {
         case SDL_MOUSEMOTION : {
             SDLWindow *win = driver->windows[event->window.windowID];
 
-            MotionEvent tr_event(event->motion.x, event->motion.y);
-            tr_event.set_rel(event->motion.xrel, event->motion.yrel);
+            MotionEvent tr_event(
+                win->sdl_to_btk(event->motion.x), 
+                win->sdl_to_btk(event->motion.y)
+            );
+            tr_event.set_rel(
+                win->sdl_to_btk(event->motion.xrel), 
+                win->sdl_to_btk(event->motion.yrel)
+            );
             tr_event.set_widget(win->widget);
 
             win->widget->handle(tr_event);
@@ -223,13 +244,18 @@ bool SDLDispatcher::dispatch_sdl(SDL_Event *event) {
         case SDL_MOUSEBUTTONUP: {
             SDLWindow *win = driver->windows[event->window.windowID];
             if (win == nullptr) {
-                BTK_LOG("winid %d not found\n", event->window.windowID);
+                BTK_LOG("[SDL2] winid %d not found\n", event->window.windowID);
                 break;
             }
 
             auto type = (event->type == SDL_MOUSEBUTTONDOWN) ? Event::MousePress : Event::MouseRelease;
 
-            MouseEvent tr_event(type, event->button.x, event->button.y, event->button.clicks);
+            MouseEvent tr_event(
+                type, 
+                win->sdl_to_btk(event->button.x), 
+                win->sdl_to_btk(event->button.y), 
+                event->button.clicks
+            );
             tr_event.set_widget(win->widget);
             tr_event.set_timestamp(time);
 
@@ -323,12 +349,21 @@ void SDLDispatcher::dispatch_sdl_window(SDL_Event *event) {
             break;
         }
         case SDL_WINDOWEVENT_RESIZED : {
-            ResizeEvent tr_event(event->window.data1, event->window.data2);
+            int width = win->sdl_to_btk(event->window.data1);
+            int height = win->sdl_to_btk(event->window.data2);
+
+            ResizeEvent tr_event(width, height);
             tr_event.set_widget(win->widget);
             tr_event.set_timestamp(GetTicks());
             win->widget->handle(tr_event);
 
-            printf("Resize : %d, %d\n", event->window.data1, event->window.data2);
+            BTK_LOG(
+                "[SDL2] Window resize to Physical (%d, %d) Logical (%d, %d)\n", 
+                event->window.data1,
+                event->window.data2,
+                width, 
+                height
+            );
             break;
         }
         case SDL_WINDOWEVENT_EXPOSED : {
@@ -494,7 +529,7 @@ timerid_t SDLDispatcher::timer_add(Object *obj, timertype_t, uint32_t ms) {
 // Driver
 SDLDriver::SDLDriver() {
     // TODO IMPL IT
-    // SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "system");
+    SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "system");
     SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
 
     SDL_Init(SDL_INIT_VIDEO);
@@ -528,6 +563,9 @@ window_t SDLDriver::window_create(const char_t * title, int width, int height,Wi
         sdl_flags | SDL_WINDOW_HIDDEN
     );
     auto ret = new SDLWindow(win, this, flags);
+
+    // Resize by dpi
+    ret->resize(width, height);
     window_add(ret);
     return ret;
 }
@@ -567,7 +605,21 @@ bool   SDLDriver::query_value(int what, ...) {
     return ret;
 }
 any_t SDLDriver::instance_create(const char_t *what, ...) {
-    return nullptr;
+    va_list varg;
+    va_start(varg, what);
+    any_t ret = nullptr;
+
+    if (SDL_strcasecmp(what, "filedialog") == 0) {
+
+#if    defined(_WIN32)
+        ret = new Win32FileDialog;
+#endif
+
+    }
+
+
+    va_end(varg);
+    return ret;
 }
 
 // Window
@@ -578,13 +630,20 @@ SDLWindow::SDLWindow(SDL_Window *w, SDLDriver *dr, WindowFlags f) : win(w), driv
         BTK_THROW(std::runtime_error(SDL_GetError()));
     }
 
-    float ddpi, hdpi, vdpi;
     auto idx = SDL_GetWindowDisplayIndex(win);
     if (SDL_GetDisplayDPI(idx, &ddpi, &hdpi, &vdpi) != 0) {
+        BTK_LOG("[SDL2] Display %d no dpi information, backward to 96\n", idx);
         ddpi = 96.0f;
         hdpi = 96.0f;
         vdpi = 96.0f;
     }
+    BTK_LOG("[SDL2] Display %d ddpi %f hdpi %f vdpi %f\n", idx, ddpi, hdpi, vdpi);
+
+#if 1
+    if (hdpi < 96.0) {
+        dpi_scaling = false;
+    }
+#endif
 }
 SDLWindow::~SDLWindow() {
     // Remove self from driver
@@ -594,6 +653,8 @@ SDLWindow::~SDLWindow() {
 Size SDLWindow::size() const {
     int w, h;
     SDL_GetWindowSize(win, &w, &h);
+    w = sdl_to_btk(w);
+    h = sdl_to_btk(h);
     return Size(w, h);
 }
 Point SDLWindow::position() const {
@@ -606,6 +667,8 @@ void SDLWindow::move(int x, int y) {
     SDL_SetWindowPosition(win, x, y);
 }
 void SDLWindow::resize(int w, int h) {
+    w = btk_to_sdl(w);
+    h = btk_to_sdl(h);
     SDL_SetWindowSize(win, w, h);
 }
 void SDLWindow::show(int v) {
@@ -751,13 +814,19 @@ bool     SDLWindow::query_value(int what, ...) {
             break;
         }
         case MaximumSize : {
-            auto [w, h] = *va_arg(varg, Size*);
-            SDL_SetWindowMaximumSize(win, w, h);
+            auto p = va_arg(varg, Size*);
+            SDL_GetWindowMaximumSize(win, &p->w, &p->h);
+
+            p->w = sdl_to_btk(p->w);
+            p->h = sdl_to_btk(p->h);
             break;
         }
         case MinimumSize : {
-            auto [w, h] = *va_arg(varg, Size*);
-            SDL_SetWindowMinimumSize(win, w, h);
+            auto p = va_arg(varg, Size*);
+            SDL_GetWindowMinimumSize(win, &p->w, &p->h);
+
+            p->w = sdl_to_btk(p->w);
+            p->h = sdl_to_btk(p->h);
             break;
         }
         default : {
@@ -792,6 +861,22 @@ bool    SDLWindow::set_value(int what, ...) {
     bool ret = true;
 
     switch (what) {
+        case MaximumSize : {
+            auto [w, h] = *va_arg(varg, Size*);
+            w = btk_to_sdl(w);
+            h = btk_to_sdl(h);
+
+            SDL_SetWindowMaximumSize(win, w, h);
+            break;
+        }
+        case MinimumSize : {
+            auto [w, h] = *va_arg(varg, Size*);
+            w = btk_to_sdl(w);
+            h = btk_to_sdl(h);
+
+            SDL_SetWindowMinimumSize(win, w, h);
+            break;
+        }
         default : {
             ret = false;
             break;
@@ -799,6 +884,28 @@ bool    SDLWindow::set_value(int what, ...) {
     }
     va_end(varg);
     return ret;
+}
+int     SDLWindow::sdl_to_btk(int v) const {
+    if (!dpi_scaling) {
+        return v;
+    }
+    return muldiv<int>(v, 96, hdpi);
+}
+int     SDLWindow::btk_to_sdl(int v) const {
+    if (!dpi_scaling) {
+        return v;
+    }
+    return muldiv<int>(v, hdpi, 96);
+}
+Point   SDLWindow::sdl_to_btk(Point p) const {
+    p.x = muldiv<int>(p.x, 96, hdpi);
+    p.y = muldiv<int>(p.y, 96, vdpi);
+    return p;
+}
+Point   SDLWindow::btk_to_sdl(Point p) const {
+    p.x = muldiv<int>(p.x, hdpi, 96);
+    p.y = muldiv<int>(p.y, vdpi, 96);
+    return p;
 }
 any_t   SDLWindow::gc_create(const char_t *what) {
     // Create GC

@@ -13,7 +13,7 @@ using uchar_t     = char32_t;//< Unicode character type
 using timerid_t   = uintptr_t;//< Timer id type
 using pointer_t   = void *;//< Pointer type
 using cpointer_t  = const void *;//< Const pointer type
-using timestamp_t = uint32_t;//< Timestamp type
+using timestamp_t = uintptr_t;//< Timestamp type
 
 #if defined(_WIN32)
 using ssize_t = int64_t;
@@ -148,6 +148,11 @@ constexpr T lerp(T a, T b, float t) BTK_NOEXCEPT_IF(a + (b - a) * t) {
 template <typename T>
 constexpr T clamp(T value, T min, T max) BTK_NOEXCEPT_IF(value < min ? min : value > max ? max : value) {
     return value < min ? min : value > max ? max : value;
+}
+
+template <typename T>
+constexpr T muldiv(T v, T num, T den) BTK_NOEXCEPT_IF(den == 0 ? -1 : std::round(double(v) * num / den)) {
+    return den == 0 ? -1 : std::round(double(v) * num / den);
 }
 
 BTK_NS_END

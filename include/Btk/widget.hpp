@@ -459,12 +459,12 @@ inline bool Widget::under_mouse() const {
 
 // Inline helper function
 template <typename T>
-inline T    PixelToIndependent(T value, float dpi) BTK_NOEXCEPT_IF(value / std::round(dpi / 96.0f)) {
-    return value / std::round(dpi / 96.0f);
+inline T    PixelToIndependent(T value, float dpi) BTK_NOEXCEPT_IF(muldiv<T>(value, dpi, 96)) {
+    return muldiv<T>(value, dpi, 96);
 }
 template <typename T>
-inline T    IndependentToPixel(T value, float dpi) BTK_NOEXCEPT_IF(value * std::round(dpi / 96.0f)) {
-    return value * std::round(dpi / 96.0f);
+inline T    IndependentToPixel(T value, float dpi) BTK_NOEXCEPT_IF(muldiv<T>(value, 96, dpi)) {
+    return muldiv<T>(value, 96, dpi);
 }
 
 BTK_NS_END

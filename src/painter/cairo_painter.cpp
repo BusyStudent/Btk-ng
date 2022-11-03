@@ -5,12 +5,15 @@
 #include <Btk/painter.hpp>
 #include <Btk/context.hpp>
 #include <Btk/object.hpp>
+#include <X11/Xlib.h>
 #include <pango/pangocairo.h>
 #include <cairo-xlib.h>
 #include <cairo-xcb.h>
 #include <cairo.h>
 #include <dlfcn.h>
 #include <map>
+#include <xcb/xcb.h>
+#include <xcb/xproto.h>
 
 #define FONT_CAST(ptr) ((PangoFontDescription*&)ptr)
 #define PATH_CAST(ptr) ((cairo_path_t    *&)ptr)
@@ -173,10 +176,15 @@ class PainterImpl {
         void (*set_surface_size)(PainterImpl *self, int w, int h) = nullptr;
         void (*flush_surface)(PainterImpl *self) = nullptr;
 
+        Size (*get_framebuffer_size)(PainterImpl *self) = nullptr;
+
         // Default value
         cairo_line_join_t default_join;
         cairo_line_cap_t  default_cap;
         double            default_miter_limit;
+
+        // From abstract window if
+        AbstractWindow   *window = nullptr;
 
         struct {
             uint8_t xlib : 1;
@@ -186,6 +194,21 @@ class PainterImpl {
 
         union {
             PixBuffer *bitmap;
+
+#if         CAIRO_HAS_XLIB_SURFACE
+            struct {
+               Display *display;
+               Window   window; 
+            } xlib;
+#endif
+
+#if         CAIRO_HAS_XCB_SURFACE
+            struct {
+                xcb_connection_t *connection;
+                xcb_window_t      window;
+            } xcb;
+#endif
+
         } target_info;
 };
 
@@ -214,6 +237,10 @@ inline PainterImpl::PainterImpl(::Display *dpy, ::Window xwin) {
     // Set target info
     Btk_memset(&target_opt, 0, sizeof(target_opt));
     target_opt.xlib = true;
+    
+    Btk_memset(&target_info, 0, sizeof(target_info));
+    target_info.xlib.display = dpy;
+    target_info.xlib.window = xwin;
 
     // Set backend cb
     get_surface_size = [](PainterImpl *self) {
@@ -224,6 +251,18 @@ inline PainterImpl::PainterImpl(::Display *dpy, ::Window xwin) {
     };
     set_surface_size = [](PainterImpl *self, int w, int h) {
         cairo_xlib_surface_set_size(self->surf, w, h);
+    };
+    get_framebuffer_size = [](PainterImpl *self) {
+        XWindowAttributes attrs;
+        Size s;
+        XGetWindowAttributes(
+            self->target_info.xlib.display,
+            self->target_info.xlib.window,
+            &attrs
+        );
+        s.w = attrs.width;
+        s.h = attrs.height;
+        return s;
     };
 
     // Done
@@ -310,6 +349,12 @@ inline void PainterImpl::initialize() {
 
 inline void PainterImpl::notify_resize(int w, int h) {
     if (set_surface_size) {
+        // With scaling support
+        if (get_framebuffer_size) {
+            auto s = get_framebuffer_size(this);
+            w = s.w;
+            h = s.h;
+        }
         set_surface_size(this, w, h);
     }
 }
@@ -738,6 +783,17 @@ auto Painter::create_texture(const PixBuffer &buf) -> Texture {
 
 
 void Painter::begin() {
+    if (priv->window) {
+        auto [win_w, win_h] = priv->window->size();
+        auto [fb_w, fb_h] = priv->get_framebuffer_size(priv);
+
+        cairo_save(priv->cr);
+        cairo_scale(
+            priv->cr,
+            double(fb_w) / win_w,
+            double(fb_h) / win_h
+        );
+    }
     cairo_push_group(priv->cr);
 }
 void Painter::clear() {
@@ -746,6 +802,11 @@ void Painter::clear() {
 void Painter::end() {
     cairo_pop_group_to_source(priv->cr);
     cairo_paint(priv->cr);
+
+    if (priv->window) {
+        // Restore transform by dpi scaling
+        cairo_restore(priv->cr);
+    }
     
     if (priv->flush_surface) {
         priv->flush_surface(priv);
@@ -797,10 +858,9 @@ Painter Painter::FromWindow(AbstractWindow *w) {
     w->query_value(AbstractWindow::XWindow , &window);
 
     if (display && window) {
-        return Painter::FromXlib(
-            display, 
-            reinterpret_cast<void*>(window)
-        );
+        auto priv = new PainterImpl(display, window);
+        priv->window = w;
+        return Painter(priv);
     }
     BTK_THROW(std::runtime_error("Unsupported backend"));
 }

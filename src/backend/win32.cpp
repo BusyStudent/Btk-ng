@@ -1,4 +1,5 @@
 #include "build.hpp"
+#include "common/win32/dialog.hpp"
 #include "common/dlloader.hpp"
 
 #include <Btk/context.hpp>
@@ -272,19 +273,6 @@ class Win32GLContext : public GLContext {
         GL_WPROC    (wglGetExtensionsStringARB);
         GL_WPROC    (wglSetSwapIntervalEXT);
 
-};
-
-// FileDialog
-class Win32FileDialog : public AbstractFileDialog {
-    public:
-        int        run()    override;
-        bool       initialize(bool save) override;
-        void       set_dir(u8string_view dir) override;
-        void       set_title(u8string_view title) override;
-        void       set_allow_multi(bool v) override;
-        StringList result() override;
-    private:
-        ComPtr<IFileDialog> dialog;
 };
 
 // For invoke a call in GUI Thread and wait the result
@@ -1995,86 +1983,6 @@ void *Win32GLContext::get_proc_address(const char_t *name) {
         return reinterpret_cast<void*>(proc);
     }
     return reinterpret_cast<void*>(GetProcAddress(library, name));
-}
-
-// Win32FileDialog
-int  Win32FileDialog::run() {
-    // Init etc...
-    if (FAILED(dialog->Show(nullptr))) {
-        return EXIT_FAILURE;
-    }
-    return EXIT_SUCCESS;
-}
-bool Win32FileDialog::initialize(bool is_open) {
-    const IID *clsid;
-    const IID *iid;
-
-    if (is_open) {
-        clsid = &CLSID_FileOpenDialog;
-        iid   = &__uuidof(IFileOpenDialog);
-    }
-    else {
-        clsid = &CLSID_FileSaveDialog;
-        iid   = &__uuidof(IFileSaveDialog);
-    }
-
-
-    HRESULT hr = CoCreateInstance(
-        *clsid,
-        nullptr,
-        CLSCTX_INPROC_SERVER,
-        *iid,
-        reinterpret_cast<void**>(dialog.ReleaseAndGetAddressOf())
-    );
-    return SUCCEEDED(hr);
-}
-void Win32FileDialog::set_dir(u8string_view view) {
-    // SHCreateShellItem()
-    // dialog->SetFolder();
-}
-void Win32FileDialog::set_title(u8string_view title) {
-    dialog->SetTitle(
-        reinterpret_cast<const WCHAR*>(title.to_utf16().c_str())
-    );
-}
-void Win32FileDialog::set_allow_multi(bool v) {    
-    FILEOPENDIALOGOPTIONS opt;
-    HRESULT hr;
-    dialog->GetOptions(&opt);
-    dialog->SetOptions(
-        v ? opt | FOS_ALLOWMULTISELECT : opt ^ FOS_ALLOWMULTISELECT
-    );
-}
-auto Win32FileDialog::result() -> StringList {
-    StringList ret;
-    auto add_item = [&](IShellItem *item) {
-        WCHAR *str;
-        if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &str))) {
-            abort();
-        }
-        ret.emplace_back(u8string::from(str));
-        CoTaskMemFree(str);
-    };
-
-    // Cast to open dialog
-    ComPtr<IFileOpenDialog> odialog;
-    ComPtr<IShellItemArray> array;
-    ComPtr<IShellItem>      item;
-    DWORD                   nitem;
-    if (dialog.As(&odialog)) {
-        odialog->GetResults(array.GetAddressOf());
-        array->GetCount(&nitem);
-
-        for (DWORD i = 0; i < nitem; i++)  {
-            array->GetItemAt(i, item.ReleaseAndGetAddressOf());
-            add_item(item.Get());
-        }
-    }
-    else {
-        dialog->GetResult(&item);
-        add_item(item.Get());
-    }
-    return ret;
 }
 
 BTK_NS_END2()

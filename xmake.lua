@@ -1,4 +1,5 @@
 add_rules("mode.debug","mode.release")
+win32_plat     = is_host("windows") and not is_plat("cross")
 native_painter = true
 lib_kind       = "static"
 
@@ -26,6 +27,13 @@ option("multimedia")
     set_category("Plugins")
 option_end()
 
+option("sdl2_driver")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Force to use sdl graphics driver")
+    set_category("Drivers")
+option_end()
+
 option("nanovg_painter")
     set_default(false)
     set_showmenu(true)
@@ -38,6 +46,10 @@ option_end()
 if has_config("nanovg_painter") then
     add_requires("freetype")
 end 
+
+if has_config("sdl2_driver") then 
+    add_requires("libsdl")
+end
 
 
 -- Main Target
@@ -63,31 +75,46 @@ target("btk")
         native_painter = false
     end
 
+    -- Generic 
+    if win32_plat then 
+        -- Win32 deps
+        add_links("user32", "shlwapi", "shell32", "imm32")
+        add_links("windowscodecs", "gdi32", "ole32")
+    end
+
+
     -- Backends
-    if is_host("windows") and not is_plat("cross") then
-        -- Add native painer if
-        if native_painter then 
-            add_files("src/painter/d2d_painter.cpp")
-        end
+    if win32_plat and not has_config("sdl2_driver") then
         -- Make default driver
         add_defines("BTK_DRIVER=Win32DriverInfo")
         add_files("src/backend/win32.cpp")
 
         -- Add windows specific libraries
-        add_links("user32", "shlwapi", "shell32", "imm32", "gdi32", "ole32")
-        add_links("windowscodecs", "d2d1", "dwrite", "uuid", "dxguid")
+        add_links("d2d1", "dwrite", "uuid", "dxguid")
     else
-        -- Add native painer if
-        if native_painter then 
-            add_files("src/painter/cairo_painter.cpp")
-        end
         -- Make default driver
         add_defines("BTK_DRIVER=SDLDriverInfo")
         add_files("src/backend/sdl2.cpp")
 
-        -- Add X11 Support
-        add_links("X11", "pthread")
+        -- Add sdl requires
+        add_packages("libsdl")
     end
+
+    -- Painter
+    if     win32_plat and native_painter then
+        -- Add Direct2D
+        add_files("src/painter/d2d_painter.cpp")
+
+        -- Add direct2d libs
+        add_links("d2d1", "dwrite", "uuid", "dxguid")
+    elseif is_plat("linux") and native_painter then
+        -- Add cairo
+        add_files("src/painter/cairo_painter.cpp")
+
+        -- Add cairo deps
+        add_packages("pango", "pangocairo", "cairo")
+        add_links("X11", "pthread")
+    end 
 target_end()
 
 
