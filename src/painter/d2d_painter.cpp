@@ -1523,6 +1523,7 @@ inline auto PainterImpl::create_texture(PixFormat fmt, int w, int h) -> TextureI
     ComPtr<ID2D1Bitmap> bitmap;
     HRESULT hr;
 
+#if defined(_MSC_VER)
     if (context) {
         // Use new api ID2D1DeviceContext
         hr = context->CreateBitmap(
@@ -1536,6 +1537,9 @@ inline auto PainterImpl::create_texture(PixFormat fmt, int w, int h) -> TextureI
             reinterpret_cast<ID2D1Bitmap1**>(bitmap.GetAddressOf())
         );
     }
+#else
+    if (0) {}
+#endif
     else {
         hr = target->CreateBitmap(
             D2D1::SizeU(w, h),
@@ -2164,7 +2168,7 @@ bool TextLayout::hit_test_range(size_t text, size_t len, float org_x, float org_
 
             DWRITE_HIT_TEST_METRICS m;
 
-            hr = layout->HitTestTextRange(text, len, org_x, org_y, &m, 1, &count);
+            hr = layout->HitTestTextRange(text, len, org_x, org_y, &m, 0, &count);
             if (FAILED(hr) && hr != E_NOT_SUFFICIENT_BUFFER) {
                 D2D_WARN("HitTestTextRange failed %d", hr);
                 return false;

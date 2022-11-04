@@ -1,3 +1,6 @@
+#include "Btk/detail/macro.hpp"
+#include "Btk/painter.hpp"
+#include "Btk/rect.hpp"
 #include "build.hpp"
 
 #include <Btk/widgets/textedit.hpp>
@@ -12,6 +15,7 @@ TextEdit::TextEdit(Widget *parent,u8string_view s) : Widget(parent) {
     set_focus_policy(FocusPolicy::Mouse);
     _text = s;
     _margin = 2.0f;
+    _offset = {0.0f, 0.0f};
     // auto style = this->style();
     // resize(style->textedit_width, style->textedit_height);
     _text_changed.connect([this]() {
@@ -72,7 +76,7 @@ bool TextEdit::mouse_press(MouseEvent &event) {
     size_t pos = get_pos_from(event.position());
     BTK_LOG("LineEdit::handle_mouse %d\n",int(pos));
 
-    _cursor_pos = pos;
+    move_cursor(pos);
     // Reset empty selection
     clear_sel();
 
@@ -88,7 +92,7 @@ bool TextEdit::key_press(KeyEvent &event) {
                 auto [start,end] = sel_range();
 
                 do_delete(start,end);
-                _cursor_pos = start;
+                move_cursor(start);
 
                 clear_sel();
                 repaint();
@@ -99,7 +103,7 @@ bool TextEdit::key_press(KeyEvent &event) {
                 // Normal delete
                 do_delete(_cursor_pos - 1, _cursor_pos);
                 if(_cursor_pos != 0){
-                    _cursor_pos --;
+                    move_cursor(_cursor_pos - 1);
                 }
                 repaint();
                 // Notify
@@ -109,7 +113,7 @@ bool TextEdit::key_press(KeyEvent &event) {
         }
         case Key::Right: {
             if(_cursor_pos < _text.length()){
-                _cursor_pos ++;
+                move_cursor(_cursor_pos + 1);
             }
             clear_sel();
             repaint();
@@ -117,7 +121,7 @@ bool TextEdit::key_press(KeyEvent &event) {
         }
         case Key::Left: {
             if(_cursor_pos > 0){
-                _cursor_pos --;
+                move_cursor(_cursor_pos - 1);
             }
             clear_sel();
             repaint();
@@ -155,7 +159,7 @@ bool TextEdit::key_press(KeyEvent &event) {
                 // Remove it
                 auto [start,end] = sel_range();
                 do_delete(start,end);
-                _cursor_pos = start;
+                move_cursor(start);
 
                 clear_sel();
                 repaint();
@@ -202,7 +206,7 @@ bool TextEdit::drag_end(DragEvent &) {
     return true;
 }
 bool TextEdit::drag_motion(DragEvent &event) {
-    _cursor_pos = get_pos_from(event.position());
+    move_cursor(get_pos_from(event.position()));
     _sel_begin = _cursor_pos;
     repaint();
 
@@ -219,6 +223,14 @@ Size TextEdit::size_hint() const {
     return Size(s->button_width, s->button_height); //< Temp as Button
 }
 void TextEdit::do_paste(u8string_view txt) {
+    if (!_multi) {
+        if (txt.contains("\n")) {
+            u8string us(txt);
+            us.replace("\n", "");
+            return do_paste(us);
+        }
+    }
+
     if (has_selection()) {
         auto [start,end] = sel_range();
 
@@ -236,13 +248,13 @@ void TextEdit::do_paste(u8string_view txt) {
         );
 
         //Make the cur to the pasted end
-        _cursor_pos = start + txt.length();
+        move_cursor(start + txt.length());
 
         clear_sel();
     }
     else{
         _text.insert(_cursor_pos, txt);
-        _cursor_pos += txt.length();
+        move_cursor(_cursor_pos + txt.length());
     }
 
     repaint();
@@ -262,7 +274,7 @@ void TextEdit::clear_sel() {
 }
 void TextEdit::set_text(u8string_view txt) {
     _text = txt;
-    _cursor_pos = 0;
+    move_cursor(0);
     repaint();
     _text_changed.emit();
 }
@@ -294,23 +306,21 @@ bool TextEdit::paint_event(PaintEvent &) {
     p.set_font(font());
     p.set_text_align(_align);
     // Draw text
-    auto txt_rect = border.apply_margin(_margin);
-
-    _txt_pos.x = txt_rect.x;
-    _txt_pos.y = txt_rect.y + txt_rect.h / 2;
+    auto txt_rect = text_rectangle();
+    auto txt_pos  = text_position();
 
     // Decrease 1.0f to make sure the cursor has properly space to draw
     p.push_scissor(txt_rect.apply_margin(-1.0f));
     if (!_text.empty()) {
         p.set_color(style->text);
-        p.draw_text(_lay, _txt_pos.x, _txt_pos.y);
+        p.draw_text(_lay, txt_pos.x, txt_pos.y);
         // Use TextLayout directly
     }
     else if(!_placeholder.empty()) {
         //Draw place holder
         //Gray color
         p.set_color(Color::Gray);
-        p.draw_text(_placeholder, _txt_pos.x, _txt_pos.y);
+        p.draw_text(_placeholder, txt_pos.x, txt_pos.y);
     }
 
     if (has_selection()) {
@@ -320,13 +330,13 @@ bool TextEdit::paint_event(PaintEvent &) {
         TextHitResults result;
         FRect sel_rect;
         // Get selection box begin
-        _lay.hit_test_range(0, start, _txt_pos.x, _txt_pos.y - h / 2, &result);
+        _lay.hit_test_range(0, start, txt_pos.x, txt_pos.y - h / 2, &result);
 
         sel_rect.x = result.back().box.x + result.back().box.w;
         sel_rect.y = result.back().box.y;
 
         // Get selection box end
-        _lay.hit_test_range(0, end, _txt_pos.x, _txt_pos.y - h / 2, &result);
+        _lay.hit_test_range(0, end, txt_pos.x, txt_pos.y - h / 2, &result);
 
         sel_rect.w = result.back().box.x + result.back().box.w - sel_rect.x;
         sel_rect.h = result.back().box.h;
@@ -338,22 +348,22 @@ bool TextEdit::paint_event(PaintEvent &) {
         // Draw text again to cover selection
         p.push_scissor(sel_rect);
         p.set_color(style->highlight_text);
-        p.draw_text(_lay, _txt_pos.x, _txt_pos.y);
+        p.draw_text(_lay, txt_pos.x, txt_pos.y);
         p.pop_scissor();
     }
     else if (_show_cursor) {
         // Draw cursor
         if (_cursor_pos == 0 && _text.empty()) {
             float h = font().size();
-            float y = _txt_pos.y - h / 2;
+            float y = txt_pos.y - h / 2;
             p.set_color(style->text);
             p.draw_line(
-                _txt_pos.x, y,
-                _txt_pos.x, y + h
+                txt_pos.x, y,
+                txt_pos.x, y + h
             );
             // printf("%f\n", h);
         }
-        else{
+        else {
             float cursor_x;
             float cursor_y;
             float cursor_h;
@@ -361,7 +371,7 @@ bool TextEdit::paint_event(PaintEvent &) {
             auto [w, h] = _lay.size();
             
             // Get cursor position by it
-            if (_lay.hit_test_range(0, _cursor_pos, _txt_pos.x, _txt_pos.y - h / 2, &result)) {
+            if (_lay.hit_test_range(0, _cursor_pos, txt_pos.x, txt_pos.y - h / 2, &result)) {
                 auto box = result.back().box;
 
                 cursor_x = box.x + box.w;
@@ -385,13 +395,9 @@ bool TextEdit::has_selection() const {
 }
 size_t TextEdit::get_pos_from(const Point &p) {
     TextHitResult result;
-    // Get test margin
-    auto trect = rect().cast<float>().apply_margin(2.0f);
-    trect = trect.apply_margin(_margin);
-
     auto [w, h] = _lay.size();
 
-    FPoint start = {trect.x, trect.y + trect.h / 2 - h / 2};
+    FPoint start = text_position();
     auto point = p.cast<float>();
 
     point.x -= start.x;
@@ -408,6 +414,54 @@ size_t TextEdit::get_pos_from(const Point &p) {
     }
     return 0;
 }
+FPoint TextEdit::text_position() const {
+    auto r = text_rectangle();
+    FPoint ret;
+    if (_multi) {
+        ret = {r.x, r.y};
+    }
+    else {
+        ret = {
+            r.x,
+            r.y + r.h / 2
+        };
+    }
+    return ret + _offset;
+}
+FRect  TextEdit::text_rectangle() const {
+    // Widget bounds => Text Rectangle
+    return rect().apply_margin(style()->margin).apply_margin(_margin);
+}
+void   TextEdit::move_cursor(size_t where) {
+    repaint();
+    _cursor_pos = where;
 
+    if (_multi) {
+        // TODO : Support Multi
+        return;
+    }
+
+    if (where == 0) {
+        _offset = {0.0f, 0.0f};
+        return;
+    }
+
+    auto lay_size = _lay.size();
+    auto rect_size = text_rectangle().size();
+    if (lay_size.w < rect_size.w) {
+        // Reset offset
+        _offset = {0.0f, 0.0f};
+        return;
+    }
+
+    // Try text hint
+    TextHitResults results;
+    if (_lay.hit_test_range(0, where, 0, 0, &results)) {
+        // auto need_w = results.back().box.w;
+        // BTK_LOG("[TextEdit] Cursor pixel len = %f \n", need_w);
+
+        // _offset.x = lay_size.w - need_w;
+    }
+}
 
 BTK_NS_END

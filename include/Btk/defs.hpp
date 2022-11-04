@@ -3,6 +3,7 @@
 #include <Btk/detail/macro.hpp>
 #include <cstdint>
 #include <cstdio>
+#include <cmath>
 
 BTK_NS_BEGIN
 

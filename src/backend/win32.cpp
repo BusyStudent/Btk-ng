@@ -1,4 +1,5 @@
 #include "build.hpp"
+#include "common/win32/backtrace.hpp"
 #include "common/win32/dialog.hpp"
 #include "common/dlloader.hpp"
 
@@ -21,16 +22,6 @@
     #pragma comment(lib, "user32.lib")
     #pragma comment(lib, "gdi32.lib")
     #pragma comment(lib, "imm32.lib")
-    // Import backtrace on MSVC (for debugging)
-    #if !defined(NDEBUG)
-        #pragma comment(lib, "advapi32.lib")
-        #include "libs/StackWalker.cpp"
-    #endif
-#elif defined(__GNUC__)
-    // GCC
-    #include <dbgeng.h>
-    #include <unwind.h>
-    #include <cxxabi.h>
 #endif
 
 #undef min
@@ -643,152 +634,7 @@ Win32Driver::Win32Driver() {
         };
     }
 
-#if !defined(NDEBUG)
-    // Initialize the debug 
-    #pragma comment(lib, "dbghelp.lib")
-    SetUnhandledExceptionFilter([](_EXCEPTION_POINTERS *info) -> LONG {
-        // Dump callstack
-        static bool recursive = false;
-        if (recursive) {
-            ExitProcess(EXIT_FAILURE);
-            return EXCEPTION_CONTINUE_SEARCH;
-        }
-        recursive = true;
-
-#if     defined(_MSC_VER)
-        class Walk : public StackWalker {
-            public:
-                Walk(std::string &out) : output(out) {}
-                void OnCallstackEntry(CallstackEntryType,CallstackEntry &addr) override {
-                    char buffer[1024] = {};
-                    // Format console output
-                    if (addr.lineNumber == 0) {
-                        // No line number
-                        sprintf(buffer, "#%d %p at %s [%s]\n", n, addr.offset, addr.name, addr.moduleName);
-                    }
-                    else {
-                        sprintf(buffer, "#%d %p at %s [%s:%d]\n", n, addr.offset, addr.name, addr.lineFileName, addr.lineNumber);
-                    }
-                    fputs(buffer, stderr);
-                    // Format message box output
-                    sprintf(buffer, "#%d %p at %s\n", n, addr.offset, addr.name);
-                    output.append(buffer);
-                    n += 1;
-                }
-            private:
-                std::string &output;
-                int       n = 0;
-        };
-        std::string output = "-- Callstack summary --\n";
-        // Set Console color to red
-        SetConsoleTextAttribute(GetStdHandle(STD_ERROR_HANDLE), FOREGROUND_RED);
-        fputs("--- Begin Callstack ---\n", stderr);
-        SetConsoleTextAttribute(GetStdHandle(STD_ERROR_HANDLE), FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
-
-        Walk(output).ShowCallstack();
-        output.append("-- Detail callstack is on the console. ---\n");
-        
-        // Set Console color to white
-        SetConsoleTextAttribute(GetStdHandle(STD_ERROR_HANDLE), FOREGROUND_RED);
-        fputs("--- End Callstack ---\n", stderr);
-        SetConsoleTextAttribute(GetStdHandle(STD_ERROR_HANDLE), FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
-
-        // Show MessageBox
-        MessageBoxA(nullptr, output.c_str(), "Unhandled Exception", MB_ICONERROR);
-#elif   defined(__GNUC__)
-        // Call unwind_backtrace to walk the stack
-        std::vector<void*> stack;
-
-        auto unavail = [](void *, void *) {
-            return false;
-        };
-
-#if     __has_include(<unwind.h>)
-        _Unwind_Backtrace([](_Unwind_Context *ctx, void *p) {
-            auto &stack = *static_cast<std::vector<void*>*>(p);
-            auto ip = _Unwind_GetIP(ctx);
-            if (ip) {
-                stack.push_back(reinterpret_cast<void*>(ip));
-            }
-            return _URC_NO_REASON;
-        }, &stack);
-#else
-        // Get the stack pointer
-        stack.resize(200);
-        WORD ret = RtlCaptureStackBackTrace(0, stack.size(), stack.data(), nullptr);
-        stack.resize(ret);
-#endif
-
-        // Try loading the dbgengine
-        HMODULE dbgengine = LoadLibraryA("dbgengine.dll");
-        auto crt = (decltype(DebugCreate)*)GetProcAddress(dbgengine, "DebugCreate");
-        if (dbgengine == INVALID_HANDLE_VALUE) {
-            fputs("Failed to load dbgengine.dll\n", stderr);
-            fputs("Callstack is not available.\n", stderr);
-
-            MessageBoxA(nullptr, "Exception occured.\nCallstack is not available.", "Unhandled Exception", MB_ICONERROR);
-            return EXCEPTION_CONTINUE_SEARCH;
-        }
-
-        ComPtr<IDebugClient> client;
-        ComPtr<IDebugControl> control;
-        ComPtr<IDebugSymbols> symbols;
-
-        HRESULT hr = crt(__uuidof(IDebugClient), reinterpret_cast<void**>(client.GetAddressOf()));
-        if (FAILED(hr)) {
-            //?
-            return EXCEPTION_CONTINUE_SEARCH;
-        }
-        hr = client->QueryInterface(__uuidof(IDebugControl), reinterpret_cast<void**>(control.GetAddressOf()));
-        hr = control->WaitForEvent(DEBUG_WAIT_DEFAULT, INFINITE);
-        hr = client->AttachProcess(
-            0,
-            GetCurrentProcessId(),
-            DEBUG_ATTACH_NONINVASIVE | DEBUG_ATTACH_NONINVASIVE_NO_SUSPEND
-        );
-
-        // Get the symbols
-        hr = client->QueryInterface(__uuidof(IDebugSymbols), reinterpret_cast<void**>(symbols.GetAddressOf()));
-        if (FAILED(hr)) {
-            //?
-            return EXCEPTION_CONTINUE_SEARCH;
-        }
-
-        // Output
-        fputs("-- Callstack summary --\n", stderr);
-        fputs("--- Begin Callstack ---\n", stderr);
-
-        char name[1024] = {};
-        ULONG name_len;
-
-        int n = 0;
-        for (auto addr : stack) {
-            if (symbols->GetNameByOffset((ULONG64)addr, name, sizeof(name), &name_len, 0) == S_OK) {
-                name[name_len] = '\0';
-            }
-            else {
-                strcpy(name, "???");
-            }
-            fprintf(stderr, "#%d %p at %s\n", n, addr, name);
-
-            n += 1;
-        }
-
-        fputs("--- End Callstack ---\n", stderr);
-#else
-        MessageBoxA(nullptr, "Exception" ,  "Unhandled Exception", MB_ICONERROR);
-#endif
-        return EXCEPTION_CONTINUE_SEARCH;
-    });
-    // Hook SIGABRT to dump callstack.
-    signal(SIGABRT, [](int) {
-        // Dump callstack
-        // Raise SEH exception to dump callstack.
-        printf("SIGABRT\n");
-        RaiseException(EXCEPTION_BREAKPOINT, 0, 0, nullptr);
-    });
-#endif
-
+    Win32BacktraceInit();
 }
 Win32Driver::~Win32Driver() {
     win32_driver = nullptr;

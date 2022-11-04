@@ -7,8 +7,11 @@
 
 // Import compile platfrom common headers
 
-#if defined(_WIN32)
+#if   defined(_WIN32)
 #include "common/win32/dialog.hpp"
+#elif defined(__gnu_linux__)
+#include "common/x11/backtrace.hpp"
+#include "common/x11/dialog.hpp"
 #endif
 
 
@@ -529,8 +532,13 @@ timerid_t SDLDispatcher::timer_add(Object *obj, timertype_t, uint32_t ms) {
 // Driver
 SDLDriver::SDLDriver() {
     // TODO IMPL IT
+#if defined(SDL_HINT_WINDOWS_DPI_AWARENESS)
     SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "system");
+#endif
+
+#if defined(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR)
     SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0");
+#endif
 
     SDL_Init(SDL_INIT_VIDEO);
     init_time = GetTicks();
@@ -539,6 +547,8 @@ SDLDriver::SDLDriver() {
     SDL_GetDisplayDPI(0, nullptr, &xdpi, &ydpi);
 
     BTK_LOG(" xdpi : %f, ydpi : %f\n", xdpi, ydpi);
+
+    BtkBacktraceInit();
 }
 SDLDriver::~SDLDriver() {
     SDL_Quit();
@@ -613,7 +623,12 @@ any_t SDLDriver::instance_create(const char_t *what, ...) {
 
 #if    defined(_WIN32)
         ret = new Win32FileDialog;
+#elif  defined(__gnu_linux__)
+        if (X11FileDialog::Supported()) {
+            ret = new X11FileDialog();
+        }
 #endif
+
 
     }
 

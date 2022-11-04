@@ -1510,9 +1510,14 @@ void Pen::set_dash_style(DashStyle style) {
     begin_mut();
     priv->dashes.clear();
 
+    // FIXME : Add right dash pattern
     switch (style) {
+        case DashStyle::DashDotDot : {
+            break;
+        }
         case DashStyle::DashDot : {
             priv->dashes = {2.0, 1.0};
+            break;
         }
         case DashStyle::Dot : {
             priv->dashes = {1.0, 1.0};

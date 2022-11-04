@@ -47,8 +47,18 @@ if has_config("nanovg_painter") then
     add_requires("freetype")
 end 
 
+-- Driver check
 if has_config("sdl2_driver") then 
     add_requires("libsdl")
+end
+
+-- Mode check
+if is_mode("debug") then 
+    if is_plat("linux") then
+        add_cxxflags("-rdynamic")
+        add_cflags("-rdynamic")
+        add_ldflags("-rdynamic")
+    end
 end
 
 
@@ -114,11 +124,14 @@ target("btk")
         -- Add cairo deps
         add_packages("pango", "pangocairo", "cairo")
         add_links("X11", "pthread")
+    else
+        -- Add nanovg
+        add_files("src/painter/nvg_painter.cpp")
     end 
 target_end()
 
 
---Add ffmpeg coodes for play audio / video
+-- Add ffmpeg coodes for play audio / video
 if has_config("multimedia") then
     add_requires("ffmpeg", "miniaudio", "libsdl")
 

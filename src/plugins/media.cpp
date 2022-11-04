@@ -6,6 +6,7 @@
 #include <atomic>
 #include <thread>
 #include <queue>
+#include <mutex>
 
 // Import FFmpeg
 extern "C" {

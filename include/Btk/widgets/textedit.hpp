@@ -48,6 +48,7 @@ class BTKAPI TextEdit : public Widget {
         BTK_EXPOSE_SIGNAL(_text_changed);
         BTK_EXPOSE_SIGNAL(_enter_pressed);
     private:
+        void   move_cursor(size_t where); //< Move cursor
         size_t get_pos_from(const Point &pos);
         // Operation on selection
         void   do_paste(u8string_view txt);
@@ -59,8 +60,12 @@ class BTKAPI TextEdit : public Widget {
             return {start,end};
         }
 
+        // Get the text drawing position by align & offset
+        FPoint text_position() const;
+        FRect  text_rectangle() const;
+
         FMargin _margin; //< Border margin
-        FPoint  _txt_pos; //< Text position
+        FPoint  _offset; //< Text position offset
 
         Alignment _align = Alignment::Left | Alignment::Middle; //< Text alignment
 
@@ -77,6 +82,7 @@ class BTKAPI TextEdit : public Widget {
         bool     _has_sel   = false; //< Has selection ?
         bool     _has_focus = false; //< Has focus ?
         bool     _show_cursor = false; //< Show cursor ?
+        bool     _multi    = false; //< Multi line mode ?
         timerid_t _timerid = 0;
 
         Signal<void()> _text_changed;
