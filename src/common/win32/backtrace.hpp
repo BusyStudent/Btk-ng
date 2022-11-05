@@ -8,7 +8,10 @@
 
 #if !defined(NDEBUG) && defined(_MSC_VER)
 
-static Win32BacktraceInit() {
+#include <csignal>
+#include <string>
+
+static void Win32BacktraceInit() {
     // Initialize the debug 
     #pragma comment(lib, "dbghelp.lib")
     SetUnhandledExceptionFilter([](_EXCEPTION_POINTERS *info) -> LONG {

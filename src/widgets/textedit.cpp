@@ -18,13 +18,10 @@ TextEdit::TextEdit(Widget *parent,u8string_view s) : Widget(parent) {
     _offset = {0.0f, 0.0f};
     // auto style = this->style();
     // resize(style->textedit_width, style->textedit_height);
-    _text_changed.connect([this]() {
-        _lay.set_font(font());
-        _lay.set_text(_text);
-    });
+    _lay.set_font(font());
     if (!s.empty()) {
-        _lay.set_font(font());
         _lay.set_text(_text);
+        _text_len = _text.length();
     }
 }
 TextEdit::~TextEdit() {}
@@ -96,8 +93,6 @@ bool TextEdit::key_press(KeyEvent &event) {
 
                 clear_sel();
                 repaint();
-                // Notify
-                _text_changed.emit();
             }
             else if(! _text.empty() && _cursor_pos > 0) {
                 // Normal delete
@@ -106,8 +101,6 @@ bool TextEdit::key_press(KeyEvent &event) {
                     move_cursor(_cursor_pos - 1);
                 }
                 repaint();
-                // Notify
-                _text_changed.emit();
             }
             break;
         }
@@ -163,8 +156,6 @@ bool TextEdit::key_press(KeyEvent &event) {
 
                 clear_sel();
                 repaint();
-                // Notify
-                _text_changed.emit();
             }
             break;
         }
@@ -246,6 +237,8 @@ void TextEdit::do_paste(u8string_view txt) {
             end - start,
             txt
         );
+        _lay.set_text(_text);
+        _text_len = _text.length();
 
         //Make the cur to the pasted end
         move_cursor(start + txt.length());
@@ -254,6 +247,8 @@ void TextEdit::do_paste(u8string_view txt) {
     }
     else{
         _text.insert(_cursor_pos, txt);
+        _lay.set_text(_text);
+        _text_len = _text.length();
         move_cursor(_cursor_pos + txt.length());
     }
 
@@ -263,6 +258,8 @@ void TextEdit::do_paste(u8string_view txt) {
 }
 void TextEdit::do_delete(size_t start, size_t end) {
     _text.erase(start,end - start);
+    _lay.set_text(_text);
+    _text_len = _text.length();
     _text_changed.emit();
 
     repaint();
@@ -274,6 +271,8 @@ void TextEdit::clear_sel() {
 }
 void TextEdit::set_text(u8string_view txt) {
     _text = txt;
+    _lay.set_text(_text);
+    _text_len = _text.length();
     move_cursor(0);
     repaint();
     _text_changed.emit();
@@ -446,21 +445,42 @@ void   TextEdit::move_cursor(size_t where) {
         return;
     }
 
-    auto lay_size = _lay.size();
-    auto rect_size = text_rectangle().size();
-    if (lay_size.w < rect_size.w) {
-        // Reset offset
-        _offset = {0.0f, 0.0f};
-        return;
-    }
+    auto [w, h] = _lay.size();
 
+    auto text_rect = text_rectangle();
+    auto txt_pos   = text_position();
     // Try text hint
     TextHitResults results;
-    if (_lay.hit_test_range(0, where, 0, 0, &results)) {
-        // auto need_w = results.back().box.w;
-        // BTK_LOG("[TextEdit] Cursor pixel len = %f \n", need_w);
+    if (_lay.hit_test_range(0, where, txt_pos.x, txt_pos.y - h / 2, &results)) {
+        auto box = results.back().box;
+        auto cursor_x = box.x + box.w;
+        auto cursor_y = box.y;
 
-        // _offset.x = lay_size.w - need_w;
+        BTK_LOG("[TextEdit] cursor_x.x = %f\n", cursor_x);
+        BTK_LOG("[TextEdit] text_rect.top_right = %f\n", text_rect.top_right().x);
+
+        if (!text_rect.contains(cursor_x, cursor_y)) {
+            // Not contained
+            BTK_LOG("[TextEdit] cursor is not on the box\n");
+            if (cursor_x >= text_rect.top_right().x) {
+                _offset.x += (text_rect.top_right().x - cursor_x);
+            }
+            else if (cursor_x <= text_rect.top_left().x){
+                _offset.x += (text_rect.top_left().x - cursor_x);
+            }
+
+            // TODO : Buggy here
+
+            BTK_LOG("[TextEdit] offset.x = %f\n", _offset.x);
+        }
+        // Center, and cursor is at text end
+        else if (_cursor_pos == _text_len) {
+            BTK_LOG("[TextEdit] Cursor is on text end\n");
+            _offset.x = text_rect.w - box.w;
+            if (_offset.x > 0) {
+                _offset.x = 0;
+            }
+        }
     }
 }
 

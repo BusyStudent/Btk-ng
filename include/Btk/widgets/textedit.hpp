@@ -79,6 +79,7 @@ class BTKAPI TextEdit : public Widget {
         size_t   _sel_begin = 0; //< Selection begin
         size_t   _sel_end   = 0;   //< Selection end
         size_t   _cursor_pos = 0; //< Cursor position
+        size_t   _text_len  =  0; //< Text length
         bool     _has_sel   = false; //< Has selection ?
         bool     _has_focus = false; //< Has focus ?
         bool     _show_cursor = false; //< Show cursor ?

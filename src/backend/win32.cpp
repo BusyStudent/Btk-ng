@@ -44,7 +44,7 @@
 #define TIMER_IS_COARSE(x)  ((x) <  TIMER_PRECISE)
 
 // Debug show key translation strings
-#if !defined(NDEBUG)
+#if 0
 #define SHOW_KEY(vk, k) printf(vk); printf(" => "); printf(k); printf("\n");
 #define MAP_KEY(vk, k) case vk : { SHOW_KEY(#vk, #k) ; keycode = k; break;}
 #else
@@ -765,7 +765,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         }
         case WM_MOUSEMOVE : {
             if (!win->mouse_enter) {
-                WIN_LOG("Mouse enter\n");
+                // WIN_LOG("Mouse enter\n");
                 win->mouse_enter = true;
                 WidgetEvent event(Event::MouseEnter);
                 event.set_widget(win->widget);
@@ -801,7 +801,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             break;
         }
         case WM_MOUSELEAVE : {
-            WIN_LOG("Mouse leave\n");
+            // WIN_LOG("Mouse leave\n");
             win->mouse_enter = false;
             win->mouse_last_x = -1;
             win->mouse_last_y = -1;
@@ -955,7 +955,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         }
         // IME Here
         case WM_IME_CHAR : {
-            WIN_LOG("WM_IME_CHAR char: %d\n", wparam);
+            // WIN_LOG("WM_IME_CHAR char: %d\n", wparam);
             if (!win->textinput_enabled) {
                 break;
             }
@@ -974,15 +974,15 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             // }
             // Check the range of the char
             if (!win->textinput_enabled) {
-                WIN_LOG("TextInput disabled, Drop it\n");
+                // WIN_LOG("TextInput disabled, Drop it\n");
                 break;
             }
             if (wparam < 0x20 || wparam > 0x7E) {
-                WIN_LOG("Drop char: %d\n", wparam);
+                // WIN_LOG("Drop char: %d\n", wparam);
                 break;
             }
             else {
-                WIN_LOG("WM_CHAR : %d\n", wparam);
+                // WIN_LOG("WM_CHAR : %d\n", wparam);
             }
 
             char16_t c = wparam;

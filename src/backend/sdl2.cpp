@@ -8,6 +8,7 @@
 // Import compile platfrom common headers
 
 #if   defined(_WIN32)
+#include "common/win32/backtrace.hpp"
 #include "common/win32/dialog.hpp"
 #elif defined(__gnu_linux__)
 #include "common/x11/backtrace.hpp"
