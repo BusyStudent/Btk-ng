@@ -299,7 +299,8 @@ class TextureImpl : public Trackable {
 
         D2D1_BITMAP_INTERPOLATION_MODE mode = D2D1_BITMAP_INTERPOLATION_MODE_LINEAR;
         ComPtr<ID2D1Bitmap>            bitmap;
-        ComPtr<ID2D1Effect>            effect;
+        // < MinGW Crashed in GetSize() or GetPixelSize(), so we store this value
+        D2D1_SIZE_U                    size;
 };
 
 class FontImpl : public Refable <FontImpl> {
@@ -1252,7 +1253,9 @@ inline void PainterImpl::draw_image(TextureImpl *tex,  const FRect *_dst, const 
         src = *_src;
     }
     else {
-        auto [w, h] = bitmap->GetSize();
+        // auto [w, h] = bitmap->GetSize();
+        // MinGW Crashed on bitmap->GetSize()
+        auto [w, h] = tex->size;
         src = FRect(0, 0, w, h);
     }
 
@@ -1558,6 +1561,8 @@ inline auto PainterImpl::create_texture(PixFormat fmt, int w, int h) -> TextureI
 
     auto tex = new TextureImpl;
     tex->bitmap = bitmap;
+    tex->size.width  = w;
+    tex->size.height = h;
 
     // Connect to painter
     signal_cleanup.connect(
@@ -1988,7 +1993,13 @@ void Texture::update(const Rect *where, cpointer_t data, uint32_t pitch) {
     _freea(rect);
 }
 Size Texture::size() const {
-    auto [w, h] = priv->bitmap->GetPixelSize();
+    // MinGW Crashed on bitmap->GetSize()
+    // auto [w, h] = priv->bitmap->GetPixelSize();
+    if (!priv) {
+        return Size(0, 0);
+    }
+
+    auto [w, h] = priv->size;
     return Size(w, h);
 }
 void Texture::set_interpolation_mode(InterpolationMode m) {

@@ -73,7 +73,7 @@ static void Win32BacktraceInit() {
     });
 }
 
-#elif defined(__GNUC__)
+#elif 0
 
 // MinGW
 #include <dbgeng.h>
