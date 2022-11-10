@@ -11,6 +11,9 @@
 /compile_commands.json
 /.clangd
 
+# Doxygen doc
+/doc
+
 # Common CPP files
 *.o
 *.a

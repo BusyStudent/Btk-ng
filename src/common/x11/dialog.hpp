@@ -36,8 +36,8 @@ class X11FileDialog : public AbstractFileDialog {
         int        client_fd  = -1;
         pid_t      client_pid = 0;
 
-        bool       allow_multi;
-        bool       is_save;
+        bool       allow_multi = false;
+        bool       is_save     = false;
         StringList res;
         u8string   title;
 };
@@ -46,7 +46,7 @@ static std::once_flag  native_once = {};
 static const char     *native_client = nullptr;
 
 static void find_native_client() {
-    auto paths = u8string_view(::getenv("PATH")).split(";");
+    auto paths = u8string_view(::getenv("PATH")).split(":");
 
     for (auto &str : paths) {
         str.push_back('/');
@@ -101,6 +101,9 @@ int X11FileDialog::run() {
             in.push_back(char(ch));
         }
         fclose(fp);
+
+        BTK_LOG("[X11Dialog] Process stat code %d\n", stat);
+        BTK_LOG("[X11Dialog] Get Result String %s\n", in.c_str());
 
         res = in.split(" ");
         return stat;

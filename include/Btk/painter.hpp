@@ -564,6 +564,12 @@ class BTKAPI Painter {
         auto create_texture(PixFormat fmt, int w, int h) -> Texture;
         auto create_texture(const PixBuffer &buf)        -> Texture;
 
+        // Get color / brush / alpha
+        auto pen()   const -> Pen;
+        auto brush() const -> Brush;
+        auto color() const -> GLColor;
+        auto alpha() const -> float;
+
         // Target
         void push_group(int w, int h);
         void pop_group_to();

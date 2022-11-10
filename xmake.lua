@@ -6,8 +6,10 @@ lib_kind       = "static"
 if is_plat("windows") then
     add_cxxflags("/utf-8")
 elseif is_plat("linux") then
-    add_requires("pango", "pangocairo", "cairo", "libsdl")
-    add_packages("pango", "pangocairo", "cairo", "libsdl")
+    add_requires("pango", "pangocairo", "cairo", "libsdl", "libx11")
+    add_packages("pango", "pangocairo", "cairo", "libsdl", "libx11")
+
+    add_links("pthread")
 end
 
 set_languages("c++17")
@@ -123,7 +125,6 @@ target("btk")
 
         -- Add cairo deps
         add_packages("pango", "pangocairo", "cairo")
-        add_links("X11", "pthread")
     else
         -- Add nanovg
         add_files("src/painter/nvg_painter.cpp")
@@ -133,14 +134,28 @@ target_end()
 
 -- Add ffmpeg coodes for play audio / video
 if has_config("multimedia") then
-    add_requires("ffmpeg", "miniaudio", "libsdl")
+    add_requires("libsdl")
+
+    if is_plat("linux") then 
+        -- Use ffmpeg from system
+        add_requires("libavformat", "libavutil", "libavcodec", "libswresample", "libswscale")
+    else 
+        add_requires("ffmpeg");
+    end
 
     target("btk_multimedia")
         set_kind(lib_kind)
         add_deps("btk")
-        add_packages("ffmpeg", "miniaudio", "libsdl")
+        add_packages("libsdl")
         add_includedirs("src")
         add_includedirs("include")
+
+        if is_plat("linux") then 
+            -- Use ffmpeg from system
+            add_packages("libavformat", "libavutil", "libavcodec", "libswresample", "libswscale")
+        else 
+            add_packages("ffmpeg")
+        end
 
         add_files("src/plugins/media.cpp")
     target_end()

@@ -1,23 +1,34 @@
-#include "Btk/pixels.hpp"
 #include "build.hpp"
 #include "common/utils.hpp"
 
 #include <Btk/painter.hpp>
 #include <Btk/context.hpp>
 #include <Btk/object.hpp>
-#include <X11/Xlib.h>
 #include <pango/pangocairo.h>
-#include <cairo-xlib.h>
-#include <cairo-xcb.h>
+#include <cstdlib>
 #include <cairo.h>
 #include <dlfcn.h>
 #include <map>
+#include <stdexcept>
+
+#if CAIRO_HAS_XCB_SURFACE
 #include <xcb/xcb.h>
 #include <xcb/xproto.h>
+#include <cairo-xcb.h>
+#endif
+
+#if CAIRO_HAS_XLIB_SURFACE
+#include <X11/X.h>
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+#include <X11/extensions/XShm.h>
+#include <cairo-xlib.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#endif
 
 #define FONT_CAST(ptr) ((PangoFontDescription*&)ptr)
 #define PATH_CAST(ptr) ((cairo_path_t    *&)ptr)
-#define TEX_CAST(ptr)  ((cairo_pattern_t *&)ptr)
 
 namespace {
     //< For Easy create Text layout
@@ -117,6 +128,40 @@ class TextLayoutImpl : public Refable<TextLayoutImpl>, public Trackable {
         u8string              text;
         int64_t               text_len = -1;
 };
+class TextureImpl   : public Trackable {
+    public:
+        TextureImpl(PainterImpl *p, PixFormat fmt, int w, int h);
+        TextureImpl(const TextureImpl &) = delete;
+        ~TextureImpl();
+
+        bool xlib_create(PainterImpl *p, PixFormat fmt, int w, int h);
+        void xlib_update(const Rect *where, cpointer_t data, uint32_t pitch);
+        void xlib_destroy();
+        Size xlib_get_size();
+
+        bool sw_create(PainterImpl *p, PixFormat fmt, int w, int h);
+        void sw_update(const Rect *where, cpointer_t data, uint32_t pitch);
+        void sw_destroy();
+        Size sw_get_size();
+
+
+        // Method
+        decltype(&TextureImpl::sw_get_size) get_size = nullptr;
+        decltype(&TextureImpl::sw_destroy)  destroy = nullptr;
+        decltype(&TextureImpl::sw_update)   update = nullptr;
+
+        // Internal data
+        cairo_surface_t *surface = nullptr;
+        cairo_pattern_t *pattern = nullptr;
+
+#if     0
+        // Xlib shm data
+        XShmSegmentInfo shminfo = {};
+        XImage         *image   = {};
+        Window          window  = {};
+        GC              gc      = {};
+#endif
+};
 class BrushImpl : public Refable<BrushImpl> {
     public:
         BrushImpl() {
@@ -199,6 +244,7 @@ class PainterImpl {
             struct {
                Display *display;
                Window   window; 
+               bool     shm;
             } xlib;
 #endif
 
@@ -241,6 +287,10 @@ inline PainterImpl::PainterImpl(::Display *dpy, ::Window xwin) {
     Btk_memset(&target_info, 0, sizeof(target_info));
     target_info.xlib.display = dpy;
     target_info.xlib.window = xwin;
+
+#if 0
+    target_info.xlib.shm = XShmQueryExtension(dpy);
+#endif
 
     // Set backend cb
     get_surface_size = [](PainterImpl *self) {
@@ -569,7 +619,7 @@ void Painter::draw_path(const PainterPath &p) {
 }
 void Painter::draw_image(const Texture &t, const FRect *_dst, const FRect *_src) {
     cairo_surface_t *surf;
-    auto pat = TEX_CAST(t.priv);
+    auto pat = t.priv->pattern;
     auto ret = cairo_pattern_get_surface(pat, &surf);
 
     if (!pat || ret != CAIRO_STATUS_SUCCESS) {
@@ -579,8 +629,12 @@ void Painter::draw_image(const Texture &t, const FRect *_dst, const FRect *_src)
     FRect dst;
     FRect src;
 
-    float tex_w = cairo_image_surface_get_width(surf);
-    float tex_h = cairo_image_surface_get_height(surf);
+    // float tex_w = cairo_image_surface_get_width(surf);
+    // float tex_h = cairo_image_surface_get_height(surf);
+    auto tex_size = t.size();
+    float tex_w = tex_size.w;
+    float tex_h = tex_size.h;
+
 
     if (_dst) {
         dst = *_dst;
@@ -751,25 +805,8 @@ void Painter::draw_text(const TextLayout &layout, float x, float y) {
 
 // Texture
 auto Painter::create_texture(PixFormat fmt, int w, int h) -> Texture {
-    cairo_format_t f;
-    switch (fmt) {
-        case PixFormat::RGBA32 : {
-            f = CAIRO_FORMAT_ARGB32;
-            break;
-        }
-        case PixFormat::RGB24  : {
-            f = CAIRO_FORMAT_RGB24;
-            break;
-        }
-        default : {
-            return Texture();
-        }
-    }
-    auto surf = cairo_image_surface_create(f, w, h);
-    auto pat  = cairo_pattern_create_for_surface(surf);
-
     Texture t;
-    TEX_CAST(t.priv) = pat;
+    t.priv = new TextureImpl(priv, fmt, w, h);
     return t;
 }
 auto Painter::create_texture(const PixBuffer &buf) -> Texture {
@@ -845,6 +882,29 @@ void Painter::pop_transform() {
     cairo_restore(priv->cr);
 }
 
+// Get color 
+auto Painter::color() const -> GLColor {
+    double r, g, b, a;
+    auto pattern = cairo_get_source(priv->cr);
+    if (cairo_pattern_get_rgba(pattern, &r, &g, &b, &a) != CAIRO_STATUS_SUCCESS) {
+        return Color::Black;
+    }
+    return GLColor(r, g, b, a);
+}
+auto Painter::brush() const -> Brush {
+    Brush b;
+    if (priv->brush) {
+        // Has Brush, use it
+        b.priv = COW_REFERENCE(priv->brush.get());
+    }
+    else {
+        // Make a color brush
+        b.set_color(color());
+    }
+    return b;
+}
+
+
 // Resize
 void Painter::notify_resize(int w, int h) {
     priv->notify_resize(w, h);
@@ -876,6 +936,10 @@ Painter Painter::FromPixBuffer(PixBuffer &buf) {
     Painter p;
     p.priv = new PainterImpl(buf);
     return p;
+}
+bool    Painter::HasFeature(PainterFeature f) {
+    // Currently support all
+    return true;
 }
 
 // Operator
@@ -1259,6 +1323,273 @@ BrushType Brush::type() const {
 }
 
 // Texture
+TextureImpl::TextureImpl(PainterImpl *painter, PixFormat fmt, int w, int h) {
+
+#if 0
+    // Try native
+    if (painter->target_opt.xlib && painter->target_info.xlib.shm) {
+        // XLIB try Shm
+        if (xlib_create(painter, fmt, w, h)) {
+            return;
+        }
+    }
+#endif
+
+    if (!sw_create(painter, fmt, w, h)) {
+        BTK_THROW(std::runtime_error("Painter cannot create texure\n"));
+    }
+}
+TextureImpl::~TextureImpl() {
+    std::invoke(destroy, this);
+}
+
+bool TextureImpl::sw_create(PainterImpl *, PixFormat fmt, int w, int h) {
+    // Try sw
+    cairo_format_t f;
+    switch (fmt) {
+        case PixFormat::RGBA32 : {
+            f = CAIRO_FORMAT_ARGB32;
+            break;
+        }
+        case PixFormat::RGB24  : {
+            f = CAIRO_FORMAT_RGB24;
+            break;
+        }
+        default : {
+            BTK_LOG("SW Unsupported texture format\n");
+            return false;
+        }
+    }
+    surface = cairo_image_surface_create(f, w, h);
+    pattern = cairo_pattern_create_for_surface(surface);
+
+    get_size = &TextureImpl::sw_get_size;
+    destroy  = &TextureImpl::sw_destroy;
+    update   = &TextureImpl::sw_update;
+    return true;
+}
+Size TextureImpl::sw_get_size() {
+    int w, h;
+    w = cairo_image_surface_get_width(surface);
+    h = cairo_image_surface_get_height(surface);
+
+    return {w, h};
+}
+void TextureImpl::sw_update(const Rect *where, cpointer_t data, uint32_t pitch) {
+    cairo_surface_flush(surface);
+
+    // Mod
+    cairo_format_t fmt;
+    int w, h, stride, byte;
+    stride = cairo_image_surface_get_stride(surface);
+    fmt = cairo_image_surface_get_format(surface);
+    w = cairo_image_surface_get_width(surface);
+    h = cairo_image_surface_get_height(surface);
+
+    // Get Rect
+    Rect rect;
+    if (where == nullptr) {
+        rect.x = 0;
+        rect.y = 0;
+        rect.w = w;
+        rect.h = h;
+    }
+    else {
+        rect = *where;
+    }
+    // Write pixels
+    auto dst = cairo_image_surface_get_data(surface);
+    auto src = static_cast<const uint8_t*>(data);
+
+
+    // Copy pixels
+    // Seek to current x, y
+    dst += rect.x * 4;
+    dst += rect.y * stride;
+
+    // User byte
+    byte = pitch / rect.w;
+
+    assert((byte == 3 && fmt == CAIRO_FORMAT_RGB24) || (byte == 4 && fmt == CAIRO_FORMAT_ARGB32));
+
+    if (fmt == CAIRO_FORMAT_ARGB32) {
+        for (int y = 0; y < h; y++) {
+            // Copy line
+            for (int x = 0; x < w; x++) {
+                (uint32_t&)dst[x * 4] = rgba32_to_argb((uint32_t&)src[x * 4]);
+            }
+
+            src += pitch;
+            dst += stride;
+        }
+    }
+    else {
+        for (int y = 0; y < h; y++) {
+            // Copy line
+            for (int x = 0; x < w; x++) {
+                dst[x * 4 + 0] = src[x * byte + 0];
+                dst[x * 4 + 1] = src[x * byte + 1];
+                dst[x * 4 + 2] = src[x * byte + 2];
+            }
+
+            src += pitch;
+            dst += stride;
+        }
+    }
+
+    cairo_surface_mark_dirty_rectangle(surface, rect.x, rect.y, rect.w, rect.h);
+}
+void TextureImpl::sw_destroy() {
+    cairo_surface_destroy(surface);
+    cairo_pattern_destroy(pattern);
+}
+
+#if 0
+bool TextureImpl::xlib_create(PainterImpl *painter, PixFormat fmt, int w, int h) {
+    XWindowAttributes attrs;
+    XVisualInfo       vinfo;
+    Display *dpy = painter->target_info.xlib.display;
+    Window   win = painter->target_info.xlib.window;
+
+    if (XShmPixmapFormat(dpy) != ZPixmap) {
+        BTK_LOG("[Xlib::Shm] PixFormat unsupport ZPixmap, give up it\n");
+        return false;
+    }
+
+    int ret;
+    
+    switch (fmt) {
+        case PixFormat::RGBA32 : {
+            ret = XMatchVisualInfo(
+                dpy,
+                DefaultScreen(dpy),
+                32,
+                TrueColor,
+                &vinfo
+            );
+            break;
+        }
+        default : {
+            BTK_LOG("[Xlib::Shm] SHM Unsupported texture format\n");
+            return false;
+        } 
+    }
+
+    if (ret == 0) {
+        return false;
+    }
+    if (XGetWindowAttributes(dpy, win, &attrs) == 0) {
+        return false;
+    }
+    image = XShmCreateImage(
+        dpy,
+        vinfo.visual,
+        32,
+        ZPixmap,
+        nullptr,
+        &shminfo,
+        w,
+        h
+    );
+    if (!image) {
+        return false;
+    }
+    shminfo.shmid = shmget(
+        IPC_PRIVATE,
+        image->bytes_per_line * image->height,
+        IPC_CREAT | 0777);
+
+    shminfo.shmaddr = image->data = static_cast<char*>(shmat(shminfo.shmid, 0, 0));
+    shminfo.readOnly = False;
+    
+    if (XShmAttach(dpy, &shminfo) == 0) {
+        return false;
+    }
+    auto pixmap = XShmCreatePixmap(
+        dpy,
+        win, 
+        image->data, 
+        &shminfo,
+        w,
+        h,
+        32
+    );
+
+    if (pixmap == 0) {
+        // Error
+        BTK_LOG("[Xlib::Shm] XShmCreatePixmap failed\n");
+        return false;
+    }
+
+    XGCValues v = {};
+    gc = XCreateGC(dpy, win, 0, &v);
+
+    surface = cairo_xlib_surface_create_for_bitmap(dpy, pixmap, XDefaultScreenOfDisplay(dpy), w, h);
+    pattern = cairo_pattern_create_for_surface(surface);
+
+    get_size = &TextureImpl::xlib_get_size;
+    destroy = &TextureImpl::xlib_destroy;
+    update  = &TextureImpl::xlib_update;
+
+    BTK_LOG("[Xlib::Shm] Texture created on shared memory\n");
+
+    return true;
+}
+void TextureImpl::xlib_destroy() {
+    auto pixmap = cairo_xlib_surface_get_drawable(surface);
+    auto dpy = cairo_xlib_surface_get_display(surface);
+
+    XDestroyImage(image);
+    XFreePixmap(dpy, pixmap);
+
+    // Detach shm
+    XShmDetach(dpy, &shminfo);
+
+    // Release shm
+    shmdt(shminfo.shmaddr);
+    shmctl(shminfo.shmid, IPC_RMID, nullptr);
+
+    // Release GC
+    XFreeGC(dpy, gc);
+}
+Size TextureImpl::xlib_get_size() {
+    int width = cairo_xlib_surface_get_width(surface);
+    int height = cairo_xlib_surface_get_width(surface);
+    
+    return Size(width, height);
+}
+void TextureImpl::xlib_update(const Rect *where, cpointer_t data, uint32_t pitch) {
+    auto pixmap = cairo_xlib_surface_get_drawable(surface);
+    auto dpy = cairo_xlib_surface_get_display(surface);
+    auto [w, h] = xlib_get_size();
+
+    assert(where == nullptr);
+
+    Btk_memcpy(shminfo.shmaddr, data, pitch * h);
+    
+    int ret = XShmPutImage(
+        dpy, 
+        pixmap, 
+        gc, 
+        image,
+        0, 
+        0, 
+        0, 
+        0,
+        w,
+        h,
+        false 
+    );
+
+    if (ret == 0) {
+        BTK_LOG("[Xlib::Shm] XShmPutImage failed\n");
+        abort();
+    }
+
+    cairo_surface_mark_dirty(surface);
+}
+#endif
+
 Texture::Texture() {
     priv = nullptr;
 }
@@ -1267,99 +1598,24 @@ Texture::Texture(Texture &&t) {
     t.priv = nullptr;
 }
 Texture::~Texture() {
-    cairo_pattern_destroy(TEX_CAST(priv));
+    delete priv;
 }
 void Texture::clear() {
-    auto &ref = TEX_CAST(priv);
-    cairo_pattern_destroy(ref);
-    ref = nullptr;
+    delete priv;
+    priv = nullptr;
 }
 bool Texture::empty() const {
     return priv == nullptr;
 }
 Size Texture::size() const {
     if (priv) {
-        cairo_surface_t *surf;
-        int w, h;
-        auto ret = cairo_pattern_get_surface(TEX_CAST(priv), &surf);
-        if (ret != CAIRO_STATUS_SUCCESS) {
-            printf("%d", ret);
-        }
-        w = cairo_image_surface_get_width(surf);
-        h = cairo_image_surface_get_height(surf);
-
-        return Size(w, h);
+        return std::invoke(priv->get_size, priv);
     }
     return Size(0, 0);
 }
 void Texture::update(const Rect *where, cpointer_t data, uint32_t pitch) {
     if (priv) {
-        cairo_surface_t *surf;
-        cairo_pattern_get_surface(TEX_CAST(priv), &surf);
-
-        cairo_surface_flush(surf);
-
-        // Mod
-        cairo_format_t fmt;
-        int w, h, stride, byte;
-        stride = cairo_image_surface_get_stride(surf);
-        fmt = cairo_image_surface_get_format(surf);
-        w = cairo_image_surface_get_width(surf);
-        h = cairo_image_surface_get_height(surf);
-
-        // Get Rect
-        Rect rect;
-        if (where == nullptr) {
-            rect.x = 0;
-            rect.y = 0;
-            rect.w = w;
-            rect.h = h;
-        }
-        else {
-            rect = *where;
-        }
-        // Write pixels
-        auto dst = cairo_image_surface_get_data(surf);
-        auto src = static_cast<const uint8_t*>(data);
-
-
-        // Copy pixels
-        // Seek to current x, y
-        dst += rect.x * 4;
-        dst += rect.y * stride;
-
-        // User byte
-        byte = pitch / rect.w;
-
-        assert((byte == 3 && fmt == CAIRO_FORMAT_RGB24) || (byte == 4 && fmt == CAIRO_FORMAT_ARGB32));
-
-        if (fmt == CAIRO_FORMAT_ARGB32) {
-            for (int y = 0; y < h; y++) {
-                // Copy line
-                for (int x = 0; x < w; x++) {
-                    (uint32_t&)dst[x * 4] = rgba32_to_argb((uint32_t&)src[x * 4]);
-                }
-
-                src += pitch;
-                dst += stride;
-            }
-        }
-        else {
-            for (int y = 0; y < h; y++) {
-                // Copy line
-                for (int x = 0; x < w; x++) {
-                    dst[x * 4 + 0] = src[x * byte + 0];
-                    dst[x * 4 + 1] = src[x * byte + 1];
-                    dst[x * 4 + 2] = src[x * byte + 2];
-                }
-
-                src += pitch;
-                dst += stride;
-            }
-        }
-
-
-        cairo_surface_mark_dirty_rectangle(surf, rect.x, rect.y, rect.w, rect.h);
+        return std::invoke(priv->update, priv, where, data, pitch);
     }
 }
 Texture &Texture::operator =(Texture &&t) {
@@ -1513,6 +1769,7 @@ void Pen::set_dash_style(DashStyle style) {
     // FIXME : Add right dash pattern
     switch (style) {
         case DashStyle::DashDotDot : {
+            priv->dashes = {2.0, 1.0, 1.00};
             break;
         }
         case DashStyle::DashDot : {

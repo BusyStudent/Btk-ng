@@ -10,7 +10,6 @@
 
 // Import FFmpeg
 extern "C" {
-    #include <libavdevice/avdevice.h>
     #include <libavformat/avformat.h>
     #include <libavformat/avio.h>
     #include <libavcodec/avcodec.h>
@@ -19,6 +18,7 @@ extern "C" {
     #include <libavutil/audio_fifo.h>
     #include <libavutil/imgutils.h>
     #include <libavutil/avutil.h>
+    #include <libavutil/opt.h>
 
 // #define BTK_MINIAUDIO
 #if defined(BTK_MINIAUDIO)
@@ -90,8 +90,6 @@ namespace {
     using AVPacketPtr = FFWrap<AVPacket, av_packet_alloc, FFPtr2Warp<AVPacket, av_packet_free>>;
     using AVFramePtr  = FFWrap<AVFrame,  av_frame_alloc , FFPtr2Warp<AVFrame , av_frame_free>>;
     using SwsContextPtr = FFWrap<SwsContext, sws_getContext, sws_freeContext>;
-
-    static std::once_flag device_once;
 
     static u8string format_fferror(int errc) {
         u8string ret;
@@ -208,8 +206,6 @@ class MediaPlayerImpl  : public Object {
 
 // Begin video player
 MediaPlayerImpl::MediaPlayerImpl() {
-    std::call_once(device_once, avdevice_register_all);
-
     thrd = std::thread(&MediaPlayerImpl::codec_thread, this);
 }
 MediaPlayerImpl::~MediaPlayerImpl() {
