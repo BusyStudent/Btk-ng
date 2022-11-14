@@ -494,5 +494,12 @@ constexpr RectImpl<T> lerp(const RectImpl<T> &a, const RectImpl<T> &b, float t) 
         lerp(a.h, b.h, t)
     );
 }
+template <typename T>
+constexpr PointImpl<T> lerp(const PointImpl<T> &a, const PointImpl<T> &b, float t) noexcept {
+    return PointImpl(
+        lerp(a.x, b.x, t),
+        lerp(a.y, b.y, t)
+    );
+}
 
 BTK_NS_END

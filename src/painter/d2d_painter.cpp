@@ -2085,6 +2085,59 @@ void  Font::set_family(u8string_view family) {
 bool  Font::empty() const {
     return priv == nullptr;
 }
+auto  Font::ListFamily() -> StringList {
+    wchar_t locale_name[LOCALE_NAME_MAX_LENGTH];
+    std::wstring tmp;
+    
+    ComPtr<IDWriteFontCollection> col;
+    StringList ret;
+    HRESULT hr = S_OK;
+    BOOL exists = FALSE;
+    BOOL has_local = FALSE;
+
+    has_local = GetUserDefaultLocaleName(locale_name, LOCALE_NAME_MAX_LENGTH);
+
+    hr = dwrite_factory->GetSystemFontCollection(&col);
+    if (FAILED(hr)) {
+        return ret;
+    }
+
+    UINT32 n = col->GetFontFamilyCount();
+    ret.reserve(n);
+
+    for (UINT32 i = 0; i < n; i ++) {
+        ComPtr<IDWriteFontFamily>    family;
+        ComPtr<IDWriteLocalizedStrings> str;
+        hr = col->GetFontFamily(i, &family);
+        hr = family->GetFamilyNames(&str);
+
+        // Find local string
+        UINT32 index = 0;
+        if (has_local) {
+            hr = str->FindLocaleName(locale_name, &index, &exists);
+        }
+        if (SUCCEEDED(hr) || !exists) {
+            // No name, try en
+            hr = str->FindLocaleName(L"en-us", &index, &exists);
+        }
+        if (!exists) {
+            // Oh no
+            index = 0;
+        }
+
+        UINT32 len;
+        hr = str->GetStringLength(index, &len);
+
+        tmp.reserve(len + 1);
+
+        hr = str->GetString(index, tmp.data(), len + 1);
+
+        if (SUCCEEDED(hr)) {
+            ret.emplace_back(u8string::from(tmp));
+        }
+    }
+    return ret;
+}
 
 // TextLayout
 COW_IMPL(TextLayout);
@@ -2142,34 +2195,32 @@ bool TextLayout::hit_test(float x, float y, TextHitResult *res) const {
     }
     return false;
 }
-// bool TextLayout::hit_test_pos(size_t pos, float org_x, float org_y, TextHitResult *res) const {
-//     if (priv) {
-//         auto layout = priv->lazy_eval();
-//         if (layout) {
-//             BOOL inside;
-//             BOOL is_trailing_hit;
-//             DWRITE_HIT_TEST_METRICS m;
-//             if (FAILED(layout->HitTestTextPosition(pos, FALSE, org_x, org_y, &is_trailing_hit, &inside, &m))) {
-//                 return false;
-//             }
-//             if (res) {
-//                 res->text = m.textPosition;
-//                 res->length = m.length;
+bool TextLayout::hit_test_pos(size_t pos, bool trailing_hit, float *x, float *y, TextHitResult *res) const {
+    if (priv) {
+        auto layout = priv->lazy_eval();
+        if (layout) {
+            DWRITE_HIT_TEST_METRICS m;
+            if (FAILED(layout->HitTestTextPosition(pos, trailing_hit, x, y, &m))) {
+                return false;
+            }
+            if (res) {
+                res->text = m.textPosition;
+                res->length = m.length;
 
-//                 res->box.x = m.left;
-//                 res->box.y = m.top;
-//                 res->box.w = m.width;
-//                 res->box.h = m.height;
+                res->box.x = m.left;
+                res->box.y = m.top;
+                res->box.w = m.width;
+                res->box.h = m.height;
 
-//                 res->trailing = is_trailing_hit;
-//                 res->inside = inside;
-//             }
+                // res->trailing = is_trailing_hit;
+                // res->inside = inside;
+            }
 
-//             return true;
-//         }
-//     }
-//     return false;
-// }
+            return true;
+        }
+    }
+    return false;
+}
 bool TextLayout::hit_test_range(size_t text, size_t len, float org_x, float org_y, TextHitResults *res) const {
     if (priv) {
         auto layout = priv->lazy_eval();

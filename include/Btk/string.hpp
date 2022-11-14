@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <iosfwd>
+#include <cstddef>
 
 // TODO List
 // 0 - Add support for replace , insert, erase, etc.

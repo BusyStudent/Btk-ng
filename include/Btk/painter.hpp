@@ -78,9 +78,13 @@ enum class LineCap : uint8_t {
 
 BTK_FLAGS_OPERATOR(FontStyle, uint8_t);
 
+/**
+ * @brief Color stop structore
+ * 
+ */
 class ColorStop {
     public:
-        float  offset; // normalized offset from [0.0 => 1.0]
+        float  offset; //< normalized offset from [0.0 => 1.0]
         GLColor color;
 
         bool compare(const ColorStop &other) const {
@@ -94,6 +98,10 @@ class ColorStop {
         }
 };
 
+/**
+ * @brief The Gradient 
+ * 
+ */
 class Gradient {
     public:
         Gradient() = default;
@@ -124,6 +132,10 @@ class Gradient {
     protected:
         std::vector<ColorStop> _stops = {};
 };
+/**
+ * @brief LinearGradient
+ * 
+ */
 class LinearGradient : public Gradient {
     public:
         LinearGradient() = default;
@@ -162,6 +174,10 @@ class LinearGradient : public Gradient {
         FPoint  _start_point = {0.0f, 0.0f};
         FPoint  _end_point   = {1.0f, 1.0f};
 };
+/**
+ * @brief RadialGradient
+ * 
+ */
 class RadialGradient : public Gradient {
     public:
         // Has Start and End points
@@ -222,7 +238,7 @@ class RadialGradient : public Gradient {
 };
 
 /**
- * @brief Brush for painting
+ * @brief Brush for filling
  * 
  */
 class BTKAPI Brush {
@@ -242,12 +258,42 @@ class BTKAPI Brush {
         Brush &operator =(const Brush &);
         Brush &operator =(std::nullptr_t);
 
+        /**
+         * @brief Set the color object
+         * 
+         * @param c The color
+         */
         void set_color(const GLColor &c);
+        /**
+         * @brief Set the image object
+         * 
+         * @param pixbuf The const reference of pixbuffer
+         */
         void set_image(const PixBuffer &);
+        /**
+         * @brief Set the gradient object
+         * 
+         * @param g LinearGradient
+         */
         void set_gradient(const LinearGradient &g);
+        /**
+         * @brief Set the gradient object
+         * 
+         * @param g RadialGradient
+         */
         void set_gradient(const RadialGradient &g);
 
+        /**
+         * @brief Get current type of the brush
+         * 
+         * @return BrushType 
+         */
         BrushType type() const;
+        /**
+         * @brief Get color of the brush
+         * 
+         * @return GLColor (failed will return Color::Black)
+         */
         GLColor   color() const;
     private:
         void begin_mut();
@@ -266,10 +312,37 @@ class BTKAPI Texture {
         Texture(Texture &&);
         ~Texture();
 
+        /**
+         * @brief Clear the texture, make it into empty
+         * 
+         */
         void clear();
+        /**
+         * @brief Check the texture is empty
+         * 
+         * @return true 
+         * @return false 
+         */
         bool empty() const;
+        /**
+         * @brief Get the pixel size of texture
+         * 
+         * @return Size 
+         */
         Size size() const;
+        /**
+         * @brief Update data to texture
+         * 
+         * @param where The update area, nullptr on whole texture, out of bounds is ub
+         * @param data The pointer of pixel data
+         * @param pitch The pitch of pixel data
+         */
         void update(const Rect *where, cpointer_t data, uint32_t pitch);
+        /**
+         * @brief Set the interpolation mode object
+         * 
+         * @param mode InterpolationMode
+         */
         void set_interpolation_mode(InterpolationMode mode);
 
         Texture &operator =(Texture      &&);
@@ -280,6 +353,10 @@ class BTKAPI Texture {
     friend class Painter;
 };
 
+/**
+ * @brief Hit results for TextLayout
+ * 
+ */
 class TextHitResult {
     public:
         // Properties unused in hit_test_range()
@@ -309,13 +386,27 @@ class BTKAPI TextLayout {
         TextLayout &operator =(const TextLayout &);
         TextLayout &operator =(std::nullptr_t);
 
+        /**
+         * @brief Set the text object
+         * 
+         * @param text 
+         */
         void set_text(u8string_view text);
+        /**
+         * @brief Set the font object
+         * 
+         */
         void set_font(const Font &);
-        
+
+        /**
+         * @brief Get the size of the text block
+         * 
+         * @return Size 
+         */
         Size size() const;
 
         bool hit_test(float x, float y, TextHitResult *res = nullptr) const;
-        bool hit_test_pos(size_t pos, float org_x, float org_y, TextHitResult *res = nullptr) const;
+        bool hit_test_pos(size_t pos, bool trailing_hit, float *x, float *y, TextHitResult *res = nullptr) const;
         bool hit_test_range(size_t text, size_t len, float org_x, float org_y, TextHitResults *res = nullptr) const;
     private:
         void begin_mut();
@@ -441,7 +532,8 @@ class BTKAPI Font {
         void  set_italic(bool italic);
         void  set_family(u8string_view family);
 
-        static Font FromFile(u8string_view fname, float size);
+        static auto FromFile(u8string_view fname, float size) -> Font;
+        static auto ListFamily()                              -> StringList;
     private:
         void begin_mut();
 
@@ -450,6 +542,10 @@ class BTKAPI Font {
     friend class Painter;
 };
 
+/**
+ * @brief Pen for stroking
+ * 
+ */
 class BTKAPI Pen {
     public:
         Pen();

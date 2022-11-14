@@ -8,7 +8,7 @@ It still at early developing.
 
 ```cpp
 #include <Btk/context.hpp> //< For UIContext
-#include <Btk/widget.hpp> //< Base widget & comctl
+#include <Btk/comctl.hpp> //< Base widget & comctl
 
 using namespace BTK_NAMESPACE; //< The namespace is configurable, default in Btk
 

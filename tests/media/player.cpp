@@ -48,7 +48,7 @@ class Player : public Widget {
                 player.play();
             });
             player.signal_error().connect([&]() {
-                set_window_title("Player Error");
+                set_window_title(player.error_string());
             });
             player.signal_position_changed().connect([&](double pos) {
                 set_window_title(u8string::format("Player position %lf : %lf", pos, player.duration()));
@@ -58,11 +58,21 @@ class Player : public Widget {
                 slider.set_range(0, dur);
             });
 
-            slider.signal_value_changed().connect([&]() {
+            slider.signal_slider_moved().connect([&]() {
+                auto value = slider.value();
+                printf("Ready seek to %ld\n", value);
                 player.set_position(slider.value());
             });
 
             show();
+        }
+        bool key_press(KeyEvent &event) override {
+            if (event.key() == Key::F11) {
+                fullscreen = !fullscreen;
+                set_fullscreen(fullscreen);
+                return true;
+            }
+            return false;
         }
     private:
         BoxLayout lay{TopToBottom};
@@ -74,6 +84,8 @@ class Player : public Widget {
         Button      stop;
         Slider      slider;
         VideoWidget video;
+
+        bool fullscreen = false;
 };
 
 int main() {
@@ -82,8 +94,8 @@ int main() {
     Player p;
     p.show();
 
-    VideoWidget v;
-    v.show();
+    Button btn;
+    btn.show();
 
     return ctxt.run();
 }

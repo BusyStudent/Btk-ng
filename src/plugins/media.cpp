@@ -36,9 +36,10 @@ extern "C" {
 #endif
 }
 
-// TODO : Seek operation
 // TODO : Improve sync algo
+// TODO : Add audio sync
 // FIXME : Miniaudio playback is broken
+// FIXME : Memory leaks
 
 // Avoid macro from windows.h
 #undef max
@@ -153,6 +154,9 @@ class MediaPlayerImpl  : public Object {
         std::atomic<double> position = 0.0;
         timestamp_t         position_start = 0;
 
+        std::atomic<double> seek_position = 0.0;
+        std::atomic<bool>   seek_req = false;
+
         int   video_stream = -1;
         int   audio_stream = -1;
 
@@ -176,6 +180,8 @@ class MediaPlayerImpl  : public Object {
         std::mutex     audio_mtx; //< For Protect audio frame queue
         
         std::atomic<double> audio_pts = 0;
+
+        int            errcode = 0;
 
         Signal<void(double)> signal_duration_changed;
         Signal<void(double)> signal_position_changed;
@@ -201,6 +207,8 @@ class MediaPlayerImpl  : public Object {
         void audio_device_init();
         void audio_device_destroy();
         void audio_device_pause(bool v);
+        bool audio_device_is_paused();
+        void audio_cache_clear();
 };
 
 
@@ -259,12 +267,53 @@ void MediaPlayerImpl::codec_thread() {
             else if (packet->stream_index == audio_stream) {
                 proc_audio();
             }
+            av_packet_unref(packet.get());
+
+            
+            // Check seek request
+            if (seek_req) {
+                int ret;
+
+                // Codec Flush
+                if (video_stream >= 0) {
+                    auto time_base = av_q2d(container->streams[video_stream]->time_base);
+                    ret = av_seek_frame(container.get(), video_stream, seek_position / time_base, AVSEEK_FLAG_BACKWARD);
+
+                    video_cleanup();
+                    avcodec_flush_buffers(video_ctxt.get());
+                }
+                if (audio_stream >= 0) {
+                    auto time_base = av_q2d(container->streams[audio_stream]->time_base);
+                    ret = av_seek_frame(container.get(), audio_stream, seek_position / time_base, AVSEEK_FLAG_BACKWARD);
+
+                    bool paused = audio_device_is_paused();
+                    if (!paused) {
+                        audio_device_pause(true);
+                    }
+
+                    audio_cache_clear();
+                    avcodec_flush_buffers(audio_ctxt.get());
+
+                    audio_pts = position.load();
+
+                    if (!paused) {
+                        audio_device_pause(false);
+                    }
+                }
+
+                position = seek_position.load();
+                seek_req = false;
+
+                position_start = GetTicks() - position * 1000;
+                continue;
+            }
         }
 
         // EOF
         if (state == State::Playing) {
             state = State::Stopped;
 
+            audio_device_destroy();
             // Notify
             if (video_output) {
                 defer_call(&AbstractVideoSurface::end, video_output);
@@ -281,6 +330,9 @@ void MediaPlayerImpl::proc_video() {
     // Push packet to queue
     AVPacketPtr pack = AVPacketPtr::Alloc();
     av_packet_ref(pack.get(), packet.get());
+    av_packet_unref(packet.get());
+
+    // Realease the mem
     video_packet_queue.emplace(std::move(pack));
 
     // Try run out the packet
@@ -329,7 +381,7 @@ void MediaPlayerImpl::proc_video() {
                     video_frame_unused = true;
                     return;
                 }
-                if (state != State::Playing) {
+                if (state != State::Playing || seek_req) {
                     video_has_prev = false;
                     return;
                 }
@@ -414,6 +466,10 @@ void MediaPlayerImpl::video_cleanup() {
         av_packet_unref(video_packet_queue.front().get());
         video_packet_queue.pop();
     }
+    // Cleanup prev
+    video_ticks = 0;
+    video_prev_pts = 0.0;
+    video_has_prev = false;
 }
 void MediaPlayerImpl::clock_update() {
     double new_position = double(GetTicks() - position_start) / 1000;
@@ -478,6 +534,7 @@ void MediaPlayerImpl::play() {
     );
     if (ret != 0) {
         // Error
+        errcode = ret;
         signal_error.emit();
         return;
     }
@@ -486,6 +543,7 @@ void MediaPlayerImpl::play() {
     ret = avformat_find_stream_info(container.get(), nullptr);
     if (ret != 0) {
         // Error
+        errcode = ret;
         signal_error.emit();
         return;
     }
@@ -530,12 +588,14 @@ void MediaPlayerImpl::play() {
             video_ctxt.reset(avcodec_alloc_context3(codec));
             if (!video_ctxt) {
                 // Error
+                errcode = AVERROR(ENOMEM);
                 signal_error.emit();
                 return;
             }
             ret = avcodec_parameters_to_context(video_ctxt.get(), container->streams[video_stream]->codecpar);
             if (ret < 0) {
                 // Error
+                errcode = ret;
                 signal_error.emit();
                 return;
             }
@@ -543,6 +603,7 @@ void MediaPlayerImpl::play() {
             ret = avcodec_open2(video_ctxt.get(), video_codec, nullptr);
             if (ret < 0) {
                 // Error
+                errcode = ret;
                 signal_error.emit();
                 return;
             }
@@ -599,12 +660,14 @@ void MediaPlayerImpl::play() {
             audio_ctxt.reset(avcodec_alloc_context3(codec));
             if (!audio_ctxt) {
                 // Error
+                errcode = AVERROR(ENOMEM);
                 signal_error.emit();
                 return;
             }
             ret = avcodec_parameters_to_context(audio_ctxt.get(), container->streams[audio_stream]->codecpar);
             if (ret < 0) {
                 // Error
+                errcode = ret;
                 signal_error.emit();
                 return;
             }
@@ -612,6 +675,7 @@ void MediaPlayerImpl::play() {
             ret = avcodec_open2(audio_ctxt.get(), audio_codec, nullptr);
             if (ret < 0) {
                 // Error
+                errcode = ret;
                 signal_error.emit();
                 return;
             }
@@ -703,6 +767,10 @@ bool MediaPlayerImpl::audio_fillbuffer() {
         cond.notify_one();
         locker.lock();
 
+        if (seek_req) {
+            // Seeking, we make it slience
+            return false;
+        }
     }
     // Resampling
     auto frame = audio_frame_queue.front().get();
@@ -847,6 +915,15 @@ void MediaPlayerImpl::audio_device_pause(bool v) {
 #endif
     }
 }
+bool MediaPlayerImpl::audio_device_is_paused() {
+
+#if defined(BTK_MINIAUDIO)
+    return ma_device_get_state(&audio_device) == ma_device_state_stopped;
+#else
+    return SDL_GetAudioDeviceStatus(audio_device) == SDL_AUDIO_PAUSED;
+#endif
+
+}
 void MediaPlayerImpl::audio_device_destroy() {
     if (audio_device_inited) {
 #if defined(BTK_MINIAUDIO)
@@ -856,14 +933,18 @@ void MediaPlayerImpl::audio_device_destroy() {
         audio_device = 0;
 #endif
         audio_device_inited = false;
-        while (!audio_frame_queue.empty()) {
-            audio_frame_queue.pop();
-        }
-
-        audio_buffer.clear();
-        audio_buffer_used = 0;
         audio_pts = 0;
+
+        audio_cache_clear();
     }
+}
+void MediaPlayerImpl::audio_cache_clear() {
+    while (!audio_frame_queue.empty()) {
+        audio_frame_queue.pop();
+    }
+
+    audio_buffer.clear();
+    audio_buffer_used = 0;
 }
 void MediaPlayerImpl::pause() {
     audio_device_pause(true);
@@ -918,7 +999,10 @@ void MediaPlayerImpl::set_position(double pos) {
     // // Resume
     // state = s;
     // cond.notify_one();
-    
+    seek_position = pos;
+    seek_req = true;
+
+    cond.notify_one();
 }
 
 double MediaPlayerImpl::duration() const {
@@ -1034,6 +1118,9 @@ double MediaPlayer::duration() const {
 }
 double MediaPlayer::position() const {
     return priv->position;
+}
+u8string MediaPlayer::error_string() const {
+    return format_fferror(priv->errcode);
 }
 
 BTK_NS_END

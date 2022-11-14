@@ -68,18 +68,6 @@ class Dialog : public Widget {
     public:
 };
 
-// ScrollArea
-class AbstractScrollArea : public Widget {
-    public:
-        AbstractScrollArea(Widget *parent = nullptr);
-        ~AbstractScrollArea();
-};
-class ScrollArea : public AbstractScrollArea {
-    public:
-        ScrollArea(Widget *parent = nullptr);
-        ~ScrollArea();
-};
-
 // ListView MVC
 class ItemModel {
 

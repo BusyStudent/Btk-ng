@@ -16,7 +16,9 @@ BTK_NS_BEGIN
 
 class KeyEvent;
 class DragEvent;
+class MoveEvent;
 class MouseEvent;
+class CloseEvent;
 class WheelEvent;
 class FocusEvent;
 class PaintEvent;
@@ -44,8 +46,10 @@ enum class FocusPolicy : uint8_t {
     None = 0,       //< Widget does not accept focus.
     Mouse = 1 << 0, //< Widget accepts focus by mouse click.
 };
-enum class WidgetAttr  : uint8_t {
-    DeleteOnClose = 0,
+enum class WidgetAttrs : uint8_t {
+    None          = 0, //< No attributes
+    DeleteOnClose = 1 << 0, //< Widget Delete after closed
+
 };
 // Class for widget
 class SizePolicy {
@@ -89,6 +93,7 @@ class SizePolicy {
 BTK_FLAGS_OPERATOR(SizePolicy::Policy, uint8_t);
 BTK_FLAGS_OPERATOR(WindowFlags, uint32_t);
 BTK_FLAGS_OPERATOR(FocusPolicy, uint8_t);
+BTK_FLAGS_OPERATOR(WidgetAttrs, uint8_t);
 
 /**
  * @brief Widget base class
@@ -96,76 +101,256 @@ BTK_FLAGS_OPERATOR(FocusPolicy, uint8_t);
  */
 class BTKAPI Widget : public Object {
     public:
-        Widget();
-        Widget(Widget *parent);
+        /**
+         * @brief Construct a new Widget object
+         * 
+         * @param parent The parent pointer (can be nullptr)
+         */
+        Widget(Widget *parent = nullptr);
         ~Widget();
 
         // Configure
+
+        /**
+         * @brief Make the widget visable
+         * 
+         */
         void show();
+        /**
+         * @brief Make the widget invisable
+         * 
+         */
         void hide();
+        /**
+         * @brief Raise the widget to top of the stack
+         * 
+         */
         void raise();
+        /**
+         * @brief Place the widget into bottom of the stack
+         * 
+         */
         void lower();
+        /**
+         * @brief Close the widget
+         * 
+         */
         void close();
+        /**
+         * @brief Send a paint event into queue
+         * 
+         */
         void repaint();
+        /**
+         * @brief Force repaint right now
+         * 
+         */
         void repaint_now();
-
+        /**
+         * @brief Try let the widget has the focus
+         * 
+         */
+        void take_focus();
+        /**
+         * @brief Set the visible object
+         * 
+         * @param visible The visable
+         */
         void set_visible(bool visible);
+        /**
+         * @brief Set the rect object
+         * 
+         * @param x 
+         * @param y 
+         * @param w 
+         * @param h 
+         */
         void set_rect(int x, int y, int w, int h);
+        /**
+         * @brief Set the palette object
+         * 
+         * @param palette The new color palette
+         */
+        void set_palette(const Palette &palette);
+        /**
+         * @brief Move the widget to position x, y
+         * 
+         * @param x 
+         * @param y 
+         */
         void move(int x, int y);
-
+        /**
+         * @brief Resize the widget to width, height
+         * 
+         * @param width 
+         * @param height 
+         */
         void resize(int width, int height);
+        /**
+         * @brief Resize the widget to (Size ver) 
+         * 
+         * @param p 
+         */
         void resize(const Size &p) {
             resize(p.w, p.h);
         }
 
         // Querys
+        /**
+         * @brief Get the widget rectangle
+         * 
+         * @return Rect 
+         */
         Rect    rect() const;
+        /**
+         * @brief Get the widget visiblity
+         * 
+         * @return true 
+         * @return false 
+         */
         bool    visible() const;
+        /**
+         * @brief Get the pointer of the parent
+         * 
+         * @return Widget* (nullptr on no parent)
+         */
         Widget *parent() const;
+        /**
+         * @brief Get the window of the widget tree 
+         * 
+         * @return Widget* (nullptr on on window)
+         */
         Widget *window() const;
+        /**
+         * @brief Get the root widget of the widget tree
+         * 
+         * @return Widget* 
+         */
         Widget *root() const;
+        /**
+         * @brief Get the style pointer of the widget
+         * 
+         * @return Style* 
+         */
         Style  *style() const;
+        /**
+         * @brief Check current widget is window
+         * 
+         * @return true 
+         * @return false 
+         */
         bool    is_window() const;
+        /**
+         * @brief Check current widget is root widget
+         * 
+         * @return true 
+         * @return false 
+         */
         bool    is_root() const;
+        /**
+         * @brief Get font of the widget
+         * 
+         * @return const Font& 
+         */
         auto    font() const -> const Font &;
+        /**
+         * @brief Get color patette of the widget
+         * 
+         * @return const Palette& 
+         */
         auto    palette() const -> const Palette &;
         auto    palette_group() const -> Palette::Group;
-
+        /**
+         * @brief Get width of the widget
+         * 
+         * @return int 
+         */
         int     width() const {
             return rect().w;
         }
+        /**
+         * @brief Get height of the widget
+         * 
+         * @return int 
+         */
         int     height() const {
             return rect().h;
         }
+        /**
+         * @brief Get x position of the widget
+         * 
+         * @return int 
+         */
         int     x() const {
             return rect().x;
         }
+        /**
+         * @brief Get y position of the widget
+         * 
+         * @return int 
+         */
         int     y() const {
             return rect().y;
         }
-
+        /**
+         * @brief Get the size of the widget
+         * 
+         * @return Size 
+         */
         Size    size() const {
             return rect().size();
         }
-
+        /**
+         * @brief Adjust the size of widget
+         * 
+         * @return Size 
+         */
         Size    adjust_size() const;
 
+        /**
+         * @brief Get the maximum size of the widget
+         * 
+         * @return Size 
+         */
         Size    maximum_size() const {
             return _maximum_size;
         }
+        /**
+         * @brief Get the minimum size of the widget
+         * 
+         * @return Size 
+         */
         Size    minimum_size() const {
             return _minimum_size;
         }
+        /**
+         * @brief Get the size policy (used in gain focus)
+         * 
+         * @return FocusPolicy 
+         */
         FocusPolicy focus_policy() const {
             return _focus;
         }
         SizePolicy  size_policy() const {
             return _size;
         }
+
         // Size Hints
+        /**
+         * @brief Virtual method for get perfered size of widget
+         * 
+         * @return Pefered size (default in Size(0, 0))
+         */
         virtual Size size_hint() const;
 
         // Event handlers
+        /**
+         * @brief Process event
+         * 
+         * @param event The event reference
+         * @return true On processed
+         * @return false On unprocessed
+         */
         virtual bool handle       (Event &event) override;
         virtual bool key_press    (KeyEvent &) { return false; }
         virtual bool key_release  (KeyEvent &) { return false; }
@@ -186,18 +371,51 @@ class BTKAPI Widget : public Object {
 
         virtual bool textinput_event(TextInputEvent &) { return false; }
         virtual bool resize_event   (ResizeEvent &)    { return false; }
+        virtual bool move_event     (MoveEvent  &)     { return false; }
         virtual bool paint_event    (PaintEvent &)     { return false; }
+        virtual bool close_event    (CloseEvent &)     { return false; }
         virtual bool change_event   (Event &)          { return false; }
         // virtual bool drop_event   (DropEvent &) { return false; }
 
-        // Get window associated with widget
+        /**
+         * @brief Get window associated with widget
+         * 
+         * @return window_t 
+         */
         window_t   winhandle() const;
+        /**
+         * @brief Get the driver associated with widget
+         * 
+         * @return driver_t 
+         */
         driver_t   driver()    const;
+        /**
+         * @brief Get the painter associated with widget
+         * 
+         * @return Painter& 
+         */
         Painter   &painter()   const;
 
         // Child widgets
+        /**
+         * @brief Add a child
+         * 
+         * @param child The pointer of widget (nullptr on no-op)
+         */
         void       add_child(Widget *child);
+        /**
+         * @brief Check widget is the child of the widget
+         * 
+         * @param child 
+         * @return true 
+         * @return false 
+         */
         bool       has_child(Widget *child) const;
+        /**
+         * @brief Remove a child, it will remove the widget's ownship of the child
+         * 
+         * @param child Child pointer (nullptr on no-op)
+         */
         void       remove_child(Widget *child);
 
         void       set_parent(Widget *parent);
@@ -223,6 +441,9 @@ class BTKAPI Widget : public Object {
         bool set_window_borderless(bool v);
         bool set_resizable(bool v);
         bool set_fullscreen(bool v);
+
+        
+        void set_attributes(WidgetAttrs attrs);
 
         // Mouse
         void capture_mouse(bool capture = true);
@@ -251,6 +472,7 @@ class BTKAPI Widget : public Object {
         Widget     *_parent     = nullptr; //< Parent widget
         Style      *_style      = nullptr; //< Pointer to style
         WindowFlags _flags      = WindowFlags::Resizable; //< Window flags
+        WidgetAttrs _attrs      = WidgetAttrs::None; //< Widget attributrs
         FocusPolicy _focus      = FocusPolicy::None; //< Focus policy
         SizePolicy  _size       = SizePolicy::Fixed; //< Size policy
         Palette     _palette    = {}; //< Palette of widget     
@@ -439,6 +661,7 @@ class BTKAPI BoxLayout : public Layout {
         Direction _direction = LeftToRight;
         Rect      _rect = {0, 0, 0, 0};
         bool _except_resize = false;
+        bool _layouting = false;
         bool _dirty = true;
         int  n_spacing_item = 0;
 };

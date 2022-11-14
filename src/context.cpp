@@ -71,6 +71,9 @@ UIContext::~UIContext() {
     }
 }
 int UIContext::run() {
+    if (_dispatcher == nullptr) {
+        return EXIT_FAILURE;
+    }
     EventLoop loop(_dispatcher);
     return loop.run();
 }

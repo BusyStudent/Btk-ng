@@ -32,43 +32,47 @@ bool Button::paint_event(PaintEvent &event) {
     // Disable antialiasing
     gc.set_antialias(true);
 
-    Color c;
-
     // Background
     if (_pressed) {
-        c = style->highlight;
+        // c = style->highlight;
+        gc.set_brush(palette().brush_at(Palette::Inactive, Palette::Hightlight));
     }
     else{
-        c = style->background;
+        // c = style->background;
+        gc.set_brush(palette().brush_at(Palette::Inactive, Palette::Button));
     }
-    gc.set_color(c.r, c.g, c.b, c.a);
+    // gc.set_color(c.r, c.g, c.b, c.a);
     gc.fill_rect(border);
 
     if (under_mouse() && !_pressed) {
-        c = style->highlight;
+        // c = style->highlight;
+        gc.set_brush(palette().brush_at(Palette::Inactive, Palette::Hightlight));
     }
     else{
-        c = style->border;
+        // c = style->border;
+        gc.set_brush(palette().brush_at(Palette::Inactive, Palette::Border));
     }
 
     // Border
     if (!(_flat && !_pressed && !under_mouse())) {
         // We didnot draw border on _flat mode
-        gc.set_color(c.r, c.g, c.b, c.a);
+        // gc.set_color(c.r, c.g, c.b, c.a);
         gc.draw_rect(border);
-    }
+    }   
 
     // Text
     if (!_text.empty()) {
         if (_pressed) {
-            c = style->highlight_text;
+            // c = style->highlight_text;
+            gc.set_brush(palette().brush_at(Palette::Inactive, Palette::Hightlight));
         }
         else{
-            c = style->text;
+            // c = style->text;
+            gc.set_brush(palette().brush_at(Palette::Inactive, Palette::Text));
         }
         gc.set_text_align(Alignment::Center | Alignment::Middle);
         gc.set_font(font());
-        gc.set_color(c.r, c.g, c.b, c.a);
+        // gc.set_color(c.r, c.g, c.b, c.a);
 
         gc.push_scissor(border);
         gc.draw_text(

@@ -5,6 +5,26 @@
 
 using namespace BTK_NAMESPACE;
 
+class ColorRect : public Widget {
+    public:
+        ColorRect() {
+            LinearGradient lg;
+            lg.add_stop(0, Color::Red);
+            lg.add_stop(0.5, Color::Green);
+            lg.add_stop(1, Color::Blue);
+
+            gradient.set_gradient(lg);
+        }
+        bool paint_event(PaintEvent &) override {
+            painter().set_brush(gradient);
+            painter().fill_rect(rect());
+
+            return true;
+        }
+    private:
+        Brush gradient;
+};
+
 int main() {
     UIContext ctxt;
     Frame  widget;
@@ -25,6 +45,13 @@ int main() {
     btn.signal_clicked().connect([&]() {
         s.start();
     });
+
+    ScrollArea area;
+    ColorRect lg;
+    area.show();
+    
+    lg.set_rect(0, 0, 1000, 1000);
+    area.set_viewport(&lg);
 
     ctxt.run();
 }

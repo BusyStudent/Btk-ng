@@ -37,5 +37,18 @@ class DeferWrapper : public std::tuple<Args...> {
         Callable callable;
 };
 
+template <typename T>
+class DeleteWrapper {
+    public:
+        template <typename Base = void>
+        static void Call(Base *p) {
+            delete static_cast<T*>(p);
+        }
+        template <typename Base = void>
+        static void Destruct(Base *p) {
+            static_cast<T*>(p)->~T();
+        }
+};
+
 
 BTK_NS_END

@@ -107,4 +107,35 @@ class BTKAPI ScrollBar : public AbstractSlider {
         float _bar_offset   = 0.0f; //< Offset used in drag
 };
 
+// ScrollArea
+// ----------
+//          /
+//          /
+// ========[]
+// ----------
+class ScrollArea : public Widget {
+    public:
+        ScrollArea(Widget *parent = nullptr);
+        ~ScrollArea();
+
+        bool mouse_wheel(WheelEvent &) override;
+        bool resize_event(ResizeEvent &) override;
+        bool move_event(MoveEvent &) override;
+
+        void set_viewport(Widget *viewport);
+        
+        Widget viewport() const {
+            return _viewport;
+        }
+    private:
+        void setup_scroll();
+        void vscroll_moved();
+        void hscroll_moved();
+
+        Point   _offset = {0, 0};
+        Widget *_viewport = nullptr;
+        ScrollBar _vscroll {this, Vertical};
+        ScrollBar _hscroll {this, Horizontal};
+};
+
 BTK_NS_END

@@ -31,6 +31,8 @@ class Color {
         uint8_t b; //< Blue
         uint8_t a; //< Alpha
 
+        BTKAPI    Color(u8string_view view);
+
         constexpr Color() : r(0), g(0), b(0), a(0) {}
         constexpr Color(Enum e) : r(e >> 24), g(e >> 16), b(e >> 8), a(e & 0xFF) {}
         constexpr Color(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255) : r(r), g(g), b(b), a(a) {}

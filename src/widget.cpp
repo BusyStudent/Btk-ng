@@ -6,17 +6,22 @@
 
 BTK_NS_BEGIN
 
-Widget::Widget() {
+Widget::Widget(Widget *parent) {
     _context = GetUIContext();
-    _style   = &_context->style;
-    _palette = _context->palette;
-    _font    = _style->font;
-
     BTK_ASSERT(_context);
-}
-Widget::Widget(Widget *parent) : Widget() {
+
     if (parent != nullptr) {
+        // Inherit from parent
+        _style   = parent->_style;
+        _palette = parent->_palette;
+        _font    = parent->_font;
+
         parent->add_child(this);
+    }
+    else {
+        _style   = &_context->style;
+        _palette = _context->palette;
+        _font    = _style->font;
     }
 }
 Widget::~Widget() {
@@ -52,6 +57,11 @@ void Widget::set_visible(bool v) {
     _visible = v;
     Event event(v ? Event::Show : Event::Hide);
     handle(event);
+
+    if (_parent) {
+        event.set_type(Event::LayoutRequest);
+        _parent->handle(event);
+    }
 }
 void Widget::show() {
     set_visible(true);
@@ -138,6 +148,16 @@ void Widget::set_rect(int x, int y, int w, int h) {
     resize(w, h);
     move(x, y);
 }
+void Widget::set_palette(const Palette &palette) {
+    _palette = palette;
+
+    WidgetEvent event(Event::PaletteChanged);
+    event.set_timestamp(GetTicks());
+    event.set_widget(this);
+    handle(event);
+
+    repaint();
+}
 bool Widget::handle(Event &event) {
     // printf("Widget::handle(%d)\n", event.type());
     // Do event filters
@@ -193,6 +213,9 @@ bool Widget::handle(Event &event) {
                 }
             }
             return resize_event(e);
+        }
+        case Event::Moved : {
+            return move_event(event.as<MoveEvent>());
         }
         case Event::KeyPress : {
             if (focused_widget) {
@@ -381,6 +404,14 @@ bool Widget::handle(Event &event) {
             }
             return mouse_wheel(event.as<WheelEvent>());
         }
+        case Event::Close : {
+            ret = close_event(event.as<CloseEvent>());
+            if (!ret && uint32_t(_attrs & WidgetAttrs::DeleteOnClose)) {
+                // Ready to close & has attribute delete on close
+                defer_delete();
+            }
+            return ret;
+        }
         case Event::Timer : {
             return timer_event(event.as<TimerEvent>());
         }
@@ -444,8 +475,11 @@ bool Widget::handle(Event &event) {
             _focused = false;
             return focus_lost(event.as<FocusEvent>());
         }
+        case Event::ChildRectangleChanged :
+        case Event::PaletteChanged :
         case Event::StyleChanged :
         case Event::FontChanged : {
+            repaint();
             return change_event(event);
         }
         default: {
@@ -900,7 +934,7 @@ void Widget::rectangle_update() {
     }
 
     if (_parent) {
-        Event event(Event::LayoutRequest);
+        Event event(Event::ChildRectangleChanged);
         _parent->handle(event);
     }
 }

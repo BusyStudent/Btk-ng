@@ -49,7 +49,6 @@ class MediaPlayer : public Object {
             Playing,
             Paused,
             Stopped,
-            Seeking
         };
 
         MediaPlayer();
@@ -68,6 +67,7 @@ class MediaPlayer : public Object {
 
         auto duration() const -> double;
         auto position() const -> double;
+        auto error_string() const -> u8string;
 
         // Signals
         auto signal_error()            -> Signal<void()>       &;

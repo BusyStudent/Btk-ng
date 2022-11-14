@@ -151,8 +151,8 @@ void StyleBreeze(Style *style) {
     // style->slider_bar_height = 10;
     // style->slider_bar_width  = 10;
 
-    style->scrollbar_width  = 15;
-    style->scrollbar_height = 15;
+    style->scrollbar_width  = 12;
+    style->scrollbar_height = 12;
 
     style->margin = 2.0f;
 

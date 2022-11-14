@@ -90,6 +90,9 @@ bool Slider::mouse_press(MouseEvent &event) {
     if (event.button() == MouseButton::Left) {
         _pressed = true;
         proc_mouse(event.position());
+
+        // Value update, & trigger it
+        _slider_moved.emit();
     }
     return true;
 }
@@ -128,8 +131,10 @@ bool Slider::drag_begin(DragEvent &event) {
 }
 bool Slider::drag_motion(DragEvent &event) {
     // Update the value by it
-    _slider_moved.emit();
     proc_mouse(event.position());
+
+    // Value update, & trigger it
+    _slider_moved.emit();
     return true;
 }
 bool Slider::drag_end(DragEvent &event) {
@@ -219,24 +224,26 @@ bool ScrollBar::paint_event(PaintEvent &) {
     auto s       = style();
     auto &p = painter();
 
-    Color color = Color::Gray;
+    Color color = Color(144, 144, 144);
     if (_pressed || _dragging) {
-        color = style()->highlight;
+        // color = style()->highlight;
     }
 
-    if (_pressed) {
-        color.a = 255 / 1.5;
+    if (_pressed || _hovered) {
+        // color.a = 200;
+        color.a = 255;
     }
-    else if (_hovered) {
-        color.a = 255 / 2;
-    }
+    // else if (_hovered) {
+    //     color.a = 255 / 2;
+    // }
     else {
-        color.a = 255 / 3;
+        // color.a = 255;
+        color.a = 220;
     }
 
     p.set_antialias(true);
     p.set_color(color);
-    p.fill_rounded_rect(bar, 10);
+    p.fill_rounded_rect(bar, 5);
     return true;
 }
 bool ScrollBar::mouse_press(MouseEvent &event) {
@@ -310,11 +317,13 @@ bool ScrollBar::drag_begin(DragEvent &event) {
 }
 bool ScrollBar::drag_motion(DragEvent &event) {
     // Update the value by it
-    _slider_moved.emit();
     auto pos = event.position();
     pos.x -= _bar_offset;
     pos.y -= _bar_offset;
     proc_mouse(pos);
+    
+    // Value update, & trigger it
+    _slider_moved.emit();
     return true;
 }
 bool ScrollBar::drag_end(DragEvent &event) {
@@ -365,6 +374,112 @@ void  ScrollBar::proc_mouse(Point where) {
     }
 
     set_value(std::round(v));
+}
+
+// ScrollArea
+ScrollArea::ScrollArea(Widget *w) : Widget(w) {
+    _vscroll.signal_slider_moved().connect(&ScrollArea::vscroll_moved, this);
+    _hscroll.signal_slider_moved().connect(&ScrollArea::hscroll_moved, this);
+}
+ScrollArea::~ScrollArea() {}
+
+bool ScrollArea::resize_event(ResizeEvent &event) {
+    auto r = rect();
+
+    // _hscroll.hide();
+    if (_viewport) {
+        setup_scroll();
+    }
+
+    // Calc conert
+    int h = r.h;
+    int w = r.w;
+    if (_hscroll.visible()) {
+        h = r.h - _hscroll.height();
+    }
+    if (_vscroll.visible()) {
+        w = r.w - _vscroll.width();
+    }
+
+    _vscroll.move(r.x + r.w - _vscroll.width(), r.y);
+    _vscroll.resize(_vscroll.width(), h);
+
+    _hscroll.move(r.x, r.y + r.h - _hscroll.height());
+    _hscroll.resize(w, _hscroll.height());
+
+    return true;
+}
+bool ScrollArea::move_event(MoveEvent &event) {
+    auto r = rect();
+
+    _vscroll.move(r.x + r.w - _vscroll.width(), r.y);
+    _hscroll.move(r.x, r.y + r.h - _hscroll.height());
+
+    if (_viewport) {
+        _viewport->move(r.x, r.y);
+    }
+    return true;
+}
+bool ScrollArea::mouse_wheel(WheelEvent &event) {
+    if (_vscroll.visible()) {
+        return _vscroll.handle(event);
+    }
+    if (_hscroll.visible()) {
+        return _hscroll.handle(event);
+    }
+    return false;
+}
+void ScrollArea::set_viewport(Widget *w) {
+    auto cb = [](Object *obj, Event &event, void *self) {
+        if (event.type() == Event::Resized) {
+            static_cast<ScrollArea*>(self)->setup_scroll();
+        }
+        return false;
+    };
+    if (_viewport) {
+        _viewport->del_event_filter(cb, this);
+        remove_child(_viewport);
+    }
+    _viewport = w;
+    if (_viewport) {
+        _viewport->add_event_filter(cb, this);
+        add_child(_viewport);
+        setup_scroll();
+        _viewport->lower();
+    }
+
+    repaint();
+}
+void ScrollArea::setup_scroll() {
+    auto vrect = _viewport->rect();
+    if (vrect.w <= width()) {
+        // Disable _hscroll
+        _hscroll.hide();
+    }
+    else {
+        _hscroll.show();
+        _hscroll.set_range(0, vrect.w - width());
+        _hscroll.set_value(0);
+    }
+
+    if (vrect.h <= height()) {
+        _vscroll.hide();
+    }
+    else {
+        _vscroll.show();
+        _vscroll.set_range(0, vrect.h - height());
+        _hscroll.set_value(0);
+    }
+}
+void ScrollArea::vscroll_moved() {
+    if (_viewport) {
+        _viewport->move(_viewport->x(), y() - _vscroll.value());
+    }
+}
+void ScrollArea::hscroll_moved() {
+    if (_viewport) {
+        _viewport->move(x() - _hscroll.value(), _viewport->y());
+    }
 }
 
 BTK_NS_END

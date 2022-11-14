@@ -107,6 +107,9 @@ class SDLWindow : public AbstractWindow {
 
         Point      btk_to_sdl(Point what) const;
         Point      sdl_to_btk(Point what) const;
+
+        // Internal
+        void       load_dpi(Uint32 display);
     private:
         float       vdpi = 96.0f;
         float       hdpi = 96.0f;
@@ -423,6 +426,14 @@ void SDLDispatcher::dispatch_sdl_window(SDL_Event *event) {
             }
             break;
         }
+        case SDL_WINDOWEVENT_DISPLAY_CHANGED : {
+            // We should reload dpi on display changed
+            // May bug here?
+            auto [w, h] = win->size();
+            win->load_dpi(event->window.data1);
+            win->resize(w, h);
+            break;
+        }
         default : {
             break;
         }
@@ -534,7 +545,7 @@ timerid_t SDLDispatcher::timer_add(Object *obj, timertype_t, uint32_t ms) {
 SDLDriver::SDLDriver() {
     // TODO IMPL IT
 #if defined(SDL_HINT_WINDOWS_DPI_AWARENESS)
-    SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "system");
+    SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
 #endif
 
 #if defined(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR)
@@ -647,19 +658,7 @@ SDLWindow::SDLWindow(SDL_Window *w, SDLDriver *dr, WindowFlags f) : win(w), driv
     }
 
     auto idx = SDL_GetWindowDisplayIndex(win);
-    if (SDL_GetDisplayDPI(idx, &ddpi, &hdpi, &vdpi) != 0) {
-        BTK_LOG("[SDL2] Display %d no dpi information, backward to 96\n", idx);
-        ddpi = 96.0f;
-        hdpi = 96.0f;
-        vdpi = 96.0f;
-    }
-    BTK_LOG("[SDL2] Display %d ddpi %f hdpi %f vdpi %f\n", idx, ddpi, hdpi, vdpi);
-
-#if 1
-    if (hdpi < 96.0) {
-        dpi_scaling = false;
-    }
-#endif
+    load_dpi(idx);
 }
 SDLWindow::~SDLWindow() {
     // Remove self from driver
@@ -712,6 +711,10 @@ void SDLWindow::close() {
     SDL_PushEvent(&event);
 }
 void SDLWindow::repaint() {
+
+#if defined(_WIN32)
+    InvalidateRect(info.info.win.window, nullptr, FALSE);
+#else
     SDL_Event event;
     SDL_zero(event);
 
@@ -721,6 +724,7 @@ void SDLWindow::repaint() {
     event.window.windowID = SDL_GetWindowID(win);
 
     SDL_PushEvent(&event);
+#endif
 }
 void SDLWindow::set_title(const char_t *title) {
     SDL_SetWindowTitle(win, title);
@@ -939,6 +943,21 @@ any_t   SDLWindow::gc_create(const char_t *what) {
         return nullptr;
     }    
     return nullptr;
+}
+void   SDLWindow::load_dpi(Uint32 idx) {
+    if (SDL_GetDisplayDPI(idx, &ddpi, &hdpi, &vdpi) != 0) {
+        BTK_LOG("[SDL2] Display %d no dpi information, backward to 96\n", idx);
+        ddpi = 96.0f;
+        hdpi = 96.0f;
+        vdpi = 96.0f;
+    }
+    BTK_LOG("[SDL2] Display %d ddpi %f hdpi %f vdpi %f\n", idx, ddpi, hdpi, vdpi);
+
+#if 1
+    if (hdpi < 96.0) {
+        dpi_scaling = false;
+    }
+#endif
 }
 
 uint32_t SDLWindow::id() const {

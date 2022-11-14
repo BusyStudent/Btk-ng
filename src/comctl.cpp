@@ -320,6 +320,12 @@ void BoxLayout::run_hook(Event &event) {
             }
             break;
         }
+        case Event::LayoutRequest : {
+            if (_layouting) {
+                break;
+            }
+            [[fallthrough]];
+        }
         case Event::Show : {
             run_layout(nullptr);
             break;
@@ -330,6 +336,7 @@ void BoxLayout::run_layout(const Rect *dst) {
     if (items.empty() || !_dirty) {
         return;
     }
+    _layouting = true;
     // Calc need size
     Rect r;
 
@@ -340,7 +347,7 @@ void BoxLayout::run_layout(const Rect *dst) {
         r    = rect();
         if (r.w < size.w || r.h < size.h) {
             // We need bigger size
-            BTK_LOG("BoxLayout resize to bigger size (%d, %d\n)", size.w, size.h);
+            BTK_LOG("BoxLayout resize to bigger size (%d, %d)\n", size.w, size.h);
             BTK_LOG("Current size (%d, %d)\n", r.w, r.h);
 
             assert(widget());
@@ -524,6 +531,7 @@ void BoxLayout::run_layout(const Rect *dst) {
     while(move_next());
 
     _dirty = false;
+    _layouting = false;
 }
 void BoxLayout::set_rect(const Rect &r) {
     auto w = widget();

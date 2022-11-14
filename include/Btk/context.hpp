@@ -384,8 +384,11 @@ class BTKAPI UIContext : public Trackable {
         }
 
         // Configure
-        void set_font(const Font &f) {
+        auto set_font(const Font &f)            -> void {
             style.font = f;
+        }
+        auto set_dispatcher(EventDispatcher *d) -> void {
+            _dispatcher = d;
         }
 
         // Query
