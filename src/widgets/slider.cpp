@@ -6,13 +6,13 @@
 BTK_NS_BEGIN
 
 // AbstractSlider
-void AbstractSlider::set_value(int64_t value) {
+void AbstractSlider::set_value(double value) {
     value = clamp(value, _min, _max);
     _value = value;
     _value_changed.emit();
     repaint();
 }
-void AbstractSlider::set_range(int64_t min, int64_t max) {
+void AbstractSlider::set_range(double min, double max) {
     _min = min;
     _max = max;
     _value = clamp(_value, _min, _max);
@@ -117,6 +117,9 @@ bool Slider::mouse_leave(MotionEvent &event) {
 }
 bool Slider::mouse_wheel(WheelEvent &event) {
     set_value(_value + event.y() * _page_step);
+
+    // Value update, & trigger it
+    _slider_moved.emit();
     return true;
 }
 
@@ -341,17 +344,19 @@ FRect ScrollBar::content_rect() const {
 FRect ScrollBar::bar_rect() const {
     FRect border = rect().apply_margin(style()->margin);
     FRect bar;
-    int64_t rng = _max - _min;
+    double rng = _max - _min;
+
+    float len_ratio = float(_page_step) / rng;
 
     if (_orientation == Horizontal) {
-        bar.w = border.w * _length_ratio;
+        bar.w = border.w * len_ratio;
         bar.h = border.h;
 
         bar.x = border.x + ((border.w - bar.w) * _value) / rng;
         bar.y = border.y;
     }
     else {
-        bar.h = border.h * _length_ratio;
+        bar.h = border.h * len_ratio;
         bar.w = border.w;
 
         bar.y = border.y + ((border.h - bar.h) * _value) / rng;

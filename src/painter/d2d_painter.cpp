@@ -1,4 +1,5 @@
 #include "build.hpp"
+#include "fallback.hpp"
 #include "common/utils.hpp"
 
 #include <Btk/context.hpp>
@@ -357,6 +358,9 @@ class PainterPathImpl {
         bool is_figure_open = false;
         bool is_double_open = false;
         bool is_open = false;
+
+        float last_x = 0; //< Last Pen x
+        float last_y = 0; //< Last Pen y
 };
 
 class PainterImpl {
@@ -2128,7 +2132,7 @@ auto  Font::ListFamily() -> StringList {
         UINT32 len;
         hr = str->GetStringLength(index, &len);
 
-        tmp.reserve(len + 1);
+        tmp.resize(len);
 
         hr = str->GetString(index, tmp.data(), len + 1);
 
@@ -2468,6 +2472,8 @@ void PainterPath::close() {
     priv->is_figure_open = false;
     priv->is_double_open = true; //< Double open impl by combine path
     priv->is_open = false;
+    priv->last_x = 0;
+    priv->last_x = 0    ;
 }
 void PainterPath::move_to(float x, float y) {
     // Start a new figure if not open
@@ -2479,9 +2485,13 @@ void PainterPath::move_to(float x, float y) {
         D2D1_FIGURE_BEGIN_FILLED
     );
     priv->is_figure_open = true;
+    priv->last_x = x;
+    priv->last_x = y;
 }
 void PainterPath::line_to(float x, float y) {
     priv->sink->AddLine(D2D1::Point2F(x, y));
+    priv->last_x = x;
+    priv->last_x = y;
 }
 void PainterPath::quad_to(float x1, float y1, float x2, float y2) {
     priv->sink->AddQuadraticBezier(
@@ -2490,6 +2500,8 @@ void PainterPath::quad_to(float x1, float y1, float x2, float y2) {
             D2D1::Point2F(x2, y2)
         )
     );
+    priv->last_x = x2;
+    priv->last_x = y2;
 }
 void PainterPath::bezier_to(float x1, float y1, float x2, float y2, float x3, float y3) {
     priv->sink->AddBezier(
@@ -2499,20 +2511,12 @@ void PainterPath::bezier_to(float x1, float y1, float x2, float y2, float x3, fl
             D2D1::Point2F(x3, y3)
         )
     );
+    priv->last_x = x3;
+    priv->last_x = y3;
 }
 void PainterPath::arc_to(float x1, float y1, float x2, float y2, float radius) {
-    // TODO :
-    // BTK_THROW(std::logic_error("Unimpl"));
-    BTK_ONCE(D2D_WARN("Bad impl for arc_to\n"));
-    priv->sink->AddArc(
-        D2D1::ArcSegment(
-            D2D1::Point2F(x2, y2),
-            D2D1::SizeF(radius, radius),
-            0.0f,
-            y1 < y2 ? D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE : D2D1_SWEEP_DIRECTION_CLOCKWISE,
-            D2D1_ARC_SIZE_SMALL
-        )
-    );
+    BTK_ONCE(D2D_WARN("NanoVG impl for arc_to\n"));
+    fallback_painter_arc_to(this, priv->last_x, priv->last_y, x1, y1, x2, y2, radius);
 }
 void PainterPath::close_path() {
     priv->sink->EndFigure(D2D1_FIGURE_END_CLOSED);

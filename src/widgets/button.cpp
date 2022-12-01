@@ -64,7 +64,7 @@ bool Button::paint_event(PaintEvent &event) {
     if (!_text.empty()) {
         if (_pressed) {
             // c = style->highlight_text;
-            gc.set_brush(palette().brush_at(Palette::Inactive, Palette::Hightlight));
+            gc.set_brush(palette().brush_at(Palette::Inactive, Palette::HightlightedText));
         }
         else{
             // c = style->text;
@@ -118,6 +118,14 @@ bool Button::mouse_leave(MotionEvent &event) {
 
 Size Button::size_hint() const {
     auto style = this->style();
+    if (!_text.empty()) {
+        TextLayout lay;
+        lay.set_text(_text);
+        lay.set_font(font());
+
+        auto [w, h] = lay.size();
+        return Size(max<int>(w + style->margin * 2, style->button_width), style->button_height);
+    }
     return Size(style->button_width, style->button_height);
 }
 

@@ -16,6 +16,7 @@ extern "C" {
     #include <libswscale/swscale.h>
     #include <libswresample/swresample.h>
     #include <libavutil/audio_fifo.h>
+    #include <libavutil/hwcontext.h>
     #include <libavutil/imgutils.h>
     #include <libavutil/avutil.h>
     #include <libavutil/opt.h>
@@ -191,14 +192,17 @@ class MediaPlayerImpl  : public Object {
         Signal<void()> signal_error;
 
         void codec_thread();
-        void proc_video(); //< Return true means need sleep
-        void proc_audio();
-
         void clock_update();
 
+        bool video_init(); //< Init env for video stream
+        void video_send(); //< Send packet
+        bool video_proc(); //< Process frame (false on no frame)
         bool video_decode();
         void video_cleanup();
 
+        bool audio_init();
+        void audio_send(); //< Send packet
+        bool audio_proc(); //< Process frame (false on no frame)
         void audio_callback(void* out, uint32_t frame);
         bool audio_fillbuffer();
         bool audio_decode();
@@ -228,6 +232,7 @@ MediaPlayerImpl::~MediaPlayerImpl() {
 }
 
 void MediaPlayerImpl::codec_thread() {
+    int ret;
     while (running) {
         if (state != State::Playing) {
             if (state == State::Stopped) {
@@ -257,15 +262,17 @@ void MediaPlayerImpl::codec_thread() {
             continue;
         }
         // FIXME : Process last frame if
-        while (av_read_frame(container.get(), packet.get()) >= 0 && state == State::Playing) {
+        while ((ret = av_read_frame(container.get(), packet.get())) >= 0 && state == State::Playing) {
             // Update position
             clock_update();
             // Process
             if (packet->stream_index == video_stream) {
-                proc_video();
+                video_send();
+                video_proc();
             }
             else if (packet->stream_index == audio_stream) {
-                proc_audio();
+                audio_send();
+                audio_proc();
             }
             av_packet_unref(packet.get());
 
@@ -309,6 +316,15 @@ void MediaPlayerImpl::codec_thread() {
             }
         }
 
+        if (ret == AVERROR_EOF) {
+            // AVEof 
+            PLAYER_LOG("[Codec thread] Stream to Eof \n");
+            while (position < duration() && (video_proc() || audio_proc())) {
+                clock_update();
+            }
+            PLAYER_LOG("[Codec thread] Queue to Eof \n");
+        }
+
         // EOF
         if (state == State::Playing) {
             state = State::Stopped;
@@ -322,7 +338,7 @@ void MediaPlayerImpl::codec_thread() {
         }
     }
 }
-void MediaPlayerImpl::proc_video() {
+void MediaPlayerImpl::video_send() {
     if (!video_output || !video_ctxt) {
         // No need to proc, drop
         return;
@@ -334,7 +350,8 @@ void MediaPlayerImpl::proc_video() {
 
     // Realease the mem
     video_packet_queue.emplace(std::move(pack));
-
+}
+bool MediaPlayerImpl::video_proc() {
     // Try run out the packet
     while (video_decode()) {
         clock_update();
@@ -367,7 +384,7 @@ void MediaPlayerImpl::proc_video() {
                 // We need sleep
                 if (!audio_frame_encough) {
                     video_frame_unused = true;
-                    return;
+                    return true;
                 }
                 // Encough audio frame, we can sleep now
                 int64_t ms = diff;
@@ -379,11 +396,11 @@ void MediaPlayerImpl::proc_video() {
 
                 if (!audio_frame_encough) {
                     video_frame_unused = true;
-                    return;
+                    return true;
                 }
                 if (state != State::Playing || seek_req) {
                     video_has_prev = false;
-                    return;
+                    return true;
                 }
             }
             else if (diff < 1.0 / 30) {
@@ -400,17 +417,19 @@ void MediaPlayerImpl::proc_video() {
         video_frame_unused = false;
         // Process frame
         video_mtx.lock();
-        ret = sws_scale(
-            video_cvt.get(),
-            video_frame->data,
-            video_frame->linesize,
-            0,
-            video_ctxt->height,
-            video_frame2->data,
-            video_frame2->linesize
-        );
+
+        // av_hwframe_transfer_data(video_frame.get(), ;
+        // ret = sws_scale(
+        //     video_cvt.get(),
+        //     video_frame->data,
+        //     video_frame->linesize,
+        //     0,
+        //     video_ctxt->height,
+        //     video_frame2->data,
+        //     video_frame2->linesize
+        // );
+        ret = sws_scale_frame(video_cvt.get(), video_frame2.get(), video_frame.get());
         video_mtx.unlock();
-        // sws_scale_frame(video_cvt.get(), video_frame2.get(), video_frame.get());
 
         // Push to surface
         video_ticks = GetTicks();
@@ -421,8 +440,8 @@ void MediaPlayerImpl::proc_video() {
         });
 
         video_has_prev = true;
-
     }
+    return false;
 }
 bool MediaPlayerImpl::video_decode() {
     if (video_frame_unused) {
@@ -483,7 +502,7 @@ void MediaPlayerImpl::clock_update() {
 
     position = new_position;
 }
-void MediaPlayerImpl::proc_audio() {
+void MediaPlayerImpl::audio_send() {
     if (!audio_ctxt) {
         return;
     }
@@ -493,10 +512,12 @@ void MediaPlayerImpl::proc_audio() {
         // Error
         return;
     }
-    ret = avcodec_receive_frame(audio_ctxt.get(), audio_frame.get());
+}
+bool MediaPlayerImpl::audio_proc() {
+    int ret = avcodec_receive_frame(audio_ctxt.get(), audio_frame.get());
     if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
         // We need more packet
-        return;
+        return !audio_frame_queue.empty();
     }
 
     auto time_base = av_q2d(container->streams[audio_stream]->time_base);
@@ -511,6 +532,8 @@ void MediaPlayerImpl::proc_audio() {
 
     // Done
     av_packet_unref(packet.get());
+
+    return !audio_frame_queue.empty();
 }
 // bool MediaPlayerImpl::audio_decode() {
 //     int ret = avcodec_receive_frame(audio_ctxt.get(), audio_frame.get());
@@ -580,108 +603,14 @@ void MediaPlayerImpl::play() {
     }
 
     // Prepare codec
-    const AVCodec *codec;
-
     if (video_stream >= 0){
-        codec = avcodec_find_decoder(container->streams[video_stream]->codecpar->codec_id);
-        if (codec) {
-            video_ctxt.reset(avcodec_alloc_context3(codec));
-            if (!video_ctxt) {
-                // Error
-                errcode = AVERROR(ENOMEM);
-                signal_error.emit();
-                return;
-            }
-            ret = avcodec_parameters_to_context(video_ctxt.get(), container->streams[video_stream]->codecpar);
-            if (ret < 0) {
-                // Error
-                errcode = ret;
-                signal_error.emit();
-                return;
-            }
-            video_codec = video_ctxt->codec;
-            ret = avcodec_open2(video_ctxt.get(), video_codec, nullptr);
-            if (ret < 0) {
-                // Error
-                errcode = ret;
-                signal_error.emit();
-                return;
-            }
-
-            // Prepare buffer
-            video_frame  = AVFramePtr::Alloc();
-            video_frame2 = AVFramePtr::Alloc();
-
-            video_cvt.reset(
-                sws_getContext(
-                    video_ctxt->width,
-                    video_ctxt->height,
-                    video_ctxt->pix_fmt,
-                    video_ctxt->width,
-                    video_ctxt->height,
-                    AV_PIX_FMT_RGBA,
-                    0,
-                    nullptr,
-                    nullptr,
-                    nullptr
-                )
-            );
-            assert(video_cvt);
-
-            size_t n     = av_image_get_buffer_size(AV_PIX_FMT_RGBA, video_ctxt->width, video_ctxt->height, 32);
-            uint8_t *buf = static_cast<uint8_t*>(av_malloc(n));
-
-            av_image_fill_arrays(
-                video_frame2->data,
-                video_frame2->linesize,
-                buf,
-                AV_PIX_FMT_RGBA,
-                video_ctxt->width, video_ctxt->height,
-                32
-            );
-
-            // Cleanup prev
-            video_ticks = 0;
-            video_prev_pts = 0.0;
-            video_has_prev = false;
-
-            // Notify video output if
-            if (video_output) {
-                PixFormat fmt = PixFormat::RGBA32;
-                video_output->begin(&fmt);
-                
-                assert(fmt == PixFormat::RGBA32);
-            }
+        if (!video_init()) {
+            return;
         }
     }
     if (audio_stream >= 0) {
-        codec = avcodec_find_decoder(container->streams[audio_stream]->codecpar->codec_id);
-        if (codec) {
-            audio_ctxt.reset(avcodec_alloc_context3(codec));
-            if (!audio_ctxt) {
-                // Error
-                errcode = AVERROR(ENOMEM);
-                signal_error.emit();
-                return;
-            }
-            ret = avcodec_parameters_to_context(audio_ctxt.get(), container->streams[audio_stream]->codecpar);
-            if (ret < 0) {
-                // Error
-                errcode = ret;
-                signal_error.emit();
-                return;
-            }
-            audio_codec = audio_ctxt->codec;
-            ret = avcodec_open2(audio_ctxt.get(), audio_codec, nullptr);
-            if (ret < 0) {
-                // Error
-                errcode = ret;
-                signal_error.emit();
-                return;
-            }
-
-            // Prepare audio device
-            audio_device_init();
+        if (!audio_init()) {
+            return;
         }
     }
 
@@ -692,6 +621,127 @@ void MediaPlayerImpl::play() {
     // All done, let start
     state = State::Playing;
     cond.notify_one();
+}
+
+bool MediaPlayerImpl::video_init() {
+    const AVCodec *codec;
+    int ret;
+
+    codec = avcodec_find_decoder(container->streams[video_stream]->codecpar->codec_id);
+
+    if (!codec) {
+        // No codec
+        return false;
+    }
+
+    video_ctxt.reset(avcodec_alloc_context3(codec));
+    if (!video_ctxt) {
+        // Error
+        errcode = AVERROR(ENOMEM);
+        signal_error.emit();
+        return false;
+    }
+    ret = avcodec_parameters_to_context(video_ctxt.get(), container->streams[video_stream]->codecpar);
+    if (ret < 0) {
+        // Error
+        errcode = ret;
+        signal_error.emit();
+        return false;
+    }
+    video_codec = video_ctxt->codec;
+    ret = avcodec_open2(video_ctxt.get(), video_codec, nullptr);
+    if (ret < 0) {
+        // Error
+        errcode = ret;
+        signal_error.emit();
+        return false;
+    }
+
+    PLAYER_LOG("[Video codec] %s\n", video_ctxt->codec_descriptor->long_name);
+
+    // Prepare buffer
+    video_frame  = AVFramePtr::Alloc();
+    video_frame2 = AVFramePtr::Alloc();
+
+    video_cvt.reset(
+        sws_getContext(
+            video_ctxt->width,
+            video_ctxt->height,
+            video_ctxt->pix_fmt,
+            video_ctxt->width,
+            video_ctxt->height,
+            AV_PIX_FMT_RGBA,
+            0,
+            nullptr,
+            nullptr,
+            nullptr
+        )
+    );
+    assert(video_cvt);
+
+    size_t n     = av_image_get_buffer_size(AV_PIX_FMT_RGBA, video_ctxt->width, video_ctxt->height, 32);
+    uint8_t *buf = static_cast<uint8_t*>(av_malloc(n));
+
+    av_image_fill_arrays(
+        video_frame2->data,
+        video_frame2->linesize,
+        buf,
+        AV_PIX_FMT_RGBA,
+        video_ctxt->width, video_ctxt->height,
+        32
+    );
+
+    // Cleanup prev
+    video_ticks = 0;
+    video_prev_pts = 0.0;
+    video_has_prev = false;
+
+    // Notify video output if
+    if (video_output) {
+        PixFormat fmt = PixFormat::RGBA32;
+        video_output->begin(&fmt);
+        
+        assert(fmt == PixFormat::RGBA32);
+    }
+    return true;
+}
+
+
+bool MediaPlayerImpl::audio_init() {
+    const AVCodec *codec;
+    int ret;
+
+    codec = avcodec_find_decoder(container->streams[audio_stream]->codecpar->codec_id);
+    if (!codec) {
+        return false;
+    }
+    audio_ctxt.reset(avcodec_alloc_context3(codec));
+    if (!audio_ctxt) {
+        // Error
+        errcode = AVERROR(ENOMEM);
+        signal_error.emit();
+        return false;
+    }
+    ret = avcodec_parameters_to_context(audio_ctxt.get(), container->streams[audio_stream]->codecpar);
+    if (ret < 0) {
+        // Error
+        errcode = ret;
+        signal_error.emit();
+        return false;
+    }
+    audio_codec = audio_ctxt->codec;
+    ret = avcodec_open2(audio_ctxt.get(), audio_codec, nullptr);
+    if (ret < 0) {
+        // Error
+        errcode = ret;
+        signal_error.emit();
+        return false;
+    }
+
+    // Prepare audio device
+    audio_device_init();
+
+    return true;
 }
 void MediaPlayerImpl::audio_callback(void *out, uint32_t byte) {
     // byte = 2 * byte * sizeof(int32_t);

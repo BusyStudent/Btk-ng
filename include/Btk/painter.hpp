@@ -405,8 +405,39 @@ class BTKAPI TextLayout {
          */
         Size size() const;
 
+        /**
+         * @brief Hit test by mouse position
+         * 
+         * @param x logical x pos (begin at 0)
+         * @param y logical y pos (begin at 0)
+         * @param res The pointer to hit result
+         * @return true 
+         * @return false 
+         */
         bool hit_test(float x, float y, TextHitResult *res = nullptr) const;
+        /**
+         * @brief Hit test for single char
+         * 
+         * @param pos The char position
+         * @param trailing_hit 
+         * @param x 
+         * @param y 
+         * @param res 
+         * @return true 
+         * @return false 
+         */
         bool hit_test_pos(size_t pos, bool trailing_hit, float *x, float *y, TextHitResult *res = nullptr) const;
+        /**
+         * @brief Hit test for text block
+         * 
+         * @param text The text position
+         * @param len The length of text
+         * @param org_x The x position of the text layout
+         * @param org_y The y position of the text layout
+         * @param res The pointer to hit results
+         * @return true 
+         * @return false 
+         */
         bool hit_test_range(size_t text, size_t len, float org_x, float org_y, TextHitResults *res = nullptr) const;
     private:
         void begin_mut();
@@ -578,6 +609,10 @@ class BTKAPI Pen {
     friend class Painter;
 };
 
+/**
+ * @brief Draw something to target
+ * 
+ */
 class BTKAPI Painter {
     public:
         Painter();
@@ -699,6 +734,10 @@ class BTKAPI Painter {
     friend class PainterEffect;
 };
 
+/**
+ * @brief Helper class for RAII init painter
+ * 
+ */
 class PainterInitializer {
     public:
         PainterInitializer() {

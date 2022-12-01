@@ -24,3 +24,5 @@
 *.dylib
 *.dll
 a.out
+
+/vsxmake*

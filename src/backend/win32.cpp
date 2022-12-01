@@ -196,6 +196,7 @@ class Win32Dispatcher : public EventDispatcher {
 
         StateStack states      = {};
         TimersMap  timers      = {}; //< Map TimerID to object
+        HANDLE     heap        = {}; //< Heap for alloc event
         HWND       helper_hwnd = {}; //< Helper window for timer
     friend class Win32Driver;
 };
@@ -372,6 +373,16 @@ HBITMAP buffer_to_hbitmap(const PixBuffer &buf) {
 Win32Dispatcher::Win32Dispatcher() {
     SetDispatcher(this);
 
+    // Init Heap
+    heap = HeapCreate(0, 0, 0);
+    HeapSetInformation(
+        heap,
+        HeapEnableTerminationOnCorruption,
+        nullptr,
+        0
+    );
+    assert(heap != nullptr);
+
     // Initialize helper window class
     WNDCLASSEXW wc = {};
     wc.cbSize = sizeof(WNDCLASSEX);
@@ -409,6 +420,7 @@ Win32Dispatcher::~Win32Dispatcher() {
         SetDispatcher(nullptr);
     }
     DestroyWindow(helper_hwnd);
+    HeapDestroy(heap);
 
     win32_dispatcher = nullptr;
 }
@@ -523,7 +535,10 @@ LRESULT   Win32Dispatcher::helper_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, L
                 eventdtor(eventptr);
             }
 
-            Btk_free(eventptr);
+            // Btk_free(eventptr);
+            if (!HeapFree(heap, 0, eventptr)) {
+                WIN_LOG("[Win32Dispatcher] HeapFree %p failed\n", eventptr);
+            }
             return 0;
         }
         default : {
@@ -532,7 +547,8 @@ LRESULT   Win32Dispatcher::helper_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, L
     }
 }
 pointer_t Win32Dispatcher::alloc(size_t n) {
-    return Btk_malloc(n);
+    // return Btk_malloc(n);
+    return HeapAlloc(heap, 0, n);
 }
 bool      Win32Dispatcher::send(Event *event, EventDtor dtor) {
     return post_message(
@@ -672,7 +688,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
                 ShowWindow(hwnd, SW_HIDE);
 
                 if (windows.empty()) {
-                    WIN_LOG("Quitting\n");
+                    WIN_LOG("[Win32] All window closed, Quitting\n");
                     PostQuitMessage(0);
                     
                     // Event e(Event::Quit);
@@ -693,7 +709,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
         case WM_ERASEBKGND : {
             // Default diaable
             // For avoid flickering, we disable the background erase.
-            WIN_LOG("WM_ERASEBKGND\n");
+            // WIN_LOG("WM_ERASEBKGND\n");
             if (win->erase_background) {
                 return DefWindowProcW(hwnd, msg, wparam, lparam);
             }
@@ -711,7 +727,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
                 break;
             }
 
-            WIN_LOG("Resize to %d, %d\n", w, h);
+            WIN_LOG("[Win32] Window resize to Size(%d, %d)\n", w, h);
 
             event.set_new_size(
                 // LOWORD(lparam), HIWORD(lparam)
@@ -828,15 +844,15 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             int y = 0;
 
             if (msg == WM_MOUSEWHEEL) {
-                WIN_LOG("WM_MOUSEWHEEL\n");
+                // WIN_LOG("WM_MOUSEWHEEL\n");
                 y = GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA;
             }
             else {
-                WIN_LOG("WM_HMOUSEWHEEL\n");
+                // WIN_LOG("WM_HMOUSEWHEEL\n");
                 x = GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA;
             }
 
-            WIN_LOG("Mouse wheel %d, %d\n", x, y);
+            WIN_LOG("[Win32] Mouse wheel %d, %d\n", x, y);
 
             WheelEvent event(x, y);
             event.set_widget(win->widget);
@@ -920,7 +936,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
             // Get drop string
             UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
-            WIN_LOG("Drop count: %d\n", count);
+            WIN_LOG("[Win32] Drop count: %d\n", count);
 
             // Begin drop
             DropEvent event;
@@ -996,7 +1012,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             RECT *suggested_rect = reinterpret_cast<RECT*>(lparam);
             win->win_dpi = HIWORD(wparam);
 
-            WIN_LOG("DPI Changed to %d\n", int(win->win_dpi));
+            WIN_LOG("[Win32] DPI Changed to %d\n", int(win->win_dpi));
             break;
         }
 
@@ -1035,13 +1051,13 @@ window_t Win32Driver::window_create(const char_t *title, int width, int height, 
     rect.bottom = height;
     rect.right = width;
     if (!AdjustWindowRectExForDpi(&rect, style, FALSE, 0, dpi)) {
-        WIN_LOG("Bad adjust");
+        WIN_LOG("[Win32::Error] Bad adjust");
     }
 
     width = rect.right - rect.left;
     height = rect.bottom - rect.top;
 
-    WIN_LOG("Creating window %d %d\n", width, height);
+    WIN_LOG("[Win32] Creating window %d %d\n", width, height);
 
 
     HWND hwnd = CreateWindowExW(
@@ -1181,6 +1197,7 @@ void Win32Window::raise() {
 }
 void Win32Window::close() {
     PostMessageW(hwnd, WM_CLOSE, 0, 0);
+    // CloseWindow(hwnd);
 }
 void Win32Window::repaint() {
 #if 1
@@ -1243,7 +1260,7 @@ void Win32Window::show(int v) {
         case Maximize : cmd = SW_MAXIMIZE; break;
         case Minimize : cmd = SW_MINIMIZE; break;
 
-        default : WIN_LOG("Bad Show flag") cmd = SW_SHOW; break;
+        default : WIN_LOG("[Win32::Error] Bad Show flag") cmd = SW_SHOW; break;
     }
 
     ShowWindow(hwnd, cmd);
@@ -1280,8 +1297,8 @@ void Win32Window::set_icon(const PixBuffer &pixbuf) {
 #endif
         }
         else {
-            WIN_LOG("CreateIconIndirect failed\n");
-            WIN_LOG("GetLastError: %d\n", GetLastError());
+            WIN_LOG("[Win32::Error] CreateIconIndirect failed\n");
+            WIN_LOG("[Win32::Error] GetLastError: %d\n", GetLastError());
         }
     }
 }
@@ -1350,7 +1367,7 @@ bool     Win32Window::set_flags(WindowFlags new_flags) {
             }
             else {
                 // Err
-                WIN_LOG("Failed to SetFullscreen\n");
+                WIN_LOG("[Win32::Error] Failed to SetFullscreen\n");
                 err = 1;
             }
         }
@@ -1519,7 +1536,7 @@ LRESULT Win32Window::proc_keyboard(UINT msg, WPARAM wp, LPARAM lp) {
         else {
             mod_state &= ~m;
         }
-        WIN_LOG("mod_state: %x\n", mod_state);
+        WIN_LOG("[Win32::Keyboard] mod_state: %x\n", mod_state);
     };
 
     WORD vk = LOWORD(wp); //< Virtual key code
@@ -1543,33 +1560,33 @@ LRESULT Win32Window::proc_keyboard(UINT msg, WPARAM wp, LPARAM lp) {
         // Modifier keys begin
         case VK_SHIFT : {   // => VK_RSHIFT / VK_LSHIFT
             if (is_extended_key) {
-                WIN_LOG ("VK_RSHIFT\n");
+                WIN_LOG ("[Win32::Keyboard] VK_RSHIFT\n");
                 proc_mod(Modifier::Rshift);
             }
             else {
-                WIN_LOG ("VK_LSHIFT\n");
+                WIN_LOG ("[Win32::Keyboard] VK_LSHIFT\n");
                 proc_mod(Modifier::Lshift);
             }
             break;
         }
         case VK_CONTROL : {
             if (is_extended_key) {
-                WIN_LOG ("VK_RCONTROL\n");
+                WIN_LOG ("[Win32::Keyboard] VK_RCONTROL\n");
                 proc_mod(Modifier::Rctrl);
             }
             else {
-                WIN_LOG ("VK_LCONTROL\n");
+                WIN_LOG ("[Win32::Keyboard] VK_LCONTROL\n");
                 proc_mod(Modifier::Lctrl);
             }
             break;
         }
         case VK_MENU : {
             if (is_extended_key) {
-                WIN_LOG ("VK_RMENU\n");
+                WIN_LOG ("[Win32::Keyboard] VK_RMENU\n");
                 proc_mod(Modifier::Ralt);
             }
             else {
-                WIN_LOG ("VK_LMENU\n");
+                WIN_LOG ("[Win32::Keyboard] VK_LMENU\n");
                 proc_mod(Modifier::Lalt);
             }
             break;

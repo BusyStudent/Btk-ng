@@ -30,6 +30,9 @@ BTKAPI size_t  Utf8Locate(const char_t *str, const char_t *p) BTK_NOEXCEPT;
 // Seek to
 BTKAPI void    Utf8Seek(const char_t *str, size_t size, const char_t *&cur, ptrdiff_t dis) BTK_NOEXCEPT;
 
+// Compare string
+BTKAPI int     Utf8Strncmp(const char_t *s1, const char_t *s2, size_t n, bool casecmp = false) BTK_NOEXCEPT;
+
 
 // Move to next character in string.
 template <typename T>
@@ -638,6 +641,8 @@ class BTKAPI u8string_view {
         List       split    (u8string_view what, size_t max = size_t(-1)) const;
         RefList    split_ref(u8string_view what, size_t max = size_t(-1)) const;
         bool       contains (u8string_view what)                          const;
+        bool       ends_with(u8string_view what)                          const;
+        bool       starts_with(u8string_view what)                        const;
 
         // Cast
         std::u16string to_utf16() const;
@@ -687,7 +692,12 @@ inline u8string u8string::from(const wchar_t *str, size_t size) {
 inline bool u8string::contains(u8string_view what) const {
     return _str.find(what) != stdu8string::npos;
 }
-
+inline bool u8string::ends_with(u8string_view what) const {
+    return view().ends_with(what);
+}
+inline bool u8string::starts_with(u8string_view what) const {
+    return view().starts_with(what);
+}
 inline u8string_view u8string::view() const {
     return u8string_view(_str.data(), _str.size());
 }
@@ -696,6 +706,33 @@ inline u8string_view u8string::view() const {
 
 inline bool u8string_view::contains(u8string_view what) const {
     return _str.find(what) != stdu8string_view::npos;
+}
+inline bool u8string_view::ends_with(u8string_view what) const {
+    if (what.size() > size()) {
+        return false; // Impossible
+    }
+    return _str.substr(size() - what.size(), what.size()) == what._str;
+}
+inline bool u8string_view::starts_with(u8string_view what) const {
+    if (what.size() > size()) {
+        return false; // Impossible
+    }
+    return _str.substr(0, what.size()) == what._str;
+}
+
+// Impl for Func
+
+inline int  Utf8Strncmp(const char_t *s1, const char_t *s2, size_t n, bool casecmp) BTK_NOEXCEPT {
+    if (!casecmp) {
+        return ::strncmp(s1, s2, n);
+    }
+
+#if defined(_WIN32)
+    return ::_strnicmp(s1, s2, n);
+#else
+    return ::strncasecmp(s1, s2, n);
+#endif
+
 }
 
 // Stream operator for u8string

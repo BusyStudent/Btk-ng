@@ -1,0 +1,15 @@
+<!-- Root Widget -->
+<Widget size = "100, 100">
+    <Button rectangle = "100, 200, 100, 3000" name = "Button">
+    </Button>
+
+    <!-- Sub Widget by using layout  -->
+    <Widget layout = "BoxLayout">
+        <Button layout:stretch = "1" text = "Hello World">
+            Hello World
+        </Button>
+
+        <ImageView image = "./hello.png">
+        </ImageView>
+    </Widget>
+</Widget>

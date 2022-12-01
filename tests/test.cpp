@@ -173,6 +173,25 @@ TEST(RefTest, Weak) {
     ASSERT_EQ(weak.expired(), true);
 }
 
+TEST(PainterTest, ListFamily) {
+    PainterInitializer init;
+
+    for (auto &family : Font::ListFamily()) {
+        std::cout << family << std::endl;
+    }
+}
+
+TEST(PixelTest, ParseColor) {
+    Color white("rgba(255, 255, 255, 1.0)");
+    Color white1("rgb(255, 255, 255)");
+    Color white2("#FFFFFFFF");
+    Color white3("#FFFFFF");
+
+    ASSERT_EQ(white, Color::White);
+    ASSERT_EQ(white1, Color::White);
+    ASSERT_EQ(white2, Color::White);
+    ASSERT_EQ(white3, Color::White);
+}
 
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);

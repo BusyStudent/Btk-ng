@@ -203,6 +203,7 @@ class BTKAPI PixBuffer {
 
         // Write to file / memory / iostream
         bool      write_to(u8string_view path) const;
+        bool      write_to(IOStream   *stream) const;
 
         // Assignment
         PixBuffer &operator =(const PixBuffer &);

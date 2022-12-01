@@ -186,6 +186,12 @@ bool Widget::handle(Event &event) {
             paint_children(event.as<PaintEvent>());
 
             if (_win) {
+
+#if            !defined(NDEBUG)
+                if ((_attrs & WidgetAttrs::Debug) == WidgetAttrs::Debug) {
+                    debug_draw();
+                }
+#endif
                 _painter.end();
             }
             break;
@@ -767,6 +773,14 @@ bool Widget::set_resizable(bool v) {
     }
     return set_window_flags(_flags);
 }
+void Widget::set_attribute(WidgetAttrs attr, bool on) {
+    if (on) {
+        _attrs |= attr;
+    }
+    else {
+        _attrs ^= attr;
+    }
+}
 
 // Mouse
 void Widget::capture_mouse(bool capture) {
@@ -937,6 +951,15 @@ void Widget::rectangle_update() {
         Event event(Event::ChildRectangleChanged);
         _parent->handle(event);
     }
+}
+void Widget::debug_draw() {
+    for (auto child : _children) {
+        child->debug_draw();
+    }
+    auto &p = painter();
+    p.set_color(Color::Red);
+    p.set_color(Color::Red);
+    p.draw_rect(_rect);
 }
 
 BTK_NS_END

@@ -1,4 +1,4 @@
-add_rules("mode.debug","mode.release")
+add_rules("mode.debug","mode.release", "mode.asan")
 win32_plat     = is_host("windows") and not is_plat("cross")
 native_painter = true
 lib_kind       = "static"
@@ -26,6 +26,13 @@ option("multimedia")
     set_default(false)
     set_showmenu(true)
     set_description("Enable multimedia support")
+    set_category("Plugins")
+option_end()
+
+option("builder")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Enable builder for build widget tree from xml")
     set_category("Plugins")
 option_end()
 
@@ -160,6 +167,21 @@ if has_config("multimedia") then
         add_files("src/plugins/media.cpp")
     target_end()
 
+end
+
+-- Add Builder plugins
+if has_config("multimedia") then
+    add_requires("tinyxml2")
+
+    target("btk_builder")
+        set_kind(lib_kind)
+        add_deps("btk")
+
+        add_includedirs("src")
+        add_includedirs("include")
+
+        add_files("src/plugins/builder.cpp")
+    target_end()
 end
 
 -- Enable google test if tests are enabled

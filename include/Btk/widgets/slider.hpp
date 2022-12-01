@@ -9,16 +9,22 @@ class BTKAPI AbstractSlider : public Widget {
     public:
         using Widget::Widget;
 
-        void set_range(int64_t min, int64_t max);
-        void set_value(int64_t value);
+        void set_range(double min, double max);
+        void set_value(double value);
         
         void set_orientation(Orientation ori);
-        void set_page_step(uint64_t step);
-        void set_line_step(uint64_t step);
+        void set_page_step(double step);
+        void set_line_step(double step);
         void set_tracking(bool tracking);
 
-        int64_t value() const noexcept {
+        double value() const noexcept {
             return _value;
+        }
+        double page_step() const noexcept {
+            return _page_step;
+        }
+        double single_step() const noexcept {
+            return _single_step;
         }
 
         BTK_EXPOSE_SIGNAL(_value_changed);
@@ -27,12 +33,12 @@ class BTKAPI AbstractSlider : public Widget {
         BTK_EXPOSE_SIGNAL(_slider_pressed);
         BTK_EXPOSE_SIGNAL(_slider_moved);
     protected:
-        int64_t _min = 0;
-        int64_t _max = 100;
-        int64_t _value = 0;
+        double _min = 0;
+        double _max = 100;
+        double _value = 0;
 
-        uint64_t _page_step = 1;
-        uint64_t _single_step = 1;
+        double _page_step = 10;
+        double _single_step = 1;
 
         Orientation _orientation = Horizontal;
 
@@ -103,7 +109,6 @@ class BTKAPI ScrollBar : public AbstractSlider {
         bool  _pressed = false;
         bool  _hovered = false;
 
-        float _length_ratio = 0.2f;
         float _bar_offset   = 0.0f; //< Offset used in drag
 };
 

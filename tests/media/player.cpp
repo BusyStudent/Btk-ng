@@ -3,6 +3,7 @@
 #include <Btk/widgets/dialog.hpp>
 #include <Btk/widgets/slider.hpp>
 #include <Btk/context.hpp>
+#include <Btk/layout.hpp>
 #include <Btk/media.hpp>
 
 using namespace BTK_NAMESPACE;
@@ -73,6 +74,10 @@ class Player : public Widget {
                 return true;
             }
             return false;
+        }
+        bool mouse_wheel(WheelEvent &event) override {
+            // Forward to slider
+            return slider.handle(event);
         }
     private:
         BoxLayout lay{TopToBottom};

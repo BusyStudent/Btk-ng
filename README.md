@@ -69,6 +69,20 @@ int main() {
 | Win32    | Windows         |                          |
 | SDL2     | Any             |                          |
 
+## Widgets
+
+| Name          | Done            | TODO / Description       |
+| ---           | ---             | ---                      |
+| Button        |                 |                          |
+| RadioButton   |                 |                          |
+| TextEdit      | Half            | Single line, need multi support |
+| Slider        |                 |                          |
+| ScrollBar     |                 |                          |
+| ProgressBar   |                 |                          |
+| Label         |                 |                          |
+| ImageView     |                 |                          |
+| VideoWidget   |                 | Video output for MediaPlayer (multimedia plugin) |
+
 ## Existing bugs
 
 - [ ] Crash when using Direct2d with SDL2 backend  
@@ -80,7 +94,6 @@ int main() {
 - [ ] Compelete Nanovg Painter
 - [ ] Compelete CMake build file
 - [ ] Improve Style
-- [ ] SDL Hi-DPI Support
 
 ## Install
 

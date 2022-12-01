@@ -33,6 +33,44 @@ namespace {
 
 BTK_NS_BEGIN
 
+Color::Color(u8string_view str) {
+    *this = Black;
+    int ir, ig, ib, ia = 255;
+    bool ok = false;
+
+    if (str.empty()) {
+        return;
+    }
+    else if (str.front() == '#') {
+        u8string us(str);
+
+        if (str.size() == 7) {
+            // #RRGGBB
+            ok = (sscanf(us.c_str() + 1, "%02x%02x%02x", &ir, &ig, &ib) == 3);
+        }
+        else if (str.size() == 9) {
+            // #RRGGBBAA
+            ok = (sscanf(us.c_str() + 1, "%02x%02x%02x%02x",  &ir, &ig, &ib, &ia) == 4);
+        }
+    }
+    else if (str.starts_with("rgb(") && str.ends_with(")")) {
+        u8string us(str);
+        ok = (sscanf(us.c_str(), "rgb(%i,%i,%i)", &ir, &ig, &ib) == 3);
+    }
+    else if (str.starts_with("rgba(") && str.ends_with(")")) {
+        u8string us(str);
+        float fa;
+        ok = (sscanf(us.c_str(), "rgba(%i,%i,%i,%f)", &ir, &ig, &ib, &fa) == 4);
+        // Convert to uint8 range
+        ia = fa * 255.0f;
+    }
+    if (ok) {
+        this->r = ir;
+        this->g = ig;
+        this->b = ib;
+        this->a = ia;
+    }
+}
 PixBuffer::~PixBuffer() {
     clear();
 }

@@ -21,15 +21,17 @@ class BTKAPI Palette {
             MaxGroup
         };
         enum Role  : uint8_t {
-            Window,
-            Button,
-            Input,
-            Border,
+            Window, //< Background color
+            Button, //< Button background color
+            Input,  //< TextInput / Edit background color
+            Border, //< All border color
             Hightlight,
 
             Text,
             PlaceholderText,
             HightlightedText,
+
+            Shadow,
 
             MaxRole,
         };

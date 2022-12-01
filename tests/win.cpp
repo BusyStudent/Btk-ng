@@ -1,3 +1,4 @@
+#include <Btk/widgets/menu.hpp>
 #include <Btk/context.hpp>
 #include <Btk/widget.hpp>
 #include <Btk/comctl.hpp>
@@ -8,6 +9,7 @@ using namespace BTK_NAMESPACE;
 class Canvas : public Widget {
     public:
         Canvas() : Widget() {
+            // set_attribute(WidgetAttrs::Debug, true);
             
             add_timer(100);
             progress.resize(64 , 20);
@@ -51,7 +53,7 @@ class Canvas : public Widget {
 
             arc_path.open();
             arc_path.move_to(0, 0);
-            arc_path.arc_to(0, 50, 0, 100, 45);
+            arc_path.arc_to(50, 50, 0, 100, 40);
             arc_path.close();
 
             dash_pen.set_dash_style(DashStyle::DashDotDot);
@@ -147,6 +149,20 @@ class Canvas : public Widget {
             repaint_now();
 
             return true;
+        }
+        bool mouse_release(MouseEvent &e) override {
+            if (e.button() == MouseButton::Right) {
+                Point p;
+                winhandle()->query_value(AbstractWindow::MousePosition, &p);
+
+                auto wi = new PopupWidget();
+                wi->resize(50, 50);
+                wi->move(p.x, p.y);
+                wi->popup(this);
+                wi->set_attribute(WidgetAttrs::DeleteOnClose, true);
+                return true;
+            }
+            return false;
         }
         bool timer_event(TimerEvent &) override {
             // x = rand() % this->width();

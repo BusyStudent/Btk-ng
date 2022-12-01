@@ -43,6 +43,12 @@ class MediaStream : public IOStream {
 
 };
 
+/**
+ * @brief Player for media
+ * 
+ * @warning Known bug : Huge Memory leaks on closed window when the playing is still playing, please stop() when close
+ * 
+ */
 class MediaPlayer : public Object {
     public:
         enum State {
