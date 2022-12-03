@@ -1,4 +1,5 @@
 #include "build.hpp"
+#include "fallback.hpp"
 #include "common/utils.hpp"
 
 #include <Btk/painter.hpp>
@@ -28,7 +29,6 @@
 #endif
 
 #define FONT_CAST(ptr) ((PangoFontDescription*&)ptr)
-#define PATH_CAST(ptr) ((cairo_path_t    *&)ptr)
 
 namespace {
     //< For Easy create Text layout
@@ -88,6 +88,9 @@ namespace {
             }
             case PixFormat::RGB24 : {
                 return CAIRO_FORMAT_RGB24;
+            }
+            case PixFormat::Gray8 : {
+                return CAIRO_FORMAT_A8;
             }
             default : {
                 abort();
@@ -195,7 +198,22 @@ class PenImpl : public Refable<PenImpl> {
         cairo_line_cap_t    cap  = CAIRO_LINE_CAP_BUTT;
 };
 
-
+class PainterPathImpl {
+    public:
+        PainterPathImpl() {
+            auto surf = cairo_image_surface_create(CAIRO_FORMAT_A1, 1, 1);
+            cr = cairo_create(surf);
+            cairo_surface_destroy(surf);
+        }
+        ~PainterPathImpl() {
+            cairo_path_destroy(path);
+            cairo_destroy(cr);
+        }
+        cairo_path_t *path = nullptr;
+        cairo_t      *cr = nullptr;
+        float         last_x = 0;
+        float         last_y = 0;
+};
 class PainterImpl {
     public:
         PainterImpl(::Display *dpy, ::Window xwin);
@@ -606,7 +624,7 @@ void Painter::draw_path(const PainterPath &p) {
         return;
     }
     double x1, y1, x2, y2;
-    cairo_append_path(priv->cr, PATH_CAST(p.priv));
+    cairo_append_path(priv->cr, p.priv->path);
     cairo_path_extents(priv->cr, &x1, &y1, &x2, &y2);
 
     // Apply brush
@@ -728,7 +746,7 @@ void Painter::fill_path(const PainterPath &p) {
         return;
     }
     double x1, y1, x2, y2;
-    cairo_append_path(priv->cr, PATH_CAST(p.priv));
+    cairo_append_path(priv->cr, p.priv->path);
     cairo_path_extents(priv->cr, &x1, &y1, &x2, &y2);
 
     // Apply brush
@@ -911,8 +929,8 @@ void Painter::notify_resize(int w, int h) {
 }
 
 Painter Painter::FromWindow(AbstractWindow *w) {
-    Display *display;
-    Window   window;
+    Display *display = nullptr;
+    Window   window  = 0;
 
     w->query_value(AbstractWindow::XDisplay, &display);
     w->query_value(AbstractWindow::XWindow , &window);
@@ -1042,48 +1060,48 @@ bool TextLayout::hit_test(float x, float y, TextHitResult *result) const {
     }
     return false;
 }
-bool TextLayout::hit_test_pos(size_t pos, float org_x, float org_y, TextHitResult *result) const {
-    if (priv) {
-        auto lay = priv->lazy_eval();
-        auto iter = pango_layout_get_iter(lay);
+// bool TextLayout::hit_test_pos(size_t pos, float org_x, float org_y, TextHitResult *result) const {
+//     if (priv) {
+//         auto lay = priv->lazy_eval();
+//         auto iter = pango_layout_get_iter(lay);
 
-        size_t n = 0;
-        bool matched = false;
-        PangoRectangle rect;
+//         size_t n = 0;
+//         bool matched = false;
+//         PangoRectangle rect;
 
-        do {
-            if (n != pos) {
-                n += 1;
-                continue;
-            }
-            // Matched
-            pango_layout_iter_get_char_extents(iter, &rect);
-            matched = true;
-            break;
-        }
-        while (pango_layout_iter_next_char(iter));
+//         do {
+//             if (n != pos) {
+//                 n += 1;
+//                 continue;
+//             }
+//             // Matched
+//             pango_layout_iter_get_char_extents(iter, &rect);
+//             matched = true;
+//             break;
+//         }
+//         while (pango_layout_iter_next_char(iter));
 
-        pango_layout_iter_free(iter);
-        if (!matched) {
-            // ?? I didnot konwn what condtional the directwrite just abort now
-            BTK_THROW(std::runtime_error("Bad pos"));
-        }
-        if (result) {
-            result->inside = false;
-            result->trailing = false;
+//         pango_layout_iter_free(iter);
+//         if (!matched) {
+//             // ?? I didnot konwn what condtional the directwrite just abort now
+//             BTK_THROW(std::runtime_error("Bad pos"));
+//         }
+//         if (result) {
+//             result->inside = false;
+//             result->trailing = false;
 
-            result->text = n;
-            result->length = 1;
+//             result->text = n;
+//             result->length = 1;
 
-            result->box.x = rect.x / PANGO_SCALE + org_x;
-            result->box.y = rect.x / PANGO_SCALE + org_y;
-            result->box.w = rect.width / PANGO_SCALE;
-            result->box.h = rect.height / PANGO_SCALE;
-        }
-        return true;
-    }
-    return false;
-}
+//             result->box.x = rect.x / PANGO_SCALE + org_x;
+//             result->box.y = rect.x / PANGO_SCALE + org_y;
+//             result->box.w = rect.width / PANGO_SCALE;
+//             result->box.h = rect.height / PANGO_SCALE;
+//         }
+//         return true;
+//     }
+//     return false;
+// }
 bool TextLayout::hit_test_range(size_t pos, size_t len, float org_x, float org_y, TextHitResults *res) const {
     if (priv) {
         PangoRectangle rectangle;
@@ -1687,6 +1705,25 @@ void  Font::set_italic(bool v) {
     pango_font_description_set_style(FONT_CAST(priv), v ? PANGO_STYLE_ITALIC : PANGO_STYLE_NORMAL);
 }
 
+auto  Font::ListFamily() -> StringList {
+    GPointer<PangoLayout> layout;
+    layout = pango_cairo_create_layout(mem_cr);
+    auto ctxt = pango_layout_get_context(layout.get());
+    auto map  = pango_context_get_font_map(ctxt);
+
+    PangoFontFamily ** familys;
+    int                nfaimilys;
+    pango_font_map_list_families(map, &familys, &nfaimilys);
+
+    StringList result;
+    for (int i = 0;i < nfaimilys; i++) {
+        result.push_back(pango_font_family_get_name(familys[i]));
+    }
+
+    g_free(familys);
+    return result;
+}
+
 // PainterPath
 PainterPath::PainterPath() {
     priv = nullptr;
@@ -1696,52 +1733,79 @@ PainterPath::PainterPath(PainterPath &&p) {
     p.priv = nullptr;
 }
 PainterPath::~PainterPath() {
-    cairo_path_destroy(PATH_CAST(priv));
+    delete priv;
 }
 void PainterPath::open() {
-    cairo_save(mem_cr);
-    cairo_new_path(mem_cr);
-    if (priv) {
+    if (priv == nullptr) {
+        // First time
+        priv = new PainterPathImpl;
+    }
+    cairo_save(priv->cr);
+    cairo_new_path(priv->cr);
+    if (priv->path) {
         // Already has path
-        cairo_append_path(mem_cr, PATH_CAST(priv));
-        cairo_path_destroy(PATH_CAST(priv));
+        cairo_append_path(priv->cr, priv->path);
+        cairo_path_destroy(priv->path);
 
-        priv = nullptr;
+        priv->path = nullptr;
     }
 }
 void PainterPath::close() {
-    PATH_CAST(priv) = cairo_copy_path(mem_cr);
+    priv->path = cairo_copy_path(priv->cr);
 
-    cairo_restore(mem_cr);
+    cairo_restore(priv->cr);
 }
 void PainterPath::move_to(float x, float y) {
-    cairo_move_to(mem_cr, x, y);
+    cairo_move_to(priv->cr, x, y);
+    priv->last_x = x;
+    priv->last_y = y;
 }
 void PainterPath::line_to(float x, float y) {
-    cairo_line_to(mem_cr, x, y);
+    cairo_line_to(priv->cr, x, y);
+    priv->last_x = x;
+    priv->last_y = y;
 }
 void PainterPath::quad_to(float x1, float y1, float x2, float y2) {
-    cairo_curve_to(mem_cr, x1, y1, x1, y1, x2, y2);
+    fallback_painter_quad_to(
+        this,
+        priv->last_x,
+        priv->last_y,
+        x1,
+        y1,
+        x2,
+        y2
+    );
 }
 void PainterPath::arc_to(float x1, float y1, float x2, float y2, float radius) {
     // cairo_arc(cairo_t *cr, double xc, double yc, double radius, double angle1, double angle2)
-    // TODO :
+    fallback_painter_arc_to(
+        this,
+        priv->last_x,
+        priv->last_y,
+        x1,
+        y1,
+        x2,
+        y2,
+        radius
+    );
 }
 void PainterPath::bezier_to(float x1, float y1, float x2, float y2, float x3, float y3) {
-    cairo_curve_to(mem_cr, x1, y1, x2, y2, x3, y3);
+    cairo_curve_to(priv->cr, x1, y1, x2, y2, x3, y3);
+    priv->last_x = x3;
+    priv->last_y = y3;
 }
 void PainterPath::close_path() {
-    cairo_close_path(mem_cr);
+    cairo_close_path(priv->cr);
 }
 FRect PainterPath::bounding_box() const {
     double x1, y1, x2, y2;
-    cairo_new_path(mem_cr);
-    cairo_append_path(mem_cr, PATH_CAST(priv));
-    cairo_path_extents(mem_cr, &x1, &y1, &x2, &y2);
+    cairo_new_path(priv->cr);
+    cairo_append_path(priv->cr, priv->path);
+    cairo_path_extents(priv->cr, &x1, &y1, &x2, &y2);
     return FRect(x1, y1, x2 - x1, y2 - y1);
 }
 PainterPath &PainterPath::operator =(PainterPath &&p) {
-    cairo_path_destroy(PATH_CAST(priv));
+    delete priv;
 
     priv = p.priv;
     p.priv = nullptr;
@@ -1811,4 +1875,3 @@ void Pen::set_miter_limit(float limit) {
 BTK_NS_END
 
 #undef FONT_CAST
-#undef TEX_CAST

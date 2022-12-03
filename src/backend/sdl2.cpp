@@ -426,6 +426,7 @@ void SDLDispatcher::dispatch_sdl_window(SDL_Event *event) {
             }
             break;
         }
+#if     SDL_VERSION_ATLEAST(2, 0, 11)
         case SDL_WINDOWEVENT_DISPLAY_CHANGED : {
             // We should reload dpi on display changed
             // May bug here?
@@ -434,6 +435,7 @@ void SDLDispatcher::dispatch_sdl_window(SDL_Event *event) {
             win->resize(w, h);
             break;
         }
+#endif
         default : {
             break;
         }
@@ -565,7 +567,7 @@ SDLDriver::SDLDriver() {
 SDLDriver::~SDLDriver() {
     SDL_Quit();
 }
-window_t SDLDriver::window_create(const char_t * title, int width, int height,WindowFlags flags){
+window_t SDLDriver::window_create(const char_t * title, int width, int height, WindowFlags flags) {
     // Translate flags to SDL flags
     uint32_t sdl_flags = SDL_WINDOW_ALLOW_HIGHDPI;
     if ((flags & WindowFlags::Resizable) == WindowFlags::Resizable) {
@@ -818,13 +820,13 @@ bool     SDLWindow::query_value(int what, ...) {
 #endif
         case MousePosition : {
             int x, y;
-            int wx, wy;
+            // int wx, wy;
             SDL_GetMouseState(&x, &y);
-            SDL_GetWindowPosition(win, &wx, &wy);
+            // SDL_GetWindowPosition(win, &wx, &wy);
 
             auto p = va_arg(varg, Point*);
-            p->x = wx - x;
-            p->y = wy - y;
+            p->x = sdl_to_btk(x);
+            p->y = sdl_to_btk(y);
             break;
         }
         case Dpi : {            
@@ -895,6 +897,11 @@ bool    SDLWindow::set_value(int what, ...) {
             h = btk_to_sdl(h);
 
             SDL_SetWindowMinimumSize(win, w, h);
+            break;
+        }
+        case MousePosition : {
+            auto [x, y] = *va_arg(varg, Point*);
+            SDL_WarpMouseInWindow(win, btk_to_sdl(x), btk_to_sdl(y));
             break;
         }
         default : {

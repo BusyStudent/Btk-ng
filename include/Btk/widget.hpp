@@ -446,8 +446,10 @@ class BTKAPI Widget : public Object {
         void set_attribute(WidgetAttrs attr, bool on);
 
         // Mouse
-        void capture_mouse(bool capture = true);
-        bool under_mouse() const;
+        Point mouse_position() const;
+        void  capture_mouse(bool capture = true);
+        bool  under_mouse() const;
+        bool  warp_mouse(int x, int y);
 
         // Keyboard Text Input
         void set_textinput_rect(const Rect &rect);

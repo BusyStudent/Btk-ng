@@ -792,6 +792,22 @@ void Widget::capture_mouse(bool capture) {
         _win->capture_mouse(capture);
     }
 }
+bool Widget::warp_mouse(int x, int y) {
+    auto win = root()->_win;
+    if (win) {
+        Point p(x, y);
+        return win->set_value(AbstractWindow::MousePosition, &p);
+    }
+    return false;
+}
+Point Widget::mouse_position() const {
+    auto win = root()->_win;
+    Point p(0, 0);
+    if (win) {
+        win->query_value(AbstractWindow::MousePosition, &p);
+    }
+    return p;
+}
 
 // IME
 void Widget::start_textinput(bool v) {

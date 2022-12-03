@@ -6,6 +6,8 @@
 
 using namespace BTK_NAMESPACE;
 
+PixBuffer test_image();
+
 class Canvas : public Widget {
     public:
         Canvas() : Widget() {
@@ -15,7 +17,7 @@ class Canvas : public Widget {
             progress.resize(64 , 20);
             progress.set_text_visible(true);
 
-            auto pixbuf = PixBuffer::FromFile("icon.jpeg");
+            auto pixbuf = test_image();
             brush.set_image(pixbuf);
 
             // Configure linear gradient
@@ -152,8 +154,7 @@ class Canvas : public Widget {
         }
         bool mouse_release(MouseEvent &e) override {
             if (e.button() == MouseButton::Right) {
-                Point p;
-                winhandle()->query_value(AbstractWindow::MousePosition, &p);
+                Point p = mouse_position();
 
                 auto wi = new PopupWidget();
                 wi->resize(50, 50);
@@ -240,7 +241,7 @@ class Editer : public Widget {
             brush.set_gradient(g);
         }
 
-        bool paint_event(PaintEvent &) {
+        bool paint_event(PaintEvent &) override {
             auto &p = painter();
             p.set_antialias(false);
 
@@ -287,7 +288,7 @@ class Editer : public Widget {
             }
             return true;
         }
-        bool textinput_event(TextInputEvent &e) {
+        bool textinput_event(TextInputEvent &e) override {
             text.append(e.text());
             lay.set_text(text);
 
@@ -301,7 +302,7 @@ class Editer : public Widget {
             repaint();
             return true;
         }
-        bool key_press(KeyEvent &e) {
+        bool key_press(KeyEvent &e) override {
             if (e.key() == Key::Backspace) {
                 text.pop_back();
                 lay.set_text(text);
@@ -375,6 +376,20 @@ class Editer : public Widget {
         bool     inside = false;
         int      sel_pos = 0;
 };
+
+PixBuffer test_image() {
+    auto buf = PixBuffer::FromFile("icon.jpeg");
+    if (buf.empty()) {
+        buf = PixBuffer(PixFormat::RGBA32, 500, 500);
+
+        auto painter = Painter::FromPixBuffer(buf);
+        painter.begin();
+        painter.set_color(Color::Red);
+        painter.fill_rect(0, 0, 500, 500);
+        painter.end();
+    }
+    return buf;
+}
 
 int main () {
     
@@ -493,7 +508,7 @@ int main () {
 
     // Test image view
     ImageView view;
-    view.set_image(PixBuffer::FromFile("icon.jpeg"));
+    view.set_image(test_image());
     view.set_keep_aspect_ratio(true);
     view.set_window_title("ImageView");
     view.show();
