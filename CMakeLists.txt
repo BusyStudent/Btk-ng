@@ -59,11 +59,45 @@ elseif (CMAKE_SYSTEM_NAME MATCHES "Windows")
   )
 endif()
 
+# example application
+pkg_check_modules(ffmpeg REQUIRED IMPORTED_TARGET libavformat libavutil libavcodec libswresample libswscale)
+
+add_executable(player ./tests/media/player.cpp ./src/plugins/media.cpp)
+target_link_libraries(player PRIVATE btk PkgConfig::ffmpeg)
+
 # 启用测试
 enable_testing()
 
 # tests
 add_executable(win ./tests/win.cpp)
 target_link_libraries(win PRIVATE btk)
+add_test(win bin/win)
 
-add_test(win_run bin/win)
+
+add_executable(anim ./tests/anim.cpp)
+target_link_libraries(anim PRIVATE btk)
+add_test(anim bin/anim)
+
+add_executable(pixproc ./tests/pixproc.cpp)
+target_link_libraries(pixproc PRIVATE btk)
+add_test(pixproc bin/pixproc)
+
+# gtest
+include(FetchContent)
+FetchContent_Declare(
+  googletest
+  URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
+)
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
+
+add_executable(test_run ./tests/test.cpp)
+
+target_link_libraries(
+  test_run
+  GTest::gtest_main
+  btk
+)
+
+include(GoogleTest)
+gtest_discover_tests(test_run)
