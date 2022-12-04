@@ -4,17 +4,41 @@ cmake_minimum_required (VERSION 3.22)
 # 项目名
 project(Btk)
 
-# 编译参数
-set(CMAKE_BUILD_TYPE "Debug")
-set(CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -O0 -Wall -g -ggdb -std=c++17")
-set(CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O3 -Wall -std=c++17")
-set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/build/bin)
+# 当前平台信息
+message("CMAKE_HOST_SYSTEM_NAME: ${CMAKE_HOST_SYSTEM_NAME} ")
+message("CMAKE_HOST_SYSTEM: ${CMAKE_HOST_SYSTEM} ")
+message("CMAKE_SYSTEM_NAME: ${CMAKE_SYSTEM_NAME} ")
+message("CMAKE_SYSTEM: ${CMAKE_SYSTEM} ")
+message("CMAKE_HOST_UNIX: ${CMAKE_HOST_UNIX} ")
+message("CMAKE_HOST_WIN32: ${CMAKE_HOST_WIN32} ")
+message("CMAKE_COMPILER_IS_GNUCC: ${CMAKE_COMPILER_IS_GNUCC}")
+message("CMAKE_VERSION: ${CMAKE_VERSION}")
 
+# 编译选项
+option(BUILD_EXAMPLE "build example application" OFF)
+option(BUILD_TEST "build tests" ON)
+option(DEBUG "buid in debug type" OFF)
+
+# 编译参数
+if(DEBUG)
+  set(CMAKE_BUILD_TYPE "Debug")
+else()
+  set(CMAKE_BUILD_TYPE "Release")
+endif()
+if (CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
+  set(CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -O0 -Wall -g -ggdb -std=c++17")
+  set(CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O3 -Wall -std=c++17")
+  set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/build/bin)
+else()
+  set(CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} /utf-8 /Zc:__cplusplus /std:c++17 /Od")
+  set(CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} /utf-8 /Zc:__cplusplus /std:c++17")
+endif()
 aux_source_directory(${PROJECT_SOURCE_DIR}/src SOURCE_LIST)
 
+find_package(PkgConfig REQUIRED)
+
+# 添加第三方依赖
 if (CMAKE_SYSTEM_NAME MATCHES "Linux")
-  # 添加第三方依赖
-  find_package(PkgConfig REQUIRED)
   pkg_check_modules(pangocairo REQUIRED IMPORTED_TARGET pangocairo)
   pkg_check_modules(x11 REQUIRED IMPORTED_TARGET x11)
   pkg_check_modules(sdl2 REQUIRED IMPORTED_TARGET sdl2)
@@ -60,44 +84,48 @@ elseif (CMAKE_SYSTEM_NAME MATCHES "Windows")
 endif()
 
 # example application
-pkg_check_modules(ffmpeg REQUIRED IMPORTED_TARGET libavformat libavutil libavcodec libswresample libswscale)
+if(BUILD_EXAMPLE)
+  pkg_check_modules(ffmpeg REQUIRED IMPORTED_TARGET libavformat libavutil libavcodec libswresample libswscale)
 
-add_executable(player ./tests/media/player.cpp ./src/plugins/media.cpp)
-target_link_libraries(player PRIVATE btk PkgConfig::ffmpeg)
+  add_executable(player ./tests/media/player.cpp ./src/plugins/media.cpp)
+  target_link_libraries(player PRIVATE btk PkgConfig::ffmpeg)
+endif()
 
 # 启用测试
-enable_testing()
+if(BUILD_TEST)
+  enable_testing()
 
-# tests
-add_executable(win ./tests/win.cpp)
-target_link_libraries(win PRIVATE btk)
-add_test(win bin/win)
+  # tests
+  add_executable(win ./tests/win.cpp)
+  target_link_libraries(win PRIVATE btk)
+  add_test(win bin/win)
 
 
-add_executable(anim ./tests/anim.cpp)
-target_link_libraries(anim PRIVATE btk)
-add_test(anim bin/anim)
+  add_executable(anim ./tests/anim.cpp)
+  target_link_libraries(anim PRIVATE btk)
+  add_test(anim bin/anim)
 
-add_executable(pixproc ./tests/pixproc.cpp)
-target_link_libraries(pixproc PRIVATE btk)
-add_test(pixproc bin/pixproc)
+  add_executable(pixproc ./tests/pixproc.cpp)
+  target_link_libraries(pixproc PRIVATE btk)
+  add_test(pixproc bin/pixproc)
 
-# gtest
-include(FetchContent)
-FetchContent_Declare(
-  googletest
-  URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
-)
-set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(googletest)
+  # gtest
+  include(FetchContent)
+  FetchContent_Declare(
+    googletest
+    URL https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip
+  )
+  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(googletest)
 
-add_executable(test_run ./tests/test.cpp)
+  add_executable(test_run ./tests/test.cpp)
 
-target_link_libraries(
-  test_run
-  GTest::gtest_main
-  btk
-)
+  target_link_libraries(
+    test_run
+    GTest::gtest_main
+    btk
+  )
 
-include(GoogleTest)
-gtest_discover_tests(test_run)
+  include(GoogleTest)
+  gtest_discover_tests(test_run)
+endif()
