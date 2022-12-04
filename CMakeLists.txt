@@ -13,6 +13,7 @@ message("CMAKE_HOST_UNIX: ${CMAKE_HOST_UNIX} ")
 message("CMAKE_HOST_WIN32: ${CMAKE_HOST_WIN32} ")
 message("CMAKE_COMPILER_IS_GNUCC: ${CMAKE_COMPILER_IS_GNUCC}")
 message("CMAKE_VERSION: ${CMAKE_VERSION}")
+message("TODO(llhsdmd@gmail.com): suport windows")
 
 # 编译选项
 option(BUILD_EXAMPLE "build example application" OFF)
@@ -26,6 +27,7 @@ else()
   set(CMAKE_BUILD_TYPE "Release")
 endif()
 if (CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
+  find_package(PkgConfig REQUIRED)
   set(CMAKE_CXX_FLAGS_DEBUG "$ENV{CXXFLAGS} -O0 -Wall -g -ggdb -std=c++17")
   set(CMAKE_CXX_FLAGS_RELEASE "$ENV{CXXFLAGS} -O3 -Wall -std=c++17")
   set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/build/bin)
@@ -35,7 +37,6 @@ else()
 endif()
 aux_source_directory(${PROJECT_SOURCE_DIR}/src SOURCE_LIST)
 
-find_package(PkgConfig REQUIRED)
 
 # 添加第三方依赖
 if (CMAKE_SYSTEM_NAME MATCHES "Linux")
@@ -72,23 +73,28 @@ if (CMAKE_SYSTEM_NAME MATCHES "Linux")
     PkgConfig::x11
     PkgConfig::sdl2)
 elseif (CMAKE_SYSTEM_NAME MATCHES "Windows")
-  target_link_libraries(btk 
-                        -user32
-                        -shlwapi
-                        -shell32
-                        -imm32
-                        -windowscodecs
-                        -gdi32
-                        -ole32
-  )
+  message("TODO")
+  # target_link_libraries(btk 
+  #                       -user32
+  #                       -shlwapi
+  #                       -shell32
+  #                       -imm32
+  #                       -windowscodecs
+  #                       -gdi32
+  #                       -ole32
+  # )
 endif()
 
 # example application
 if(BUILD_EXAMPLE)
-  pkg_check_modules(ffmpeg REQUIRED IMPORTED_TARGET libavformat libavutil libavcodec libswresample libswscale)
+  if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
+    pkg_check_modules(ffmpeg REQUIRED IMPORTED_TARGET libavformat libavutil libavcodec libswresample libswscale)
 
-  add_executable(player ./tests/media/player.cpp ./src/plugins/media.cpp)
-  target_link_libraries(player PRIVATE btk PkgConfig::ffmpeg)
+    add_executable(player ./tests/media/player.cpp ./src/plugins/media.cpp)
+    target_link_libraries(player PRIVATE btk PkgConfig::ffmpeg)
+  else()
+    message("TODO")
+  endif()
 endif()
 
 # 启用测试
