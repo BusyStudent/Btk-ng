@@ -17,31 +17,31 @@ TEST(StringTest, RunIterator) {
     auto str = u8string("Hello World 你好世界 こんにちは");
     // Try replace some characters
 
-    // std::cout << "Sample string: " << str << std::endl;
+    std::cout << "Sample string: " << str << std::endl;
 
-    // std::cout << "你好世界 in " << str.find("你好世界") << std::endl;
+    std::cout << u8string_view("你好世界 in ") << str.find("你好世界") << std::endl;
     ASSERT_EQ(str.find("你好世界"), 12);
 
     str.replace("你好世界", "'Replaced Chinese'");
 
-    // std::cout << "Replaced string: " << str << std::endl;
+    std::cout << "Replaced string: " << str << std::endl;
 
     str.replace("こんにちは", "'Replaced Japanese'");
 
-    // std::cout << "Replaced string: " << str << std::endl;
+    std::cout << "Replaced string: " << str << std::endl;
 
     auto end = str.begin() + str.length();
 
-    // std::cout << "Eq:" << (end == str.end()) << std::endl;
+    std::cout << "Eq:" << (end == str.end()) << std::endl;
     ASSERT_EQ(end, str.end());
 
     str.replace(0, 2, "开始:");
 
-    // std::cout << str << std::endl;
+    std::cout << str << std::endl;
 
     str.erase(0, 3);
 
-    // std::cout << str << std::endl;
+    std::cout << str << std::endl;
 }
 
 TEST(MathTest, RectUnited) {

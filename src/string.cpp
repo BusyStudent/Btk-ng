@@ -320,11 +320,11 @@ std::ostream &operator <<(std::ostream &os, u8string_view str) {
     auto u16 = str.to_utf16();
     auto u16len = u16.size();
     auto u16buf = (wchar_t*)u16.data();
-    auto len = WideCharToMultiByte(GetACP(), 0, u16buf, u16len, nullptr, 0, nullptr, nullptr);
+    auto len = WideCharToMultiByte(GetConsoleOutputCP(), 0, u16buf, u16len, nullptr, 0, nullptr, nullptr);
 
     // Allocate buffer
     char *buf = (char*) _malloca(len + 1);
-    WideCharToMultiByte(GetACP(), 0, u16buf, u16len, buf, len, nullptr, nullptr);
+    WideCharToMultiByte(GetConsoleOutputCP(), 0, u16buf, u16len, buf, len, nullptr, nullptr);
     buf[len] = '\0';
     os << buf;
     _freea(buf);

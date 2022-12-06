@@ -616,6 +616,8 @@ class BTKAPI Pen {
 class BTKAPI Painter {
     public:
         Painter();
+        Painter(Texture &);
+        Painter(PixBuffer &);
         Painter(const Painter&) = delete;
         Painter(Painter &&);
         ~Painter();
@@ -719,6 +721,7 @@ class BTKAPI Painter {
         static Painter FromXlib(void * dpy, void * win);
         static Painter FromXcb(void * dpy, void * win);
         static Painter FromPixBuffer(PixBuffer &);
+        static Painter FromTexture(Texture &);
 
         // Getters
         static bool HasFeature(PainterFeature f);

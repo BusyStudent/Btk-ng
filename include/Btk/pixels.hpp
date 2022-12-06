@@ -8,6 +8,7 @@ BTK_NS_BEGIN
 
 class Color;
 class GLColor;
+class ImageImpl;
 
 class Color {
     public:
@@ -246,7 +247,27 @@ class BTKAPI PixBuffer {
  * 
  */
 class BTKAPI Image {
-    //         
+    public:
+        Image();
+        Image(PixBuffer   &);
+        Image(const Image &);
+        Image(Image &&);
+        ~Image();
+
+        size_t count_frame() const;
+        bool   read_frame(size_t idx, PixBuffer &buf, int *delay = nullptr) const;
+        bool   empty() const;
+
+        void   clear();
+
+        Image &operator =(const Image &);
+        Image &operator =(Image &&);
+
+        static Image FromFile(u8string_view path);
+        static Image FromMem(cpointer_t data, size_t size);
+        static Image FromStream(IOStream *stream);
+    private:
+        ImageImpl *priv;
 };
 
 

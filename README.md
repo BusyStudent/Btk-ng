@@ -6,6 +6,8 @@ It still at early developing.
 
 ## Example
 
+Create a button on window
+
 ```cpp
 #include <Btk/context.hpp> //< For UIContext
 #include <Btk/comctl.hpp> //< Base widget & comctl
@@ -54,6 +56,14 @@ int main() {
 - Cross platform
 - Template based signal system
 
+## Add this packages
+
+``` lua
+add_repositories("btk-project https://github.com/Btk-Project/xmake-repo")
+add_requires("btk")
+add_packages("btk")
+```
+
 ## Painter backend
 
 | Name     | Platform        | Description                             |
@@ -80,7 +90,10 @@ int main() {
 | ScrollBar     |                 |                          |
 | ProgressBar   |                 |                          |
 | Label         |                 |                          |
-| ImageView     |                 |                          |
+| ImageView     |                 | Can play gif             |
+| PopupWidget   |                 |                          |
+| FileDialog    |                 |                          |
+| MenuBar       | Not yet         |                          |
 | VideoWidget   |                 | Video output for MediaPlayer (multimedia plugin) |
 
 ## Existing bugs

@@ -1238,29 +1238,22 @@ inline void PainterImpl::draw_image(PainterEffectImpl *eff, const FRect *_dst, c
 
     context->DrawImage(eff->effect.Get());
 }
-inline void PainterImpl::draw_image(TextureImpl *tex,  const FRect *_dst, const FRect *_src) {
+inline void PainterImpl::draw_image(TextureImpl *tex,  const FRect *dst, const FRect *src) {
     ID2D1Bitmap *bitmap = tex->bitmap.Get();
-    FRect src;
-    FRect dst;
-
+    D2D1_RECT_F *d2d_src = nullptr;
+    D2D1_RECT_F *d2d_dst = nullptr;
     assert(bitmap);
 
-    if (_dst) {
-        dst = *_dst;
-    }
-    else {
-        auto [w, h] = target->GetSize();
-        dst = FRect(0, 0, w, h);
+    if (dst) {
+        // d2d_dst = static_cast<D2D1_RECT_F*>(_alloca(sizeof(D2D1_RECT_F)));
+        d2d_dst = Btk_stack_new(D2D1_RECT_F);
+        *d2d_dst = D2D1::RectF(dst->x, dst->y, dst->x + dst->w, dst->y + dst->h);
     }
 
-    if (_src) {
-        src = *_src;
-    }
-    else {
-        // auto [w, h] = bitmap->GetSize();
-        // MinGW Crashed on bitmap->GetSize()
-        auto [w, h] = tex->size;
-        src = FRect(0, 0, w, h);
+    if (src) {
+        // d2d_src = static_cast<D2D1_RECT_F*>(_alloca(sizeof(D2D1_RECT_F)));
+        d2d_src = Btk_stack_new(D2D1_RECT_F);
+        *d2d_src = D2D1::RectF(src->x, src->y, src->x + src->w, src->y + src->h);
     }
 
     // // Zoom the image let it display at the right size
@@ -1293,10 +1286,10 @@ inline void PainterImpl::draw_image(TextureImpl *tex,  const FRect *_dst, const 
 
     // // Reset bitmap
     // brush->SetBitmap(nullptr);
-    D2D1_RECT_F d2d_src = D2D1::RectF(src.x, src.y, src.x + src.w, src.y + src.h);
-    D2D1_RECT_F d2d_dst = D2D1::RectF(dst.x, dst.y, dst.x + dst.w, dst.y + dst.h);
+    // D2D1_RECT_F d2d_src = D2D1::RectF(src.x, src.y, src.x + src.w, src.y + src.h);
+    // D2D1_RECT_F d2d_dst = D2D1::RectF(dst.x, dst.y, dst.x + dst.w, dst.y + dst.h);
 
-    target->DrawBitmap(bitmap, &d2d_dst, state.alpha, tex->mode, &d2d_src);
+    target->DrawBitmap(bitmap, d2d_dst, state.alpha, tex->mode, d2d_src);
 }
 inline void PainterImpl::draw_lines(const FPoint *fp, size_t n) {
     // TODO : Optimize this

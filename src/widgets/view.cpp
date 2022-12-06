@@ -61,11 +61,44 @@ ImageView::ImageView(Widget *p, const PixBuffer *image) : Widget(p) {
         set_image(*image);
     }
 }
-ImageView::~ImageView() {}
+ImageView::~ImageView() {
+    if (timer) {
+        del_timer(timer);
+    }
+}
 
 void ImageView::set_image(const PixBuffer &img) {
+    image.clear();
     pixbuf = img;
     dirty = true;
+    frame = 0;
+    delay = 0;
+
+    if (timer) {
+        del_timer(timer);
+        timer = 0;
+    }
+
+    repaint();
+}
+void ImageView::set_image(const Image &img) {
+    pixbuf.clear();
+    image = img;
+    dirty = true;
+    frame = 0;
+    delay = 0;
+
+    if (!image.empty()) {
+        if (!image.read_frame(0, pixbuf, &delay)) {
+            image.clear();
+            repaint();
+            return;
+        }
+        if (delay != -1) {
+            timer = add_timer(delay);
+        }
+    }
+
     repaint();
 }
 void ImageView::set_keep_aspect_ratio(bool keep) {
@@ -77,11 +110,17 @@ bool ImageView::paint_event(PaintEvent &event) {
     if (dirty || texture.empty()) {
         dirty = false;
 
-        // Update texture
-        texture.clear();
-        if (!pixbuf.empty()) {
-            texture = painter().create_texture(pixbuf);
+        // Update texture, try reuse it
+        if (!pixbuf.empty() && !texture.empty() && pixbuf.size() == texture.size()) {
+            texture.update(nullptr, pixbuf.pixels(), pixbuf.pitch());
         }
+        else {
+            texture.clear();
+            if (!pixbuf.empty()) {
+                texture = painter().create_texture(pixbuf);
+            }
+        }
+
     }
     if (!texture.empty()) {
         FRect dst;
@@ -108,6 +147,51 @@ bool ImageView::paint_event(PaintEvent &event) {
         painter().draw_image(texture, &dst, nullptr);
     }
 
+    return true;
+}
+bool ImageView::timer_event(TimerEvent &event) {
+    if (event.timerid() == timer) {
+        int prev_delay = delay;
+
+        if (image.empty()) {
+            del_timer(timer);
+            timer = 0;
+            return true;
+        }
+
+        frame += 1;
+        if (frame >= image.count_frame()) {
+            // End of 
+            // BTK_LOG("[ImageView::PlayImage] Reach max frame\n");
+            frame = 0;
+        }
+
+        if (!image.read_frame(frame, pixbuf, &delay)) {
+            // Error
+            BTK_LOG("[ImageView::PlayImage] Failed to decode frame %d\n", frame);
+            del_timer(timer);
+            timer = 0;
+            return true;
+        }
+        dirty = true;
+        if (delay != -1) {
+            // We could not reuse timer
+            if (prev_delay != delay) {
+                del_timer(timer);
+                timer = 0;
+                timer = add_timer(delay);
+            }
+            // else {
+            //     BTK_LOG("[ImageView::PlayImage] Reuse timer\n");
+            // }
+        }
+        else {
+            // No delay, stop
+            del_timer(timer);
+            timer = 0;
+        }
+        repaint();
+    }
     return true;
 }
 Size ImageView::size_hint() const {

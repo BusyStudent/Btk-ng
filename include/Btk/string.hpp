@@ -65,8 +65,8 @@ class _Utf8Codepoint {
             return Utf8Peek(where);
         }
     private:
-        const char_t *where;
-        T *container;
+        T            *container = nullptr;
+        const char_t *where     = nullptr;
 };
 
 

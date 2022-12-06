@@ -925,13 +925,17 @@ int     SDLWindow::btk_to_sdl(int v) const {
     return muldiv<int>(v, hdpi, 96);
 }
 Point   SDLWindow::sdl_to_btk(Point p) const {
-    p.x = muldiv<int>(p.x, 96, hdpi);
-    p.y = muldiv<int>(p.y, 96, vdpi);
+    if (dpi_scaling) {
+        p.x = muldiv<int>(p.x, 96, hdpi);
+        p.y = muldiv<int>(p.y, 96, vdpi);
+    }
     return p;
 }
 Point   SDLWindow::btk_to_sdl(Point p) const {
-    p.x = muldiv<int>(p.x, hdpi, 96);
-    p.y = muldiv<int>(p.y, vdpi, 96);
+    if (dpi_scaling) {
+        p.x = muldiv<int>(p.x, hdpi, 96);
+        p.y = muldiv<int>(p.y, vdpi, 96);
+    }
     return p;
 }
 any_t   SDLWindow::gc_create(const char_t *what) {

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Btk/string.hpp"
 #include <Btk/pixels.hpp>
 #include <Btk/widget.hpp>
 
@@ -10,9 +9,23 @@ class BTKAPI Action : public Object {
     public:
         Action();
         ~Action();
+
+        PixBuffer image() const {
+            return _image;
+        }
+        u8string_view text() const {
+            return _text;
+        }
     private:
         PixBuffer _image;
         u8string  _text;
+};
+class BTKAPI Menu    : public Widget {
+    public:
+        Menu(Widget *parent);
+        ~Menu();
+    private:
+        std::vector<Action *> actions;
 };
 
 /**

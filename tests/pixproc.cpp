@@ -3,6 +3,8 @@
 
 using namespace BTK_NAMESPACE;
 
+PixBuffer test_image();
+
 class Test : public Widget {
     public:
         Test() {
@@ -56,7 +58,7 @@ class Test : public Widget {
 
         }
     public:
-        PixBuffer source = PixBuffer::FromFile("icon.jpeg");
+        PixBuffer source = test_image();
         ImageView view;
         BoxLayout global{LeftToRight};
         double kernel[3][3] = {0.0};
@@ -64,7 +66,7 @@ class Test : public Widget {
 class BlurTest : public Widget {
     public:
         BlurTest() {
-            buffer = PixBuffer::FromFile("icon.jpeg");
+            buffer = test_image();
             label.set_text("Blur 0px");
 
             layout.set_direction(TopToBottom);
@@ -91,6 +93,22 @@ class BlurTest : public Widget {
         PixBuffer buffer;
 };
 
+PixBuffer test_image() {
+    auto buf = PixBuffer::FromFile("icon.jpeg");
+    if (buf.empty()) {
+        buf = PixBuffer(500, 500);
+        for (int x = 0; x < 500; x++) {
+            for (int y = 0; y < 500; y++) {
+                buf.set_color(x, y, Color(
+                    rand() & 255,
+                    rand() & 255,
+                    rand() & 255
+                ));
+            }
+        }
+    }
+    return buf;
+}
 
 int main() {
     Btk::UIContext ctxt;

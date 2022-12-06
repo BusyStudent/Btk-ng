@@ -77,6 +77,9 @@ void Win32FileDialog::set_allow_multi(bool v) {
 auto Win32FileDialog::result() -> StringList {
     StringList ret;
     auto add_item = [&](IShellItem *item) {
+        if (!item) {
+            return;
+        }
         WCHAR *str;
         if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &str))) {
             abort();

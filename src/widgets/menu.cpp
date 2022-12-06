@@ -6,6 +6,9 @@
 
 BTK_NS_BEGIN
 
+Action::Action() {}
+Action::~Action() {}
+
 PopupWidget::PopupWidget() {}
 PopupWidget::~PopupWidget() {
     if (attached_widget) {

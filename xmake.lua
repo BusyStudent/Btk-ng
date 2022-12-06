@@ -170,7 +170,7 @@ if has_config("multimedia") then
 end
 
 -- Add Builder plugins
-if has_config("multimedia") then
+if has_config("builder") then
     add_requires("tinyxml2")
 
     target("btk_builder")

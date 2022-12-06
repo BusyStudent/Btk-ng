@@ -105,7 +105,13 @@ int X11FileDialog::run() {
         BTK_LOG("[X11Dialog] Process stat code %d\n", stat);
         BTK_LOG("[X11Dialog] Get Result String %s\n", in.c_str());
 
-        res = in.split(" ");
+        if (allow_multi) {
+            res = in.split(" ");
+        }
+        else {
+            res.clear();
+            res.push_back(in);
+        }
         return stat;
     }
     return EXIT_FAILURE;

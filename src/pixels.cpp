@@ -1,4 +1,5 @@
 #include "build.hpp"
+#include "common/utils.hpp" //< For refcounting
 
 #include <Btk/painter.hpp>
 #include <Btk/pixels.hpp>
@@ -16,7 +17,7 @@ namespace {
     using namespace BTK_NAMESPACE;
 
     IWICBitmapSource *wic_wrap(const PixBuffer *buffer);
-    PixBuffer wic_run_codecs(IWICBitmapDecoder *decoder);
+    PixBuffer wic_run_codecs(IWICBitmapDecoder *decoder, size_t frame_idx);
     bool      wic_save_to(const PixBuffer *buffer, IStream *stream, const wchar_t *fmt);
 }
 #else
@@ -27,6 +28,8 @@ namespace {
 #define STBI_REALLOC Btk_realloc
 #define STBI_MALLOC  Btk_malloc
 #define STBI_FREE    Btk_free
+
+#define STBI_WINDOWS_UTF8
 
 #include "libs/stb_image.h" //Stb library image loading
 #endif
@@ -250,6 +253,8 @@ PixBuffer PixBuffer::resize(int w, int h) const {
             buf.set_color(x, y, color_at(src_x, src_y));
         }
     }
+
+    return buf;
 #endif
 }
 
@@ -593,7 +598,7 @@ PixBuffer PixBuffer::FromFile(u8string_view path) {
         &decoder
     );
     if (SUCCEEDED(hr)) {
-        return wic_run_codecs(decoder.Get());
+        return wic_run_codecs(decoder.Get(), 0);
     }
     return PixBuffer();
 #else
@@ -658,7 +663,7 @@ PixBuffer PixBuffer::FromMem(cpointer_t data, size_t n) {
     );
 
     if (SUCCEEDED(hr)) {
-        return wic_run_codecs(decoder.Get());
+        return wic_run_codecs(decoder.Get(), 0);
     }
     return PixBuffer();
 #else
@@ -713,6 +718,203 @@ void PixBuffer::_init_format(PixFormat fmt) {
     _format = fmt;
 }
 
+// Image
+class ImageImpl : public Refable<ImageImpl> {
+    public:
+        std::vector<PixBuffer> buffers  = {};
+        std::vector<int>       delays   = {};
+        size_t                 nframe = 0;
+
+#if     defined(_WIN32)
+        // Wincodec 
+        ComPtr<IWICBitmapDecoder> decoder;
+        ComPtr<IStream>           stream;
+#endif
+};
+
+// For operator =
+COW_COPY_ASSIGN_IMPL(Image);
+COW_MOVE_ASSIGN_IMPL(Image);
+
+Image::Image() {
+    priv = nullptr;
+}
+Image::Image(const Image &image) {
+    priv = COW_REFERENCE(image.priv);
+}
+Image::Image(Image &&i) {
+    priv = i.priv;
+    i.priv = nullptr;
+}
+Image::~Image() {
+    COW_RELEASE(priv);
+}
+
+size_t Image::count_frame() const {
+    return priv->nframe;
+}
+bool   Image::read_frame(size_t idx, PixBuffer &buf, int *delay) const {
+    if (idx >= priv->nframe) {
+        BTK_LOG("[Image] Request frame %ld equal or bigger than %ld\n", idx, priv->nframe);
+        return false;
+    }
+    // Get delay from cache
+    if (delay) {
+        *delay = priv->delays[idx];
+    }
+
+#if defined(_WIN32)
+    if (priv->decoder) {
+        PixBuffer result = wic_run_codecs(priv->decoder.Get(), idx);
+        // Error
+        if (result.empty()) {
+            return false;
+        }
+        buf = result;
+        return true;
+    }
+#else
+    if (idx < priv->buffers.size()) {
+        buf = priv->buffers[idx];
+        return true;
+    }
+#endif
+    return false;
+}
+bool Image::empty() const {
+    return priv == nullptr;
+}
+void Image::clear() {
+    COW_RELEASE(priv);
+}
+
+Image Image::FromFile(u8string_view path) {
+
+#if defined(_WIN32)
+    auto wic = static_cast<IWICImagingFactory*>(Win32::WicFactory());
+    auto u16 = path.to_utf16();
+
+    ComPtr<IWICBitmapDecoder> decoder;
+    HRESULT hr;
+    UINT    nframe;
+
+    hr = wic->CreateDecoderFromFilename(
+        reinterpret_cast<LPCWSTR>(u16.c_str()),
+        nullptr,
+        GENERIC_READ,
+        WICDecodeMetadataCacheOnDemand,
+        &decoder
+    );
+    if (FAILED(hr)) {
+        return Image();
+    }
+    hr = decoder->GetFrameCount(&nframe);
+    if (FAILED(hr)) {
+        return Image();
+    }
+
+    Image image;
+    image.priv = new ImageImpl;
+    image.priv->set_refcount(1); //< Default refcount to 1
+    image.priv->delays.resize(nframe, -1); //< Default delay to -1 (undefined)
+    image.priv->decoder = decoder;
+    image.priv->nframe = nframe;
+
+    // Get delay if has mlti frame
+
+    if (nframe > 1) {
+        ComPtr<IWICMetadataQueryReader> reader;
+        ComPtr<IWICBitmapFrameDecode> frame;
+        PROPVARIANT variant;
+
+        PropVariantInit(&variant);
+        for (int i = 0; i < nframe; i++) {
+            hr = decoder->GetFrame(i, frame.ReleaseAndGetAddressOf());
+            if (FAILED(hr)) {
+                continue;
+            }
+            hr = frame->GetMetadataQueryReader(reader.ReleaseAndGetAddressOf());
+            if (FAILED(hr)) {
+                continue;
+            }
+            hr = reader->GetMetadataByName(L"/grctlext/Delay", &variant);
+            if (FAILED(hr)) {
+                // Try webp
+                hr = reader->GetMetadataByName(L"/ANMF/FrameDuration", &variant);
+            }
+            if (FAILED(hr)) {
+                // All failed
+                continue;
+            }
+            hr = (variant.vt == VT_UI2 ? S_OK : E_FAIL);
+            if (SUCCEEDED(hr)) {
+                // Got
+                UINT delay;
+                hr = UIntMult(variant.uiVal, 10, &delay);
+                image.priv->delays[i] = SUCCEEDED(hr) ? delay : -1;
+            }
+            PropVariantClear(&variant);
+        }
+    }
+
+    return image;
+#else
+    FILE *f = stbi__fopen(u8string(path).c_str(), "rb");
+    if (!f) {
+        return Image();
+    }
+    stbi__context s;
+    stbi__start_file(&s,f);
+
+    Image image;
+    image.priv = new ImageImpl;
+    image.priv->set_refcount(1);
+
+    bool gif = stbi__gif_test(&s);
+    if (gif) {
+        int w, h, nframe, comp;
+        int *delays;
+
+        stbi_uc *frames = static_cast<stbi_uc*>(stbi__load_gif_main(&s, &delays, &w, &h, &nframe, &comp, STBI_rgb_alpha));
+        if (!frames) {
+            fclose(f);
+            return Image();
+        }
+        
+        image.priv->nframe = nframe;
+        image.priv->delays.resize(nframe);
+        image.priv->buffers.resize(nframe);
+        assert(comp == STBI_rgb_alpha);
+
+        for (int n = 0; n < nframe; n++) {
+            image.priv->buffers[n] = PixBuffer(PixFormat::RGBA32, w, h);
+            image.priv->delays[n] = delays[n];
+
+            // Write frame
+            Btk_memcpy(image.priv->buffers[n].pixels(), frames + n * (w * h *comp), (w * h *comp));
+        }
+        stbi_image_free(frames);
+        stbi_image_free(delays);
+    }
+    else {
+        // TODO : Finish it
+        auto buf = PixBuffer::FromFile(path);
+
+        if (buf.empty()) {
+            fclose(f);
+            return Image();
+        }
+        
+        image.priv->nframe = 1;
+        image.priv->delays.push_back(-1);
+        image.priv->buffers.push_back(buf);
+    }
+
+    fclose(f);
+    
+    return image;
+#endif
+}
 
 BTK_NS_END
 
@@ -784,7 +986,7 @@ namespace {
         private:
             const PixBuffer *buffer;
     };
-    PixBuffer wic_run_codecs(IWICBitmapDecoder *decoder) {
+    PixBuffer wic_run_codecs(IWICBitmapDecoder *decoder, size_t frame_idx) {
         auto wic = static_cast<IWICImagingFactory*>(Win32::WicFactory());
 
         ComPtr<IWICBitmapFrameDecode> frame;
@@ -794,9 +996,10 @@ namespace {
         HRESULT hr;
         
         // Create frame
-        hr = decoder->GetFrame(0, frame.GetAddressOf());
+        hr = decoder->GetFrame(frame_idx, frame.GetAddressOf());
 
         if (FAILED(hr)) {
+            BTK_LOG("[Wincodec] Failed to Get frame\n");
             goto err;
         }
 
@@ -804,6 +1007,7 @@ namespace {
         hr = wic->CreateFormatConverter(converter.GetAddressOf());
 
         if (FAILED(hr)) {
+            BTK_LOG("[Wincodec] Failed to Create converter\n");
             goto err;
         }
 
@@ -818,6 +1022,7 @@ namespace {
         );
 
         if (FAILED(hr)) {
+            BTK_LOG("[Wincodec] Failed to Initialize converter\n");
             goto err;
         }
 
@@ -835,6 +1040,7 @@ namespace {
         return bf;
 
         err:
+            BTK_LOG("[Wincodec] Failed to decode hr = %d\n", int(hr));
             return PixBuffer();
     }
     bool wic_save_to(const PixBuffer *buffer, IStream *stream, const wchar_t *ext) {

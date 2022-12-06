@@ -1,3 +1,4 @@
+#include <Btk/widgets/dialog.hpp>
 #include <Btk/widgets/menu.hpp>
 #include <Btk/context.hpp>
 #include <Btk/widget.hpp>
@@ -512,6 +513,20 @@ int main () {
     view.set_keep_aspect_ratio(true);
     view.set_window_title("ImageView");
     view.show();
+    view.add_event_filter([](Object *w, Event &event, void *data) {
+        if (event.type() == Event::KeyRelease) {
+            if (event.as<KeyEvent>().key() == Key::Return) {
+                FileDialog dialog;
+                dialog.set_option(FileDialog::Open);
+                dialog.run();
+                auto result = dialog.result();
+                if (!result.empty()) {
+                    static_cast<ImageView*>(w)->set_image(Image::FromFile(result[0]));
+                }
+            }
+        }
+        return false;
+    }, nullptr);
 
     // Test Text input
     TextEdit tedit(&widget);

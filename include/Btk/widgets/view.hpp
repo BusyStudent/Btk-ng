@@ -29,13 +29,21 @@ class BTKAPI ImageView : public Widget {
         ~ImageView();
 
         void set_image(const PixBuffer &img);
+        void set_image(const Image     &img);
         void set_keep_aspect_ratio(bool keep);
 
         bool paint_event(PaintEvent &event) override;
+        bool timer_event(TimerEvent &event) override;
+        // bool drop_event(DropEvent   &event) override;
         Size size_hint() const override;
     private:
         Texture  texture;
         PixBuffer pixbuf;
+        Image     image;
+
+        timerid_t timer = 0; //< Timer for refresh
+        int       frame = 0; //< Current frame
+        int       delay = 0; //< Current delay (for reuse timer)
 
         float radius = 0;
         bool dirty = false;

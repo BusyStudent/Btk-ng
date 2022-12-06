@@ -1423,8 +1423,10 @@ bool     Win32Window::set_value(int conf, ...) {
             POINT p;
             p.x = btk_to_client(pos.x);
             p.y = btk_to_client(pos.y);
-            ClientToScreen(hwnd, &p);
-            ret = SetCursorPos(p.x, p.y);
+            ret = ClientToScreen(hwnd, &p);
+            if (ret) {
+                ret = SetCursorPos(p.x, p.y);
+            }
             break;
         }
         default : {

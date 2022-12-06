@@ -70,12 +70,18 @@
 #define Btk_memset(dst, val, size) __builtin_memset(dst, val, size)
 #define Btk_memcmp(a, b, size)     __builtin_memcmp(a, b, size)
 #define Btk_memzero(dst, size)     __builtin_memset(dst, 0, size)
+#define Btk_alloca(size)           __builtin_alloca(size)
 #elif !defined(Btk_memmove) //< User already defined it
 #define Btk_memmove(dst, src, n)   ::memmove(dst, src, n)
 #define Btk_memcpy(dst, src, size) ::memcpy(dst, src, size)
 #define Btk_memset(dst, val, size) ::memset(dst, val, size)
 #define Btk_memcmp(a, b, size)     ::memcmp(a, b, size)
 #define Btk_memzero(dst, size)     ::memset(dst, 0, size)
+#endif
+
+// Stack allocation, try platform
+#if !defined(Btk_alloca) && defined(_WIN32)
+#define Btk_alloca(size)           ::_alloca(size)
 #endif
 
 // Memory management macros for easy replacement
@@ -85,6 +91,14 @@
 #define Btk_free(ptr)          ::free(ptr)
 #endif
 
+// Stack alloc type macros
+#define Btk_stack_new(type)    new (Btk_alloca(sizeof(type))) type
+#define Btk_stack_delete(p)    do { \
+                                    using _ptype = std::decay_t<decltype(*p)>; \
+                                    if (p) { \
+                                        p->~_ptype(); \
+                                    } \
+                               } while (0)
 
 // Assert / Debug macros
 #define  BTK_ASSERT_MSG(cond, msg) assert(cond && (msg))
@@ -107,6 +121,9 @@
 #else
 #define BTK_LOG(...)
 #endif
+
+// C++ Version
+#define BTK_CXX20 (__cplusplus > 201703L)
 
 
 // Simple Once call 
