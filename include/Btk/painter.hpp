@@ -367,7 +367,19 @@ class TextHitResult {
         size_t length; //< Text length
         FRect  box; //< Bounding box
 };
+/**
+ * @brief Line's metrics for TextLayout
+ * 
+ */
+class TextLineMetrics {
+    public:
+        float height;   //< Line's height
+        float baseline; //< Line's baseline
+};
+
 using TextHitResults = std::vector<TextHitResult>;
+using TextHitResultList = std::vector<TextHitResult>;
+using TextLineMetricsList = std::vector<TextLineMetrics>;
 
 /**
  * @brief For analizing and drawing text
@@ -403,7 +415,13 @@ class BTKAPI TextLayout {
          * 
          * @return Size 
          */
-        Size size() const;
+        FSize  size() const;
+        /**
+         * @brief Get how many lines
+         * 
+         * @return size_t 
+         */
+        size_t line() const;
 
         /**
          * @brief Hit test by mouse position
@@ -439,6 +457,14 @@ class BTKAPI TextLayout {
          * @return false 
          */
         bool hit_test_range(size_t text, size_t len, float org_x, float org_y, TextHitResults *res = nullptr) const;
+        /**
+         * @brief Get lines's metrics
+         * 
+         * @param metrics Pointer to vector<TextLineMetrics>
+         * @return true 
+         * @return false 
+         */
+        bool line_metrics(TextLineMetricsList *metrics = nullptr) const;
     private:
         void begin_mut();
 

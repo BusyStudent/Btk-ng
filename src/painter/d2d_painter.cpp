@@ -193,62 +193,62 @@ namespace {
             }
 
             // ID2D1SimplifiedGeometrySink
-            void SetFillMode(D2D1_FILL_MODE m) override {
+            void SetFillMode(D2D1_FILL_MODE m) noexcept override {
                 D2D_WARN("SetFillMode(D2D1_FILL_MODE m) not impl\n");
             }
-            void SetSegmentFlags(D2D1_PATH_SEGMENT s) override {
+            void SetSegmentFlags(D2D1_PATH_SEGMENT s) noexcept override {
                 D2D_WARN("SetSegmentFlags(D2D1_PATH_SEGMENT s) not impl\n");
             }
-            void BeginFigure(D2D1_POINT_2F p, D2D1_FIGURE_BEGIN f) override {
+            void BeginFigure(D2D1_POINT_2F p, D2D1_FIGURE_BEGIN f) noexcept override {
                 if (f == D2D1_FIGURE_BEGIN_HOLLOW) {
                     D2D_WARN("f == D2D1_FIGURE_BEGIN_HOLLOW\n");
                 }
                 sink->move_to(p.x, p.y);
             }
-            void EndFigure(D2D1_FIGURE_END f) override {
+            void EndFigure(D2D1_FIGURE_END f) noexcept override {
                 if (f == D2D1_FIGURE_END_CLOSED) {
                     // Explict close
                     sink->close_path();
                 }
             }
-            void AddLines(const D2D1_POINT_2F *fp, UINT32 n) override {
+            void AddLines(const D2D1_POINT_2F *fp, UINT32 n) noexcept override {
                 for (UINT32 i = 0; i < n; i ++) {
                     AddLine(fp[i]);
                 }
             }
-            void AddBeziers(const D2D1_BEZIER_SEGMENT *bs, UINT32 n) override {
+            void AddBeziers(const D2D1_BEZIER_SEGMENT *bs, UINT32 n) noexcept override {
                 for (UINT32 i = 0; i < n; i ++) {
                     AddBezier(&bs[i]);
                 }
             }
-            void AddQuadraticBeziers(const D2D1_QUADRATIC_BEZIER_SEGMENT *qs, UINT32 n) override {
+            void AddQuadraticBeziers(const D2D1_QUADRATIC_BEZIER_SEGMENT *qs, UINT32 n) noexcept override {
                 for (UINT32 i = 0; i < n; i ++) {
                     AddQuadraticBezier(&qs[i]);
                 }
             }
-            HRESULT Close() override {
+            HRESULT Close() noexcept override {
                 return S_OK;
             }
 
             // ID2D1GeometrySink
-            void AddLine(D2D1_POINT_2F point) override {
+            void AddLine(D2D1_POINT_2F point) noexcept override {
                 sink->line_to(point.x, point.y);
             }
-            void AddBezier(const D2D1_BEZIER_SEGMENT *b) override {
+            void AddBezier(const D2D1_BEZIER_SEGMENT *b) noexcept override {
                 sink->bezier_to(
                     b->point1.x, b->point1.y,
                     b->point2.x, b->point2.y,
                     b->point3.x, b->point3.y
                 );
             }
-            void AddQuadraticBezier(const D2D1_QUADRATIC_BEZIER_SEGMENT *q) override {
+            void AddQuadraticBezier(const D2D1_QUADRATIC_BEZIER_SEGMENT *q) noexcept override {
                 sink->quad_to(
                     q->point1.x, q->point1.y,
                     q->point2.x, q->point2.y
 
                 );
             }
-            void AddArc(const D2D1_ARC_SEGMENT *a) override {
+            void AddArc(const D2D1_ARC_SEGMENT *a) noexcept override {
                 D2D_WARN("AddArc(const D2D1_ARC_SEGMENT *a) not impl\n");
             }
         private:
@@ -2152,17 +2152,29 @@ void TextLayout::set_font(const Font &fnt) {
     priv->layout.Reset(); //< Clear previous layout
     priv->font = fnt.priv;
 }
-Size TextLayout::size() const {
+FSize TextLayout::size() const {
     if (priv) {
         auto layout = priv->lazy_eval();
         if (layout) {
             DWRITE_TEXT_METRICS m;
             layout->GetMetrics(&m);
             // This size include white space
-            return Size(m.widthIncludingTrailingWhitespace, m.height);
+            return FSize(m.widthIncludingTrailingWhitespace, m.height);
         }
     }
-    return Size(-1, -1);
+    return FSize(-1, -1);
+}
+size_t TextLayout::line() const {
+    if (priv) {
+        auto layout = priv->lazy_eval();
+        if (layout) {
+            DWRITE_TEXT_METRICS m;
+            layout->GetMetrics(&m);
+            // This size include white space
+            return m.lineCount;
+        }
+    }
+    return 0;
 }
 bool TextLayout::hit_test(float x, float y, TextHitResult *res) const {
     if (priv) {
@@ -2261,6 +2273,42 @@ bool TextLayout::hit_test_range(size_t text, size_t len, float org_x, float org_
             _freea(hit_res);
             return true;
         }
+    }
+    return false;
+}
+bool TextLayout::line_metrics(TextLineMetricsList *metrics) const {
+    if (priv) {
+        auto layout = priv->lazy_eval();
+
+        DWRITE_LINE_METRICS m;
+        HRESULT hr;
+        UINT32 count = 0;
+
+        hr = layout->GetLineMetrics(&m, 0, &count);
+        if (FAILED(hr) && hr != E_NOT_SUFFICIENT_BUFFER) {
+            D2D_WARN("GetLineMetrics failed %d", hr);
+            return false;
+        }
+
+        // Alloc the result array
+        auto *line_res = (DWRITE_LINE_METRICS*) _malloca(sizeof(DWRITE_LINE_METRICS) * count);
+        hr = layout->GetLineMetrics(line_res, count, &count);
+        if (FAILED(hr)) {
+            _freea(line_res);
+            return false;
+        }
+
+        // Copy result
+        if (metrics) {
+            metrics->resize(count);
+            for (size_t i = 0; i < count; i++) { 
+                (*metrics)[i].baseline = line_res[i].baseline;
+                (*metrics)[i].height   = line_res[i].height;
+            }
+        }
+
+        _freea(line_res);
+        return true;
     }
     return false;
 }

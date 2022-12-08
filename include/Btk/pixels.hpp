@@ -130,9 +130,19 @@ class BTKAPI PixBuffer {
          */
         void clear();
 
+        /**
+         * @brief Get pixel data pointer
+         * 
+         * @return pointer_t 
+         */
         pointer_t  pixels() noexcept {
             return _pixels;
         }
+        /**
+         * @brief Get const pixel data pointer
+         * 
+         * @return cpointer_t 
+         */
         cpointer_t pixels() const noexcept {
             return _pixels;
         }
@@ -146,45 +156,128 @@ class BTKAPI PixBuffer {
             return reinterpret_cast<const T *>(_pixels);
         }
 
+        /**
+         * @brief Get width of the pixbuffer
+         * 
+         * @return int 
+         */
         int w() const noexcept {
             return _width;
         }
+        /**
+         * @brief Get the height of the pixbuffer
+         * 
+         * @return int 
+         */
         int h() const noexcept {
             return _height;
         }
+        /**
+         * @brief Get width of the pixbuffer
+         * 
+         * @return int 
+         */
         int width() const noexcept {
             return _width;
         }
+        /**
+         * @brief Get the height of the pixbuffer
+         * 
+         * @return int 
+         */
         int height() const noexcept {
             return _height;
         }
+        /**
+         * @brief Get the pitch of the pixbuffer
+         * 
+         * @return int 
+         */
         int pitch() const noexcept {
             return _pitch;
         }
+        /**
+         * @brief Get bits per pixel
+         * 
+         * @return int 
+         */
         int bpp() const noexcept {
             return _bpp;
         }
+        /**
+         * @brief Get bytes per pixel
+         * 
+         * @return int 
+         */
         int bytes_per_pixel() const noexcept {
             return (_bpp + 7) / 8;
         }
+        /**
+         * @brief Check the pixel buffer is empty
+         * 
+         * @return true 
+         * @return false 
+         */
         bool empty() const noexcept {
             return _width == 0 || _height == 0;
         }
+        /**
+         * @brief Get the Size(width, height) of the pixel buffer
+         * 
+         * @return Size 
+         */
         Size size() const noexcept {
             return Size(_width, _height);
         }
+        /**
+         * @brief Get the format of the pixel buffer
+         * 
+         * @return PixFormat 
+         */
         PixFormat format() const noexcept {
             return _format;
         }
 
-        // Configure attributes
+        /**
+         * @brief Tell the pixbuffer should he free the pixel data
+         * 
+         * @param managed true on free, false on no-op
+         */
         void set_managed(bool managed) noexcept {
             _owned = managed;
         }
 
+        /**
+         * @brief Locate pixel at x, y (out of range on undefined-op)
+         * 
+         * @param x 
+         * @param y 
+         * @return uint32_t 
+         */
         uint32_t pixel_at(int x, int y) const;
+        /**
+         * @brief Locate color x, y (out of range on undefined-op)
+         * 
+         * @param x 
+         * @param y 
+         * @return Color 
+         */
         Color    color_at(int x, int y) const;
+        /**
+         * @brief Store color at x, y (out of range on undefined-op)
+         * 
+         * @param x 
+         * @param y 
+         * @param c The color object
+         */
         void     set_color(int x, int y, Color c);
+        /**
+         * @brief Store pixel at x, y (out of range on undefined-op)
+         * 
+         * @param x 
+         * @param y 
+         * @param c pixel at pixbuffer format
+         */
         void     set_pixel(int x, int y, uint32_t c);
 
         // Transform / Filtering / Etc...
@@ -210,8 +303,27 @@ class BTKAPI PixBuffer {
         PixBuffer &operator =(const PixBuffer &);
         PixBuffer &operator =(PixBuffer &&);
 
+        /**
+         * @brief Load pixbuffer from file
+         * 
+         * @param path The utf8 encoded filesystem path
+         * @return PixBuffer (failed on empty pixel buffer)
+         */
         static PixBuffer FromFile(u8string_view path);
+        /**
+         * @brief Load pixbuffer from memory
+         * 
+         * @param data const pointer for buffer begin
+         * @param size The buffer size
+         * @return PixBuffer (failed on empty pixel buffer)
+         */
         static PixBuffer FromMem(cpointer_t data, size_t size);
+        /**
+         * @brief Load pixbuffer from IOStream
+         * 
+         * @param stream pointer of IOStream
+         * @return PixBuffer (failed on empty pixel buffer) 
+         */
         static PixBuffer FromStream(IOStream *stream);
     private:
         // Format initalization
@@ -243,7 +355,7 @@ class BTKAPI PixBuffer {
 };
 
 /**
- * @brief Image, It can has many frames
+ * @brief Image, can get metadata & frame here
  * 
  */
 class BTKAPI Image {
@@ -254,10 +366,33 @@ class BTKAPI Image {
         Image(Image &&);
         ~Image();
 
+        /**
+         * @brief Count how many frame
+         * 
+         * @return size_t 
+         */
         size_t count_frame() const;
+        /**
+         * @brief Read frame at idx
+         * 
+         * @param idx The frame index
+         * @param buf The output frame buffer
+         * @param delay The pointer of frame delay (nullptr on no-op)
+         * @return true 
+         * @return false 
+         */
         bool   read_frame(size_t idx, PixBuffer &buf, int *delay = nullptr) const;
+        /**
+         * @brief Is the Image empty?
+         * 
+         * @return true 
+         * @return false 
+         */
         bool   empty() const;
-
+        /**
+         * @brief Clear the image object
+         * 
+         */
         void   clear();
 
         Image &operator =(const Image &);

@@ -17,7 +17,7 @@ namespace {
     using namespace BTK_NAMESPACE;
 
     IWICBitmapSource *wic_wrap(const PixBuffer *buffer);
-    PixBuffer wic_run_codecs(IWICBitmapDecoder *decoder, size_t frame_idx);
+    bool      wic_run_codecs(IWICBitmapDecoder *decoder, size_t frame_idx, PixBuffer *result);
     bool      wic_save_to(const PixBuffer *buffer, IStream *stream, const wchar_t *fmt);
 }
 #else
@@ -598,7 +598,10 @@ PixBuffer PixBuffer::FromFile(u8string_view path) {
         &decoder
     );
     if (SUCCEEDED(hr)) {
-        return wic_run_codecs(decoder.Get(), 0);
+        PixBuffer result;
+        if (wic_run_codecs(decoder.Get(), 0, &result)) {
+            return result;
+        }
     }
     return PixBuffer();
 #else
@@ -663,7 +666,10 @@ PixBuffer PixBuffer::FromMem(cpointer_t data, size_t n) {
     );
 
     if (SUCCEEDED(hr)) {
-        return wic_run_codecs(decoder.Get(), 0);
+        PixBuffer result;
+        if (wic_run_codecs(decoder.Get(), 0, &result)) {
+            return result;
+        }
     }
     return PixBuffer();
 #else
@@ -729,6 +735,11 @@ class ImageImpl : public Refable<ImageImpl> {
         // Wincodec 
         ComPtr<IWICBitmapDecoder> decoder;
         ComPtr<IStream>           stream;
+
+        // Wincodec gif compose 
+        PixBuffer               cframe = {};
+        int                     last = -1; //< Last decoded frame  
+        bool                    gif = false;
 #endif
 };
 
@@ -765,12 +776,41 @@ bool   Image::read_frame(size_t idx, PixBuffer &buf, int *delay) const {
 
 #if defined(_WIN32)
     if (priv->decoder) {
-        PixBuffer result = wic_run_codecs(priv->decoder.Get(), idx);
-        // Error
-        if (result.empty()) {
-            return false;
+        if (!priv->gif) {
+            // Not gif
+            return wic_run_codecs(priv->decoder.Get(), idx, &buf);
         }
-        buf = result;
+        // We need compose
+        if (!wic_run_codecs(priv->decoder.Get(), idx, &buf)) {
+                return false;
+        }
+        // First frame
+        if (idx == 0) {
+            priv->last = 0;
+            if (!priv->cframe.empty() && priv->cframe.size() == buf.size()) {
+                // Reuse
+                priv->cframe.bilt(buf, nullptr, nullptr);
+            }
+            else {
+                priv->cframe = buf.clone(); //< Cached frame
+            }
+            return true;
+        }
+        // TODO : We should decode frame by idx
+        // Begin compose
+        auto out = buf.pixels<uint32_t>();
+        auto in  = priv->cframe.pixels<uint32_t>();
+        for (int y = 0; y < buf.height(); y++) {
+            for (int x = 0; x < buf.width(); x++) {
+                // If pixels is trans, use previous frame data
+                if (buf.color_at(x, y).a == 0) {
+                    out[y * buf.width() + x] = in[y * buf.width() + x];
+                }
+            }
+        }
+        // Done
+        Btk_memcpy(in, out, buf.height() * buf.pitch());
+        priv->last = idx;
         return true;
     }
 #else
@@ -797,6 +837,7 @@ Image Image::FromFile(u8string_view path) {
     ComPtr<IWICBitmapDecoder> decoder;
     HRESULT hr;
     UINT    nframe;
+    GUID    container;
 
     hr = wic->CreateDecoderFromFilename(
         reinterpret_cast<LPCWSTR>(u16.c_str()),
@@ -812,6 +853,10 @@ Image Image::FromFile(u8string_view path) {
     if (FAILED(hr)) {
         return Image();
     }
+    hr = decoder->GetContainerFormat(&container);
+    if (FAILED(hr)) {
+        return Image();
+    }
 
     Image image;
     image.priv = new ImageImpl;
@@ -819,6 +864,7 @@ Image Image::FromFile(u8string_view path) {
     image.priv->delays.resize(nframe, -1); //< Default delay to -1 (undefined)
     image.priv->decoder = decoder;
     image.priv->nframe = nframe;
+    image.priv->gif = (container == GUID_ContainerFormatGif);
 
     // Get delay if has mlti frame
 
@@ -986,13 +1032,12 @@ namespace {
         private:
             const PixBuffer *buffer;
     };
-    PixBuffer wic_run_codecs(IWICBitmapDecoder *decoder, size_t frame_idx) {
+    bool      wic_run_codecs(IWICBitmapDecoder *decoder, size_t frame_idx, PixBuffer *result) {
         auto wic = static_cast<IWICImagingFactory*>(Win32::WicFactory());
 
         ComPtr<IWICBitmapFrameDecode> frame;
         ComPtr<IWICFormatConverter> converter;
         UINT width, height;
-        PixBuffer bf;
         HRESULT hr;
         
         // Create frame
@@ -1028,20 +1073,22 @@ namespace {
 
         // Create buffer
         hr = converter->GetSize(&width, &height);
-        bf = PixBuffer(width, height);
+        if (result->empty() || result->size() != Size(width, height)) {
+            *result = PixBuffer(PixFormat::RGBA32, width, height);
+        }
 
         hr = converter->CopyPixels(
             nullptr,
-            bf.pitch(),
-            bf.height() * bf.pitch(),
-            reinterpret_cast<BYTE*>(bf.pixels())
+            result->pitch(),
+            result->height() * result->pitch(),
+            reinterpret_cast<BYTE*>(result->pixels())
         );
 
-        return bf;
+        return true;
 
         err:
             BTK_LOG("[Wincodec] Failed to decode hr = %d\n", int(hr));
-            return PixBuffer();
+            return false;
     }
     bool wic_save_to(const PixBuffer *buffer, IStream *stream, const wchar_t *ext) {
         auto wic = static_cast<IWICImagingFactory*>(Win32::WicFactory());

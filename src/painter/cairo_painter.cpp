@@ -1021,15 +1021,22 @@ void TextLayout::set_font(const Font &f) {
 
     priv->font = f;
 }
-Size TextLayout::size() const {
+FSize TextLayout::size() const {
     if (priv) {
         auto lay = priv->lazy_eval();
         // Get it
         int w, h;
         pango_layout_get_pixel_size(lay, &w, &h);
-        return Size(w, h);
+        return FSize(w, h);
     }
-    return Size(0, 0);
+    return FSize(0, 0);
+}
+size_t TextLayout::line() const {
+    if (priv) {
+        auto lay = priv->lazy_eval();
+        return pango_layout_get_line_count(lay);
+    }
+    return 0;
 }
 bool TextLayout::hit_test(float x, float y, TextHitResult *result) const {
     if (priv) {
@@ -1220,6 +1227,31 @@ bool TextLayout::hit_test_range(size_t pos, size_t len, float org_x, float org_y
 #endif
         return true;
     }
+    return false;
+}
+bool TextLayout::line_metrics(TextLineMetricsList *metrics) const {
+    if (priv) {
+        auto lay = priv->lazy_eval();
+        if (metrics) {
+            metrics->clear();
+
+            int line_count = pango_layout_get_line_count(lay);
+            for (int i = 0; i < line_count; i++) {
+                PangoLayoutLine *line = pango_layout_get_line(lay, i);
+                PangoRectangle rect;
+                pango_layout_line_get_extents(line, nullptr, &rect);
+
+                TextLineMetrics line_metrics;
+                line_metrics.height = (float) rect.height / PANGO_SCALE;
+                line_metrics.baseline = (float) pango_layout_get_baseline(lay) / PANGO_SCALE;
+
+                metrics->push_back(line_metrics);
+            }
+
+            return true;
+        }
+    }
+
     return false;
 }
 

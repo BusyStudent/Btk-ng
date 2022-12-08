@@ -61,16 +61,43 @@ class BTKAPI Object : public Any, public Trackable {
         mutable ObjectImpl *priv = nullptr;
 };
 
+/**
+ * @brief Timer
+ * 
+ */
 class BTKAPI Timer : public Object {
     public:
         Timer();
         Timer(const Timer &) = delete;
         ~Timer();
 
+        /**
+         * @brief Set the interval object
+         * 
+         * @param interval The interval of timer
+         */
         void set_interval(uint32_t interval);
+        /**
+         * @brief Set the type object
+         * 
+         * @param type 
+         */
         void set_type(timertype_t type);
+        /**
+         * @brief Set the repeat object
+         * 
+         * @param repeat true if you want the timer emit the signal until you stop it
+         */
         void set_repeat(bool repeat);
+        /**
+         * @brief Start the timer
+         * 
+         */
         void start();
+        /**
+         * @brief Stop the timer
+         * 
+         */
         void stop();
 
         bool timer_event(TimerEvent &) override;
