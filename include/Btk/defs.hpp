@@ -97,6 +97,8 @@ class AbstractVideoSurface;
 class AbstractAudioDevice;
 class AbstractAnimation;
 class AbstractWindow;
+class AbstractCursor;
+class AbstractScreen;
 
 // Painting
 class GraphicsContext;
@@ -119,6 +121,8 @@ enum class Modifier : uint16_t;
 using  any_t      = Any *;
 using  widget_t   = Widget *;
 using  context_t  = UIContext *;
+using  cursor_t   = AbstractCursor *;
+using  screen_t   = AbstractScreen *;
 using  window_t   = AbstractWindow *;
 using  driver_t   = GraphicsDriver *;
 
@@ -126,6 +130,7 @@ using  align_t       = Alignment;
 using  timertype_t   = TimerType;
 using  direction_t   = Direction;
 using  orientation_t = Orientation;
+
 // Function
 
 BTKAPI timestamp_t GetTicks();

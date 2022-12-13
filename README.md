@@ -1,6 +1,6 @@
 # Btk
 
-Fast and easy to use UIToolkit for building user interfaces.  
+Fast, lightweight and easy to use UIToolkit for building user interfaces.  
 
 It still at early developing.  
 
@@ -98,14 +98,12 @@ add_packages("btk")
 
 ## Existing bugs
 
-- [ ] Crash when using Direct2d with SDL2 backend  
-- [ ] Win32 backend window frozen at first time user call fullscreen
+
 
 ## Todo List
 
 - [ ] Compelete PainterEffect, refactorying it
 - [ ] Compelete Nanovg Painter
-- [ ] Compelete CMake build file
 - [ ] Improve Style
 
 ## Install

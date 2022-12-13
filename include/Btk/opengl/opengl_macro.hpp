@@ -1,6 +1,9 @@
 #if !defined(_BTK_OPENGL_MACRO)
 #define _BTK_OPENGL_MACRO
 
+
+#if !defined(BTK_NO_OPENGL_HEADER)
+
 //Import GL const
 #ifdef __gl2_h_
 #error OpenGL ES 2 header already included, remove this include, glad already provides it
@@ -1645,7 +1648,7 @@ typedef void (GL_APIENTRYP PFNGLTEXSTORAGE2DPROC) (GLenum target, GLsizei levels
 typedef void (GL_APIENTRYP PFNGLTEXSTORAGE3DPROC) (GLenum target, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height, GLsizei depth);
 typedef void (GL_APIENTRYP PFNGLGETINTERNALFORMATIVPROC) (GLenum target, GLenum internalformat, GLenum pname, GLsizei bufSize, GLint *params);
 
-
+#endif
 
 
 

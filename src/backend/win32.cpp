@@ -27,8 +27,13 @@
 #undef min
 #undef max
 
+// Event
 #define BTK_CALL    (WM_APP + 0x100)
 #define BTK_EVENT   (WM_APP + 0x101)
+
+// Class
+#define BTK_WINDOW_CLASS L"BtkWindow"
+#define BTK_HELPER_CLASS L"BtkHelper"
 
 // OpenGL support
 #define GL_LIB(x)    HMODULE library = LoadLibraryA(x)
@@ -85,9 +90,7 @@ static_assert(sizeof(WPARAM) >= sizeof(void *));
 // Make sure is utf16
 static_assert(sizeof(wchar_t) == sizeof(uint16_t));
 
-BTK_NS_BEGIN2()
-
-using namespace BTK_NAMESPACE;
+BTK_PRIV_BEGIN
 
 class Win32Driver ;
 class Win32Window ;
@@ -116,6 +119,7 @@ class Win32Window : public AbstractWindow {
         void       set_icon(const PixBuffer &buffer) override;
         void       repaint() override;
         void       capture_mouse(bool v) override;
+
         // IME support
         void       start_textinput(bool v) override;
         void       set_textinput_rect(const Rect &r) override;
@@ -131,6 +135,8 @@ class Win32Window : public AbstractWindow {
         LRESULT    proc_keyboard(UINT msg, WPARAM wp, LPARAM lp);
 
         RECT       adjust_rect(int x, int y, int w, int h);
+        DWORD      exstyle() const;
+        DWORD      style() const;
 
         int      btk_to_client(int v) const;
         int      client_to_btk(int v) const;
@@ -148,8 +154,6 @@ class Win32Window : public AbstractWindow {
         bool         mouse_enter = false;
         bool         has_menu  = false;
         Modifier     mod_state = Modifier::None; //< Current keyboard modifiers state
-        DWORD        win_style = 0; //< Window style
-        DWORD        win_ex_style = 0; //< Window extended style
         UINT         win_dpi = 0; //< Window dpi
 
         HMENU        menu = {}; //< Menu handle
@@ -160,16 +164,9 @@ class Win32Window : public AbstractWindow {
         SHORT        mouse_last_x = -1; //< Last mouse position
         SHORT        mouse_last_y = -1; //< Last mouse position
 
-        DWORD64      last_repaint = 0; //< Last repaint time
-        DWORD        repaint_limit = 60; //< Repaint limit in fps
-        bool         repaint_in_progress = false; //< Repaint in progress
         bool         textinput_enabled = false; //< Text input enabled
-        bool         fullscreen_onced = false;
-
         HIMC         imcontext = {}; //< Default IME context
 
-        DWORD           prev_style = 0;
-        DWORD           prev_ex_style = 0;
         WINDOWPLACEMENT prev_placement;
 };
 
@@ -214,6 +211,8 @@ class Win32Driver     : public GraphicsDriver, public Win32User32 {
 
         void     clipboard_set(const char_t *text) override;
         u8string clipboard_get() override;
+
+        cursor_t cursor_create(const PixBuffer &buf, int hot_x, int hot_y) override;
 
         bool      query_value(int query, ...) override;
 
@@ -387,7 +386,7 @@ Win32Dispatcher::Win32Dispatcher() {
     WNDCLASSEXW wc = {};
     wc.cbSize = sizeof(WNDCLASSEX);
     wc.hInstance = GetModuleHandle(nullptr);
-    wc.lpszClassName = L"BtkHelper";
+    wc.lpszClassName = BTK_HELPER_CLASS;
     wc.lpfnWndProc = [](HWND w, UINT m, WPARAM wp, LPARAM lp) {
         return win32_dispatcher->helper_wnd_proc(w, m, wp, lp);
     };
@@ -398,7 +397,7 @@ Win32Dispatcher::Win32Dispatcher() {
     // Create Helper window
     helper_hwnd = CreateWindowExW(
         0,
-        L"BtkHelper",
+        BTK_HELPER_CLASS,
         nullptr,
         0,
         0,
@@ -605,7 +604,7 @@ Win32Driver::Win32Driver() {
     };
     wc.hInstance = GetModuleHandle(nullptr);
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    wc.lpszClassName = L"BtkWindow";
+    wc.lpszClassName = BTK_WINDOW_CLASS;
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.hbrBackground = (HBRUSH)0;
     wc.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
@@ -1062,7 +1061,7 @@ window_t Win32Driver::window_create(const char_t *title, int width, int height, 
 
     HWND hwnd = CreateWindowExW(
         0,
-        L"BtkWindow",
+        BTK_WINDOW_CLASS,
         wtitle,
         style,
         CW_USEDEFAULT, CW_USEDEFAULT,
@@ -1083,7 +1082,6 @@ window_t Win32Driver::window_create(const char_t *title, int width, int height, 
     DragAcceptFiles(hwnd, TRUE);
 
     auto win = new Win32Window(hwnd, this);
-    win->win_style = style;
     win->win_dpi   = dpi;
     win->flags     = flags;
     return win;
@@ -1160,6 +1158,10 @@ any_t Win32Driver::instance_create(const char_t *what, ...) {
 
     va_end(varg);
     return ret;
+}
+cursor_t Win32Driver::cursor_create(const PixBuffer &buf, int hot_x, int hot_y) {
+    // TODO :
+    return nullptr;
 }
 
 Win32Window::Win32Window(HWND h, Win32Driver *d) {
@@ -1335,7 +1337,6 @@ bool     Win32Window::set_flags(WindowFlags new_flags) {
             style ^= (WS_SIZEBOX | WS_MAXIMIZEBOX);
         }
         SetWindowLongPtrW(hwnd, GWL_STYLE, style);
-        win_style = style;
     }
     if (bit_changed(WindowFlags::Fullscreen)) {
         // Using the way of https://devblogs.microsoft.com/oldnewthing/20100412-00/?p=14353
@@ -1349,8 +1350,7 @@ bool     Win32Window::set_flags(WindowFlags new_flags) {
                 GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY), &info)
             ) {
                 // Save style
-                prev_style    = GetWindowLongPtrW(hwnd, GWL_STYLE);
-                prev_ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+                auto win_style   = style();
 
                 // Change style
                 win_style ^= WS_OVERLAPPEDWINDOW;
@@ -1373,10 +1373,9 @@ bool     Win32Window::set_flags(WindowFlags new_flags) {
         }
         else {
             // Reset back
-            win_style  = prev_style;
+            auto win_style = style();
             win_style |= WS_OVERLAPPEDWINDOW;
             SetWindowLongPtrW(hwnd, GWL_STYLE, win_style);
-            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, prev_ex_style);
             SetWindowPlacement(hwnd, &prev_placement);
             SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
@@ -1384,23 +1383,23 @@ bool     Win32Window::set_flags(WindowFlags new_flags) {
             );
         }
     }
-    if (bit_changed(WindowFlags::Transparent)) {
-        DWORD new_ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-        if (bool(new_flags & WindowFlags::Transparent)) {
-            new_ex_style |= WS_EX_LAYERED;
-        }
-        else {
-            new_ex_style ^= WS_EX_LAYERED;
-        }
+    // if (bit_changed(WindowFlags::Transparent)) {
+    //     DWORD new_ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+    //     if (bool(new_flags & WindowFlags::Transparent)) {
+    //         new_ex_style |= WS_EX_LAYERED;
+    //     }
+    //     else {
+    //         new_ex_style ^= WS_EX_LAYERED;
+    //     }
 
-        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_ex_style);
-        win_ex_style = new_ex_style;
+    //     SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_ex_style);
+    //     win_ex_style = new_ex_style;
 
-        if (bool(new_flags & WindowFlags::Transparent)) {
-            SetLayeredWindowAttributes(hwnd, RGB(0, 0, 0), 1, LWA_COLORKEY);
-        }
-        // TODO :
-    }
+    //     if (bool(new_flags & WindowFlags::Transparent)) {
+    //         SetLayeredWindowAttributes(hwnd, RGB(0, 0, 0), 1, LWA_COLORKEY);
+    //     }
+    //     // TODO :
+    // }
     flags = new_flags;
     return err == 0;
 }
@@ -1723,7 +1722,7 @@ RECT Win32Window::adjust_rect(int x, int y, int w, int h) {
     rect.top  = y;
     rect.right = x + w;
     rect.bottom = y + h;
-    driver->AdjustWindowRectExForDpi(&rect, win_style, has_menu, win_ex_style, driver->GetDpiForWindow(hwnd));
+    driver->AdjustWindowRectExForDpi(&rect, style(), has_menu, exstyle(), driver->GetDpiForWindow(hwnd));
     return rect;
 }
 int Win32Window::client_to_btk(int v) const { 
@@ -1741,6 +1740,12 @@ POINTS Win32Window::btk_to_client(POINTS s) const {
     s.x = btk_to_client(s.x);
     s.y = btk_to_client(s.y);
     return s;
+}
+DWORD  Win32Window::style() const {
+    return GetWindowLongPtrW(hwnd, GWL_STYLE);
+}
+DWORD  Win32Window::exstyle() const {
+    return GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
 }
 
 // Win32GLContext
@@ -1850,7 +1855,7 @@ void *Win32GLContext::get_proc_address(const char_t *name) {
     return reinterpret_cast<void*>(GetProcAddress(library, name));
 }
 
-BTK_NS_END2()
+BTK_PRIV_END
 
 BTK_NS_BEGIN
 

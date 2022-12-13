@@ -1,6 +1,8 @@
 #include "build.hpp"
 #include "fallback.hpp"
 #include "common/utils.hpp"
+#include "common/win32/dwrite.hpp"
+#include "common/win32/wincodec.hpp"
 
 #include <Btk/context.hpp>
 #include <Btk/painter.hpp>
@@ -45,8 +47,6 @@ using Microsoft::WRL::ComPtr;
 // 2. Add support for copy texture to render target.
 
 namespace {
-    static IWICImagingFactory *wic_factory = nullptr;
-    static IDWriteFactory *dwrite_factory = nullptr;
     static ID2D1Factory   *d2d_factory = nullptr;
 
     using namespace BTK_NAMESPACE;
@@ -257,6 +257,9 @@ namespace {
 }
 
 BTK_NS_BEGIN
+
+using Win32::DWrite;
+using Win32::Wincodec;
 
 class BrushImpl : public Refable <BrushImpl> , public Trackable {
     public:
@@ -644,7 +647,7 @@ inline PainterImpl::PainterImpl(PixBuffer &bf) {
     // Make a temporary bitmap and render target
     ComPtr<IWICBitmap> bitmap;
     HRESULT hr;
-    hr = wic_factory->CreateBitmapFromMemory(
+    hr = Wincodec::GetInstance()->CreateBitmapFromMemory(
         bf.w(), bf.h(),
         GUID_WICPixelFormat32bppRGB,
         bf.pitch(),
@@ -679,11 +682,12 @@ inline PainterImpl::~PainterImpl() {
     }
 }
 inline void PainterImpl::Init() {
+    // Forward to 
+    DWrite::Init();
+    Wincodec::Init();
     // Check if already initialized
     if (d2d_factory) {
         // Add refcount
-        dwrite_factory->AddRef();
-        wic_factory->AddRef();
         d2d_factory->AddRef();
         return;
     }
@@ -706,40 +710,13 @@ inline void PainterImpl::Init() {
     if (FAILED(hr)) {
         abort();
     }
-
-    // Make dwrite factory
-    hr = DWriteCreateFactory(
-        DWRITE_FACTORY_TYPE_SHARED,
-        __uuidof(IDWriteFactory),
-        reinterpret_cast<IUnknown**>(&dwrite_factory)
-    );
-
-    // Init Com
-    hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-
-    // Make WIC factory
-    hr = CoCreateInstance(
-        CLSID_WICImagingFactory,
-        nullptr,
-        CLSCTX_INPROC_SERVER,
-        IID_PPV_ARGS(&wic_factory)
-    );
-
-    if (FAILED(hr)) {
-        abort();
-    }
 }
 inline void PainterImpl::Shutdown() {
-    ULONG refcount = d2d_factory->Release();
-    wic_factory->Release();
-    dwrite_factory->Release();
+    DWrite::Shutdown();
+    Wincodec::Shutdown();
 
-    if (refcount == 0) {
+    if (d2d_factory->Release() == 0) {
         d2d_factory = nullptr;
-        dwrite_factory = nullptr;
-        wic_factory = nullptr;
-
-        CoUninitialize();
     }
 }
 // Internal helpers
@@ -1307,7 +1284,7 @@ inline void PainterImpl::draw_text(u8string_view txt, float x, float y) {
 
     // New a text layout
     ComPtr<IDWriteTextLayout> layout;
-    HRESULT hr = dwrite_factory->CreateTextLayout(
+    HRESULT hr = DWrite::GetInstance()->CreateTextLayout(
         (LPWSTR) u16.c_str(),
         u16.length(),
         state.text_format.Get(),
@@ -1648,7 +1625,7 @@ inline void BrushImpl::reset_cache() {
 inline auto FontImpl::lazy_eval() -> IDWriteTextFormat * {
     if (format == nullptr) {
         // Empty , create one
-        HRESULT hr = dwrite_factory->CreateTextFormat(
+        HRESULT hr = DWrite::GetInstance()->CreateTextFormat(
             (LPWSTR) name.to_utf16().c_str(),
             nullptr,
             weight,
@@ -1679,7 +1656,7 @@ inline auto TextLayoutImpl::lazy_eval() -> IDWriteTextLayout * {
 
         auto u16 = text.to_utf16();
 
-        HRESULT hr = dwrite_factory->CreateTextLayout(
+        HRESULT hr = DWrite::GetInstance()->CreateTextLayout(
             (LPWSTR) u16.c_str(),
             u16.length(),
             font->lazy_eval(),
@@ -2094,7 +2071,7 @@ auto  Font::ListFamily() -> StringList {
 
     has_local = GetUserDefaultLocaleName(locale_name, LOCALE_NAME_MAX_LENGTH);
 
-    hr = dwrite_factory->GetSystemFontCollection(&col);
+    hr = DWrite::GetInstance()->GetSystemFontCollection(&col);
     if (FAILED(hr)) {
         return ret;
     }
@@ -2651,13 +2628,13 @@ void Pen::set_line_cap(LineCap cap) {
 // Exposed factory
 namespace Win32 {
     void *WicFactory() {
-        return wic_factory;
+        return Wincodec::GetInstance();
     }
     void *D2dFactory() {
         return d2d_factory;
     }
     void *DWriteFactory() {
-        return dwrite_factory;
+        return DWrite::GetInstance();
     }
 }
 

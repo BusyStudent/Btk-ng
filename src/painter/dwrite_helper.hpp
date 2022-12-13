@@ -1,3 +1,14 @@
+/**
+ * @file dwrite_helper.hpp
+ * @author BusyStudent
+ * @brief Impl for dwrite helper & dwrite Textlayout Font
+ * @version 0.1
+ * @date 2022-12-13
+ * 
+ * @copyright Copyright (c) 2022
+ * 
+ */
+
 #pragma once
 
 #include "build.hpp"
@@ -5,10 +16,9 @@
 #include <dwrite.h>
 #include <wrl.h>
 
-BTK_NS_BEGIN2()
+BTK_PRIV_BEGIN
 
 using Microsoft::WRL::ComPtr;
-using BTK_NAMESPACE::Color;
 
 class DWriteRaster : public IDWriteTextRenderer {
     public:
@@ -26,7 +36,7 @@ class DWriteRaster : public IDWriteTextRenderer {
             DWRITE_GLYPH_RUN const* glyphRun,
             DWRITE_GLYPH_RUN_DESCRIPTION const* glyphRunDescription,
             IUnknown* clientDrawingEffect
-        ) override;
+        ) noexcept override;
     private:
         ComPtr<IDWriteBitmapRenderTarget> target;
         ComPtr<IDWriteRenderingParams>    params;
@@ -64,7 +74,7 @@ inline HRESULT DWriteRaster::DrawGlyphRun(
     DWRITE_GLYPH_RUN const* glyphRun,
     DWRITE_GLYPH_RUN_DESCRIPTION const* glyphRunDescription,
     IUnknown* clientDrawingEffect
-)
+) noexcept
 {
     // Forward to GDI 
     RECT dirty = {0};
@@ -80,4 +90,4 @@ inline HRESULT DWriteRaster::DrawGlyphRun(
     );
 }
 
-BTK_NS_END2()
+BTK_PRIV_END

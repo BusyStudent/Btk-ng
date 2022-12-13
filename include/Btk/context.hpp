@@ -59,8 +59,9 @@ class GraphicsDriver : public Any {
         virtual u8string clipboard_get() = 0;
 
         // Cursor
+        virtual cursor_t cursor_create(const PixBuffer &pixbuf, int hot_x, int hot_y) = 0;
 
-        // Dymaic factory
+        // Dynamic factory
         virtual any_t    instance_create(const char_t *what, ...) = 0;
 
         // Query
@@ -172,6 +173,20 @@ class AbstractWindow : public Any {
         virtual any_t      gc_create(const char_t *type) = 0;
         // [[deprecated("Use Painter::FromWindow()")]]
         // virtual Painter    painter_create() = 0;
+};
+
+class AbstractCursor : public Any {
+    public:
+        // Refcounting manage
+        virtual void       ref()   = 0;
+        virtual void       unref() = 0;
+
+        virtual void       set() = 0;
+};
+class AbstractScreen : public Any {
+    public:
+        virtual Size       pixel_size() = 0;
+        virtual FPoint     dpi()        = 0;
 };
 
 class AbstractFileDialog : public Any {

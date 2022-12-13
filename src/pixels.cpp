@@ -1,11 +1,11 @@
 #include "build.hpp"
 #include "common/utils.hpp" //< For refcounting
 
-#include <Btk/painter.hpp>
 #include <Btk/pixels.hpp>
 #include <array>
 
 #if  defined(_WIN32)
+#include "common/win32/wincodec.hpp" //< Bulitin Wincodec wrapper
 #include <wincodec.h> //< Load image from file / memory
 #include <shlwapi.h> //< PathFindExtensionW
 #include <cwchar> //< wcslen
@@ -15,8 +15,6 @@ using Microsoft::WRL::ComPtr;
 // WIC Internal forward declarations
 namespace {
     using namespace BTK_NAMESPACE;
-
-    IWICBitmapSource *wic_wrap(const PixBuffer *buffer);
     bool      wic_run_codecs(IWICBitmapDecoder *decoder, size_t frame_idx, PixBuffer *result);
     bool      wic_save_to(const PixBuffer *buffer, IStream *stream, const wchar_t *fmt);
 }
@@ -220,16 +218,16 @@ PixBuffer PixBuffer::clone() const {
 PixBuffer PixBuffer::resize(int w, int h) const {
 
 #if defined(_WIN32)
-    auto wic = static_cast<IWICImagingFactory*>(Win32::WicFactory());
+    auto wic = Win32::Wincodec::GetInstance();
+
     ComPtr<IWICBitmapScaler> scaler;
-    ComPtr<IWICBitmapSource> source;
 
     wic->CreateBitmapScaler(&scaler);
-    source = wic_wrap(this);
 
+    Win32::IBtkBitmap source(this);
     // Scale the bitmap to the new size
     // Emm, WICBitmapInterpolationModeHighQualityCubic is undefined in MinGW :(
-    scaler->Initialize(source.Get(), w, h, WICBitmapInterpolationModeCubic);
+    scaler->Initialize(&source, w, h, WICBitmapInterpolationModeCubic);
 
     // Create a new PixBuffer
     PixBuffer buf(w, h);
@@ -584,7 +582,7 @@ PixBuffer &PixBuffer::operator =(PixBuffer &&bf) {
 PixBuffer PixBuffer::FromFile(u8string_view path) {
 
 #if defined(_WIN32)
-    auto wic = static_cast<IWICImagingFactory*>(Win32::WicFactory());
+    auto wic = Win32::Wincodec::GetInstance();
     auto u16 = path.to_utf16();
 
     ComPtr<IWICBitmapDecoder> decoder;
@@ -646,7 +644,7 @@ PixBuffer PixBuffer::FromFile(u8string_view path) {
 PixBuffer PixBuffer::FromMem(cpointer_t data, size_t n) {
 
 #if defined(_WIN32)
-    auto wic = static_cast<IWICImagingFactory*>(Win32::WicFactory());
+    auto wic = Win32::Wincodec::GetInstance();
 
     ComPtr<IWICBitmapDecoder> decoder;
     ComPtr<IStream>           stream;
@@ -831,7 +829,7 @@ void Image::clear() {
 Image Image::FromFile(u8string_view path) {
 
 #if defined(_WIN32)
-    auto wic = static_cast<IWICImagingFactory*>(Win32::WicFactory());
+    auto wic = Win32::Wincodec::GetInstance();
     auto u16 = path.to_utf16();
 
     ComPtr<IWICBitmapDecoder> decoder;
@@ -969,71 +967,8 @@ BTK_NS_END
 #if defined(_WIN32)
 // WIC Implementation
 namespace {
-    class IBtkBitmap : public IWICBitmapSource {
-        public:
-            ULONG   AddRef() override { return 1; }
-            ULONG   Release() override { return 1; }
-            HRESULT QueryInterface(REFIID riid, void** ppvObject) override {
-                if (riid == __uuidof(IWICBitmapSource)) {
-                    *ppvObject = static_cast<IWICBitmapSource*>(this);
-                    return S_OK;
-                }
-                return E_NOINTERFACE;
-            }
-
-            // Begin IWICBitmapSource
-            HRESULT GetSize(UINT *w, UINT *h) override {
-                assert(w && h);
-                *w = buffer->width();
-                *h = buffer->height();
-                return S_OK;
-            }
-            HRESULT GetPixelFormat(GUID *fmt) override {
-                assert(fmt);
-                *fmt = GUID_WICPixelFormat32bppRGBA;
-                return S_OK;
-            }
-            HRESULT GetResolution(double *x, double *y) override {
-                assert(x && y);
-                *x = *y = 1.0;
-                return S_OK;
-            }
-            HRESULT CopyPalette(IWICPalette *) override {
-                return E_NOTIMPL;
-            }
-            HRESULT CopyPixels(const WICRect *rect, UINT stride, UINT size, BYTE *ut) override {
-                int x, y, w, h;
-                if (rect) {
-                    x = rect->X;
-                    y = rect->Y;
-                    w = rect->Width;
-                    h = rect->Height;
-                }
-                else {
-                    x = 0;
-                    y = 0;
-                    w = buffer->width();
-                    h = buffer->height();
-                }
-
-                // Begin copy
-                auto src = static_cast<const BYTE *>(buffer->pixels());
-                auto bytes_per = buffer->bytes_per_pixel();
-
-                for (int i = 0; i < h; ++i) {
-                    auto dst = ut + i * stride;
-                    auto src_ = src + (y + i) * buffer->width() * bytes_per + x * bytes_per;
-                    Btk_memcpy(dst, src_, w * bytes_per);
-                }
-                return S_OK;
-            }
-
-            IBtkBitmap(const PixBuffer *buffer) : buffer(buffer) {}
-        private:
-            const PixBuffer *buffer;
-    };
     bool      wic_run_codecs(IWICBitmapDecoder *decoder, size_t frame_idx, PixBuffer *result) {
-        auto wic = static_cast<IWICImagingFactory*>(Win32::WicFactory());
+        auto wic = Win32::Wincodec::GetInstance();
 
         ComPtr<IWICBitmapFrameDecode> frame;
         ComPtr<IWICFormatConverter> converter;
@@ -1091,7 +1026,7 @@ namespace {
             return false;
     }
     bool wic_save_to(const PixBuffer *buffer, IStream *stream, const wchar_t *ext) {
-        auto wic = static_cast<IWICImagingFactory*>(Win32::WicFactory());
+        auto wic = Win32::Wincodec::GetInstance();
         ComPtr<IWICBitmapEncoder> encoder;
         ComPtr<IWICBitmapFrameEncode> frame;
 
@@ -1182,7 +1117,7 @@ namespace {
         // Write pixels to frame
         if (pf != GUID_WICPixelFormat32bppRGBA) {
             ComPtr<IWICFormatConverter> converter;
-            IBtkBitmap bmp(buffer);
+            Win32::IBtkBitmap bmp(buffer);
 
             hr = wic->CreateFormatConverter(converter.GetAddressOf());
             if (FAILED(hr)) {
@@ -1228,9 +1163,6 @@ namespace {
         }
 
         return true;
-    }
-    IWICBitmapSource *wic_wrap(const PixBuffer *bf) {
-        return new IBtkBitmap(bf);
     }
 }
 #endif

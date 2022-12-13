@@ -288,10 +288,10 @@ bool ScrollBar::mouse_leave(MotionEvent &event) {
 }
 bool ScrollBar::mouse_wheel(WheelEvent &event) {
     if (_orientation == Horizontal) {
-        set_value(_value + event.y() * _page_step);
+        set_value(_value + event.y() * _single_step);
     }
     else {
-        set_value(_value - event.y() * _page_step);
+        set_value(_value - event.y() * _single_step);
     }
     return true;
 }
@@ -346,7 +346,7 @@ FRect ScrollBar::bar_rect() const {
     FRect bar;
     double rng = _max - _min;
 
-    float len_ratio = float(_page_step) / rng;
+    double len_ratio = (rng + _single_step) / (rng + _single_step + _page_step);
 
     if (_orientation == Horizontal) {
         bar.w = border.w * len_ratio;

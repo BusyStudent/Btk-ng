@@ -22,7 +22,6 @@
 #include "common/utils.hpp"
 
 // Import library
-#include "libs/opengl_macro.hpp"
 
 // Import freetype
 // #include <ft2build.h>
@@ -30,6 +29,7 @@
 // #include FT_GLYPH_H
 // #include FT_OUTLINE_H
 
+#include <Btk/opengl/opengl.hpp>
 #include <Btk/painter.hpp>
 #include <Btk/context.hpp>
 #include <unordered_map>
@@ -84,45 +84,6 @@ namespace {
     struct FONSquad {
         float x0, y0, s0, t0;
         float x1, y1, s1, t1;
-    };
-
-    class GLFunctions {
-        public:
-            #define BTK_GL_PROCESS(pfn, name) \
-                pfn name = nullptr;
-            BTK_OPENGLES3_FUNCTIONS
-            #undef  BTK_GL_PROCESS
-
-            #define BTK_GL_PROCESS(pfn, name) \
-                name = reinterpret_cast<pfn>(ctxt->get_proc_address(#name)); \
-                if (!name) { \
-                    bad_fn(#name); \
-                }
-            void load (GLContext *ctxt) {
-                BTK_OPENGLES3_FUNCTIONS
-            }
-            #undef  BTK_GL_PROCESS
-
-
-            // Got nullptr on load
-            void bad_fn(const char *name) {
-                BTK_THROW(std::runtime_error(u8string::format(
-                    "Failed to load OpenGL function: %s", name
-                )));
-            }
-    };
-
-    class GLFunctionsProxy {
-        public:
-            #define BTK_GL_PROCESS(pfn, name) \
-                template <typename ...Args> \
-                auto name(Args &&...args) { \
-                    return funcs->name(std::forward<Args>(args)...);\
-                }
-            BTK_OPENGLES3_FUNCTIONS
-            #undef  BTK_GL_PROCESS
-
-            GLFunctions *funcs;
     };
 
     FONScontext *fonsCreateInternal(FONSparams *param);
@@ -1005,7 +966,7 @@ class TextureImpl : public Trackable {
         int          id;
 };
 
-class PainterImpl : public GLFunctions, public Trackable {
+class PainterImpl : public OpenGLES3Function, public Trackable {
     public:
         PainterImpl(AbstractWindow *win);
         ~PainterImpl();
@@ -1033,7 +994,7 @@ inline PainterImpl::PainterImpl(AbstractWindow *win) {
     }
 
     // Load OpenGL functions
-    load(ctxt);
+    load(std::bind(&GLContext::get_proc_address, ctxt));
 
     // Query info
     glGetIntegerv(GL_MAX_TEXTURE_SIZE, max_texture_size);

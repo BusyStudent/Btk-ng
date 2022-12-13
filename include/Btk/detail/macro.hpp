@@ -11,6 +11,11 @@
 #define BTK_NS_BEGIN2(ns) namespace ns {
 #define BTK_NS_END2(ns)   }
 
+#define BTK_PRIV_BEGIN namespace BTK_NAMESPACE { \
+                        namespace {
+#define BTK_PRIV_END    } \
+                       }
+
 // Compiler specific macros
 #if   defined(_MSC_VER)
 #define BTK_ATTRIBUTE(...) __declspec(__VA_ARGS__)
@@ -47,11 +52,15 @@
 
 // Exception macros
 #if defined(BTK_NO_EXCEPTIONS)
-#define BTK_THROW(...) do { abort(); } while (0)
+#define BTK_THROW(...) do { ::abort(); } while (0)
+#define BTK_CATCH(...) if constexpr(0)
 #define BTK_NOEXCEPT noexcept(true)
+#define BTK_TRY      if constexpr(1)
 #else
-#define BTK_THROW(...) throw __VA_ARGS__
+#define BTK_THROW(...) throw (__VA_ARGS__)
+#define BTK_CATCH(...) catch (__VA_ARGS__)
 #define BTK_NOEXCEPT noexcept(false)
+#define BTK_TRY      try
 #endif
 
 // RTTI macros

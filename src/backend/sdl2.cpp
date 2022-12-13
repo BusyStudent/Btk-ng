@@ -26,7 +26,7 @@
 
 #include "sdl2_trkey.hpp"
 
-BTK_NS_BEGIN2()
+BTK_PRIV_BEGIN
 
 using namespace BTK_NAMESPACE;
 
@@ -165,9 +165,8 @@ class SDLDriver : public GraphicsDriver {
         void     clipboard_set(const char_t *str) override;
         u8string clipboard_get() override;
 
-        // void     pump_events(UIContext *) override;
-        // int      sdl_event_filter(SDL_Event *event);
-        // void     tr_window_event(SDL_Event *evemt);
+        cursor_t cursor_create(const PixBuffer &buf, int hot_x, int hot_y) override;
+
         any_t    instance_create(const char_t *what, ...) override;
 
         bool      query_value(int what, ...) override;
@@ -650,6 +649,9 @@ any_t SDLDriver::instance_create(const char_t *what, ...) {
     va_end(varg);
     return ret;
 }
+cursor_t SDLDriver::cursor_create(const PixBuffer &buf, int hot_x, int hot_y) {
+    return nullptr;
+}
 
 // Window
 SDLWindow::SDLWindow(SDL_Window *w, SDLDriver *dr, WindowFlags f) : win(w), driver(dr), flags(f) {
@@ -1036,7 +1038,7 @@ pointer_t SDLGLContext::get_proc_address(const char_t *name) {
     return ret;
 }
 
-BTK_NS_END2()
+BTK_PRIV_END
 
 BTK_NS_BEGIN
 
