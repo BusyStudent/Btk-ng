@@ -35,22 +35,22 @@ bool Button::paint_event(PaintEvent &event) {
     // Background
     if (_pressed) {
         // c = style->highlight;
-        gc.set_brush(palette().brush_at(Palette::Inactive, Palette::Hightlight));
+        gc.set_brush(palette().hightlight());
     }
     else{
         // c = style->background;
-        gc.set_brush(palette().brush_at(Palette::Inactive, Palette::Button));
+        gc.set_brush(palette().button());
     }
     // gc.set_color(c.r, c.g, c.b, c.a);
     gc.fill_rect(border);
 
     if (under_mouse() && !_pressed) {
         // c = style->highlight;
-        gc.set_brush(palette().brush_at(Palette::Inactive, Palette::Hightlight));
+        gc.set_brush(palette().hightlight());
     }
     else{
         // c = style->border;
-        gc.set_brush(palette().brush_at(Palette::Inactive, Palette::Border));
+        gc.set_brush(palette().border());
     }
 
     // Border
@@ -64,11 +64,11 @@ bool Button::paint_event(PaintEvent &event) {
     if (!_text.empty()) {
         if (_pressed) {
             // c = style->highlight_text;
-            gc.set_brush(palette().brush_at(Palette::Inactive, Palette::HightlightedText));
+            gc.set_brush(palette().hightlighted_text());
         }
         else{
             // c = style->text;
-            gc.set_brush(palette().brush_at(Palette::Inactive, Palette::Text));
+            gc.set_brush(palette().text());
         }
         gc.set_text_align(Alignment::Center | Alignment::Middle);
         gc.set_font(font());

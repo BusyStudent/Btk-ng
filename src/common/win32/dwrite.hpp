@@ -39,5 +39,14 @@ class DWrite {
             return factory;
         }
 };
+class DWriteInitializer {
+    public:
+        DWriteInitializer() {
+            DWrite::Init();
+        }
+        ~DWriteInitializer() {
+            DWrite::Shutdown();
+        }
+};
 
 BTK_NS_END2(BTK_NAMESPACE::Win32)

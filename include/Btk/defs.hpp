@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Btk/detail/macro.hpp>
+#include <type_traits>
 #include <cstdint>
 #include <cstdio>
 #include <cmath>
@@ -9,12 +10,12 @@ BTK_NS_BEGIN
 
 // Basic types
 
-using char_t      = char;//< Utf8 char type
-using uchar_t     = char32_t;//< Unicode character type
-using timerid_t   = uintptr_t;//< Timer id type
-using pointer_t   = void *;//< Pointer type
-using cpointer_t  = const void *;//< Const pointer type
-using timestamp_t = uintptr_t;//< Timestamp type
+using char_t      = char;         //< Utf8 char type
+using uchar_t     = char32_t;     //< Unicode character type
+using timerid_t   = uintptr_t;    //< Timer id type
+using pointer_t   = void *;       //< Pointer type
+using cpointer_t  = const void *; //< Const pointer type
+using timestamp_t = uintptr_t;    //< Timestamp type
 
 #if defined(_WIN32)
 using ssize_t = int64_t;
@@ -71,6 +72,13 @@ constexpr inline auto RightToLeft = Direction::RightToLeft;
 constexpr inline auto TopToBottom = Direction::TopToBottom;
 constexpr inline auto BottomToTop = Direction::BottomToTop;
 
+constexpr inline auto AlignLeft   = Alignment::Left;   //< H part
+constexpr inline auto AlignRight  = Alignment::Right;
+constexpr inline auto AlignCenter = Alignment::Center;
+constexpr inline auto AlignTop    = Alignment::Top;    //< V part
+constexpr inline auto AlignBottom = Alignment::Bottom;
+constexpr inline auto AlignMiddle = Alignment::Middle;
+
 BTK_FLAGS_OPERATOR(Orientation, uint8_t);
 BTK_FLAGS_OPERATOR(Alignment,   uint8_t);
 
@@ -78,11 +86,12 @@ BTK_FLAGS_OPERATOR(Alignment,   uint8_t);
 class EventQueue;
 class EventLoop;
 class UIContext;
+class Event;
 
 class Trackable;
 class Object;
 
-class Event;
+class Palette;
 class Widget;
 class Style;
 class Font;
@@ -108,11 +117,13 @@ class PixBuffer;
 class Painter;
 class Texture;
 class Brush;
+
 // String 
 class u8string;
 class u8string_view;
 class StringList;
 class StringRefList;
+
 // Keyboard
 enum class Key      : uint32_t;
 enum class Modifier : uint16_t;
@@ -132,7 +143,6 @@ using  direction_t   = Direction;
 using  orientation_t = Orientation;
 
 // Function
-
 BTKAPI timestamp_t GetTicks();
 
 // Helper functions template
@@ -159,6 +169,17 @@ constexpr T clamp(T value, T min, T max) BTK_NOEXCEPT_IF(value < min ? min : val
 template <typename T>
 constexpr T muldiv(T v, T num, T den) BTK_NOEXCEPT_IF(den == 0 ? -1 : std::round(double(v) * num / den)) {
     return den == 0 ? -1 : std::round(double(v) * num / den);
+}
+
+template <typename T, typename T1>
+constexpr bool bittest(T src, T1 test) BTK_NOEXCEPT_IF(src & test) {
+    using Result = decltype(src & test);
+    if constexpr (std::is_enum_v<Result>) {
+        return static_cast<std::underlying_type_t<Result>>(src & test);
+    }
+    else {
+        return src & test;
+    }
 }
 
 BTK_NS_END

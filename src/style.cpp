@@ -17,6 +17,7 @@ Palette::Palette() {
 }
 Palette::Palette(const Palette &p) {
     priv = COW_REFERENCE(p.priv);
+    group = p.group;
 }
 Palette::~Palette() {
     COW_RELEASE(priv);
@@ -58,44 +59,6 @@ auto Palette::set_color(Group group, Role role, const GLColor &cl) -> void {
     BTK_ASSERT(role < MaxRole);
     begin_mut();
     priv->brushs[group][role].set_color(cl);
-}
-
-auto Palette::to_string() const -> u8string {
-    const char *maps[MaxGroup] = {
-        "Active",
-        "Inactive",
-        "Disable"
-    };
-    const char *rmaps[MaxRole] = {
-        "Window",
-        "Button",
-        "Input",
-        "Border",
-        "Hightlight",
-        "Text",
-        "PlaceholderText",
-        "HightlightedText",
-    };
-
-    u8string result;
-    for (uint8_t gp = 0; gp < MaxGroup; gp++) {
-        result.append_fmt("[%s]\n", maps[gp]);
-        for (uint8_t ro = 0; ro < MaxRole; ro++) {
-            auto brush = brush_at(Group(gp), Role(ro));
-
-            switch (brush.type()) {
-                case BrushType::Solid : {
-                    auto [r, g, b, a] = Color(brush.color());
-                    result.append_fmt("%s = #%02X%02X%02X%02X\n", rmaps[ro], int(r), int(g), int(b), int(a));
-                    break;
-                }
-                default : {
-                    result.append_fmt("%s = Unsupport formatted brush\n", rmaps[ro]);
-                }
-            }
-        }
-    }
-    return result;
 }
 
 void PaletteBreeze(Palette *palette) {

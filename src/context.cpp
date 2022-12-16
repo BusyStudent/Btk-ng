@@ -39,10 +39,6 @@ UIContext::UIContext(GraphicsDriver *driv) {
     StyleBreeze(&style);
     SetUIContext(this);
 
-#if !defined(NDEBUG)
-    puts(palette.to_string().c_str());
-#endif
-
     thread_id = std::this_thread::get_id(); 
 }
 UIContext::UIContext() {
@@ -56,10 +52,6 @@ UIContext::UIContext() {
     PaletteBreeze(&palette);
     StyleBreeze(&style);
     SetUIContext(this);
-
-#if !defined(NDEBUG)
-    puts(palette.to_string().c_str());
-#endif
 
     thread_id = std::this_thread::get_id(); 
 }

@@ -42,14 +42,50 @@ class BTKAPI Palette {
         auto color_at(Group gp, Role r) const -> GLColor;
         auto empty()                    const -> bool;
 
-        auto to_string()    const -> u8string;
-        auto load(u8string_view conf) -> void;
-
         auto operator =(const Palette &) -> Palette &;
+
+
+        // Current color group access
+        auto set_current_group(Group gp) -> void {
+            group = gp;
+        }
+
+        // Access
+        auto window() const -> const Brush & {
+            return brush_at(group, Window);
+        }
+        auto button() const -> const Brush & {
+            return brush_at(group, Button);
+        }
+        auto input() const -> const Brush & {
+            return brush_at(group, Input);
+        }
+        auto border() const -> const Brush & {
+            return brush_at(group, Border);
+        }
+        auto hightlight() const -> const Brush & {
+            return brush_at(group, Hightlight);
+        }
+        
+        auto text() const -> const Brush & {
+            return brush_at(group, Text);
+        }
+        auto placeholder_text() const -> const Brush & {
+            return brush_at(group, PlaceholderText);
+        }
+        auto hightlighted_text() const -> const Brush & {
+            return brush_at(group, HightlightedText);
+        }
+
+        auto shadow() const -> const Brush & {
+            return brush_at(group, Shadow);
+        }
+        
     private:
         void begin_mut();
 
         PaletteImpl *priv = nullptr;
+        Group        group = Inactive; //< Current role
 };
 
 class Style {

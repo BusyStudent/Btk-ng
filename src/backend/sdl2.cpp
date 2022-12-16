@@ -205,6 +205,24 @@ class SDLGLContext : public GLContext {
         SDL_GLContext  prev_ctxt = nullptr;
 };
 
+class SDLFbContext : public FbContext {
+    public:
+        SDLFbContext(SDL_Window *win);
+        ~SDLFbContext();
+
+        void begin() override;
+        void end() override;
+        void swap_buffers() override;
+
+        pointer_t get_pixels_address() override;
+        PixFormat get_pixels_format() override;
+        int       get_pixels_pitch() override;
+        Size      get_size() override;
+    private:
+        SDL_Window    *win = nullptr;
+        SDL_Surface   *surface = nullptr; //< Windows surface
+};
+
 SDLDispatcher::SDLDispatcher(SDLDriver *d) : driver(d) {
     SetDispatcher(this);
 }
@@ -572,6 +590,9 @@ window_t SDLDriver::window_create(const char_t * title, int width, int height, W
     if ((flags & WindowFlags::Resizable) == WindowFlags::Resizable) {
         sdl_flags |= SDL_WINDOW_RESIZABLE;
     }
+    if ((flags & WindowFlags::OpenGL) == WindowFlags::OpenGL) {
+        sdl_flags |= SDL_WINDOW_OPENGL;
+    }
 
 #if defined(__gnu_linux__)
     sdl_flags |= SDL_WINDOW_OPENGL;
@@ -589,7 +610,11 @@ window_t SDLDriver::window_create(const char_t * title, int width, int height, W
 
     // Resize by dpi
     ret->resize(width, height);
-    window_add(ret);
+
+    // NeverShowed means that the window is always invisable, no need to add it to event dispatcher
+    if ((flags & WindowFlags::NeverShowed) != WindowFlags::NeverShowed) {
+        window_add(ret);
+    }
     return ret;
 }
 void    SDLDriver::window_add(SDLWindow *win) {
@@ -953,7 +978,7 @@ any_t   SDLWindow::gc_create(const char_t *what) {
     }
     if (SDL_strcasecmp(what, "framebuffer") == 0) {
         // Get Framebuffer
-        return nullptr;
+        return new SDLFbContext(win);
     }    
     return nullptr;
 }
@@ -1036,6 +1061,73 @@ pointer_t SDLGLContext::get_proc_address(const char_t *name) {
     pointer_t ret = SDL_GL_GetProcAddress(name);
     end();
     return ret;
+}
+
+// Framebuffer Context
+SDLFbContext::SDLFbContext(SDL_Window *w) : win(w) {}
+SDLFbContext::~SDLFbContext() {
+    SDL_FreeSurface(surface);
+}
+
+void SDLFbContext::begin() {
+    if (surface) {
+        int w, h;
+        SDL_GetWindowSize(win, &w, &h);
+        if (surface->w != w || surface->h != h) {
+            SDL_FreeSurface(surface);
+            surface = nullptr;
+        }
+    }
+    if (!surface) {
+        surface = SDL_GetWindowSurface(win);
+    }
+    if (!surface) {
+        return;
+    }
+
+    if (SDL_MUSTLOCK(surface)) {
+        SDL_LockSurface(surface);
+    } 
+}
+void SDLFbContext::end() {
+    // Nothing to do here
+    if (SDL_MUSTLOCK(surface)) { 
+        SDL_UnlockSurface(surface);
+    }
+}
+void SDLFbContext::swap_buffers() {
+    SDL_UpdateWindowSurface(win);
+}
+
+
+pointer_t SDLFbContext::get_pixels_address() {
+    if (!surface) {
+        return nullptr;
+    }
+    return surface->pixels;
+}
+PixFormat SDLFbContext::get_pixels_format() {
+    if (!surface) {
+        return {};
+    }
+    switch (surface->format->format) {
+        case SDL_PIXELFORMAT_BGR24 : return PixFormat::BGR24;
+        case SDL_PIXELFORMAT_RGB24 : return PixFormat::RGB24;
+        case SDL_PIXELFORMAT_RGBA32 : return PixFormat::RGBA32;
+    }
+    return {};
+}
+int       SDLFbContext::get_pixels_pitch() {
+    if (!surface) {
+        return 0;
+    }
+    return surface->pitch;
+}
+Size       SDLFbContext::get_size() {
+    if (!surface) {
+        return {};
+    }
+    return Size(surface->w, surface->h);
 }
 
 BTK_PRIV_END

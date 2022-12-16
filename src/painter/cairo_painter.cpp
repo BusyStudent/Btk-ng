@@ -438,7 +438,7 @@ inline void PainterImpl::apply_brush(const FRect &box) {
         cairo_set_source(cr, brush->pat);
         return;
     }
-    case BrushType::Texture : {
+    case BrushType::Bitmap : {
         // Bitmap
         cairo_surface_t *surf;
         auto rect = brush_rect_to_abs(brush->mode, brush->rect, box);
@@ -1352,7 +1352,7 @@ void Brush::set_image(const PixBuffer &buf) {
     }
 
     priv->pat = cairo_pattern_create_for_surface(surf);
-    priv->type = BrushType::Texture;
+    priv->type = BrushType::Bitmap;
 
     cairo_surface_destroy(surf);
 }

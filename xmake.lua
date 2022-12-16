@@ -222,6 +222,14 @@ if has_config("tests") then
         add_includedirs("include")
         add_files("tests/pixproc.cpp")
     target_end()
+
+    target("opengl")
+        set_kind("binary")
+        add_deps("btk")
+
+        add_includedirs("include")
+        add_files("tests/opengl.cpp")
+    target_end()
 end
 
 -- FFMpeg test

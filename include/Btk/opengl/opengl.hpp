@@ -52,14 +52,14 @@ class OpenGLES3Function : public OpenGLES2Function {
         #undef  BTK_GL_PROCESS
 
         #define BTK_GL_PROCESS(pfn, name) \
-            name = reinterpret_cast<pfn>(load(#name)); \
+            name = reinterpret_cast<pfn>(callable(#name)); \
             if (!name) { \
                 bad_fn(#name); \
             }
 
         template <typename Callable>
         void load (Callable &&callable) {
-            OpenGLES2Functions::load(callable);
+            OpenGLES2Function::load(callable);
             BTK_OPENGLES3_FUNCTIONS_PART
         }
 
@@ -69,7 +69,7 @@ class OpenGLES3Function : public OpenGLES2Function {
 #define BTK_GL_PROCESS(pfn, name) \
     template <typename ...Args> \
     auto name(Args &&...args) BTK_NOEXCEPT_IF(this->_funcs->name(args...)) { \
-        return this->_funcs->name(args...);\
+        return this->_funcs->name(std::forward<Args>(args)...);\
     }
 
 /**

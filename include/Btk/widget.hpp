@@ -39,7 +39,8 @@ enum class WindowFlags : uint32_t {
     OpenGL     = 1 << 6,
     Vulkan     = 1 << 7,
     AcceptDrop = 1 << 8,
-    Transparent = 1 << 9
+    Transparent = 1 << 9,
+    NeverShowed = 1 << 10,
 };
 // Enum for widget.
 enum class FocusPolicy : uint8_t {
@@ -259,7 +260,6 @@ class BTKAPI Widget : public Object {
          * @return const Palette& 
          */
         auto    palette() const -> const Palette &;
-        auto    palette_group() const -> Palette::Group;
         /**
          * @brief Get width of the widget
          * 

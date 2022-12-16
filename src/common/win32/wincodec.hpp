@@ -45,6 +45,15 @@ class Wincodec {
             return factory;
         }
 };
+class WincodecInitializer {
+    public:
+        WincodecInitializer() {
+            Wincodec::Init();
+        }
+        ~WincodecInitializer() {
+            Wincodec::Shutdown();
+        }
+};
 
 /**
  * @brief Wrap PixBuffer to IWICBitmapSource

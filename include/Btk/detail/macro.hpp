@@ -183,3 +183,6 @@
     BTK_ENUM_OPERATOR1(en, base, ~);\
     BTK_ENUM_ALIAS(en, +,  |);\
     BTK_ENUM_ALIAS(en, +=, |=);
+
+#define BTK_DECLARE_FLAGS(en) \
+    BTK_FLAGS_OPERATOR(en, std::underlying_type_t<en>)

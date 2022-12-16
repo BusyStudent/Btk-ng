@@ -94,6 +94,7 @@ add_packages("btk")
 | PopupWidget   |                 |                          |
 | FileDialog    |                 |                          |
 | MenuBar       | Not yet         |                          |
+| GLWidget      |                 | For use OpenGL           |
 | VideoWidget   |                 | Video output for MediaPlayer (multimedia plugin) |
 
 ## Existing bugs

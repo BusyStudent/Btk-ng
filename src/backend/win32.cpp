@@ -1084,6 +1084,11 @@ window_t Win32Driver::window_create(const char_t *title, int width, int height, 
     auto win = new Win32Window(hwnd, this);
     win->win_dpi   = dpi;
     win->flags     = flags;
+
+    // Check flags
+    if ((flags & WindowFlags::NeverShowed) != WindowFlags::NeverShowed) {
+        window_add(win);
+    }
     return win;
 }
 void  Win32Driver::window_add(Win32Window *win) {
@@ -1167,8 +1172,6 @@ cursor_t Win32Driver::cursor_create(const PixBuffer &buf, int hot_x, int hot_y) 
 Win32Window::Win32Window(HWND h, Win32Driver *d) {
     hwnd = h;
     driver = d;
-
-    driver->window_add(this);
 
     // Default disable IME
     imcontext = ImmAssociateContext(hwnd, nullptr);
@@ -1850,7 +1853,11 @@ void *Win32GLContext::get_proc_address(const char_t *name) {
         begin();
         auto proc = wglGetProcAddress(name);
         end();
-        return reinterpret_cast<void*>(proc);
+        // Got it 
+        if (proc) {
+            return reinterpret_cast<void*>(proc);
+        }
+        // Possible normal OpenGL function
     }
     return reinterpret_cast<void*>(GetProcAddress(library, name));
 }

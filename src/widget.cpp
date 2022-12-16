@@ -412,7 +412,7 @@ bool Widget::handle(Event &event) {
         }
         case Event::Close : {
             ret = close_event(event.as<CloseEvent>());
-            if (!ret && uint32_t(_attrs & WidgetAttrs::DeleteOnClose)) {
+            if (!ret && bittest(_attrs, WidgetAttrs::DeleteOnClose)) {
                 // Ready to close & has attribute delete on close
                 defer_delete();
             }
@@ -545,18 +545,6 @@ auto   Widget::font() const -> const Font & {
 }
 auto   Widget::palette() const -> const Palette & {
     return _palette;
-}
-auto   Widget::palette_group() const -> Palette::Group {
-    if (!_enabled) {
-        return Palette::Disable;
-    }
-    if (_focused) {
-        return Palette::Active;
-    }
-    if (under_mouse()) {
-        return Palette::Active;
-    }
-    return Palette::Inactive;
 }
 
 // Size Hint

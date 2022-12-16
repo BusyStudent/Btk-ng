@@ -3,6 +3,7 @@
 #include "common/utils.hpp"
 #include "common/win32/dwrite.hpp"
 #include "common/win32/wincodec.hpp"
+#include "common/win32/direct2d.hpp"
 
 #include <Btk/context.hpp>
 #include <Btk/painter.hpp>
@@ -47,8 +48,6 @@ using Microsoft::WRL::ComPtr;
 // 2. Add support for copy texture to render target.
 
 namespace {
-    static ID2D1Factory   *d2d_factory = nullptr;
-
     using namespace BTK_NAMESPACE;
 
     static_assert(sizeof(FMatrix) == sizeof(D2D1::Matrix3x2F));
@@ -260,6 +259,7 @@ BTK_NS_BEGIN
 
 using Win32::DWrite;
 using Win32::Wincodec;
+using Win32::Direct2D;
 
 class BrushImpl : public Refable <BrushImpl> , public Trackable {
     public:
@@ -292,7 +292,8 @@ class BrushImpl : public Refable <BrushImpl> , public Trackable {
             GLColor, 
             PixBuffer, 
             LinearGradient,
-            RadialGradient
+            RadialGradient,
+            ComPtr<ID2D1Bitmap>  //< For textures
         >                 data = GLColor(0.0f, 0.0f, 0.0f, 1.0f);
         // For contain [Solid, Bitmap, LinearGradient, RadialGradient]
 };
@@ -569,7 +570,7 @@ inline PainterImpl::PainterImpl(HWND hwnd) {
     ComPtr<IDXGIDevice> dxgi_device;
     ComPtr<ID2D1Factory1> factory1;
     hr = d3d_device.As(&dxgi_device);
-    hr = d2d_factory->QueryInterface(IID_PPV_ARGS(&factory1));
+    hr = Direct2D::GetInstance()->QueryInterface(IID_PPV_ARGS(&factory1));
     
     if (FAILED(hr)) {
 
@@ -602,7 +603,7 @@ inline PainterImpl::PainterImpl(HWND hwnd) {
     context->SetTarget(bitmap.Get());
 #else
     // Create a render target (legacy)
-    hr = d2d_factory->CreateHwndRenderTarget(
+    hr = Direct2D::GetInstance()->CreateHwndRenderTarget(
         D2D1::RenderTargetProperties(),
         D2D1::HwndRenderTargetProperties(hwnd),
         reinterpret_cast<ID2D1HwndRenderTarget**>(target.GetAddressOf())
@@ -625,7 +626,7 @@ inline PainterImpl::PainterImpl(HDC hdc) {
 
     // Create DC Target
     auto props = D2D1::RenderTargetProperties();
-    hr = d2d_factory->CreateDCRenderTarget(
+    hr = Direct2D::GetInstance()->CreateDCRenderTarget(
         &props,
         reinterpret_cast<ID2D1DCRenderTarget**>(target.GetAddressOf())
     );
@@ -657,7 +658,7 @@ inline PainterImpl::PainterImpl(PixBuffer &bf) {
     );
     do_hr(hr);
 
-    hr = d2d_factory->CreateWicBitmapRenderTarget(
+    hr = Direct2D::GetInstance()->CreateWicBitmapRenderTarget(
         bitmap.Get(),
         D2D1::RenderTargetProperties(),
         reinterpret_cast<ID2D1RenderTarget**>(target.GetAddressOf())
@@ -685,39 +686,12 @@ inline void PainterImpl::Init() {
     // Forward to 
     DWrite::Init();
     Wincodec::Init();
-    // Check if already initialized
-    if (d2d_factory) {
-        // Add refcount
-        d2d_factory->AddRef();
-        return;
-    }
-    // Make d2d factory
-    D2D1_FACTORY_OPTIONS options;
-
-#if defined(_MSC_VER) && !defined(NDEBUG)
-    options.debugLevel = D2D1_DEBUG_LEVEL_INFORMATION;
-#else
-    options.debugLevel = D2D1_DEBUG_LEVEL_NONE;
-#endif
-
-
-    HRESULT hr = D2D1CreateFactory(
-        D2D1_FACTORY_TYPE_MULTI_THREADED, // Multi-threaded factory, safer :)
-        options,
-        &d2d_factory
-    );
-
-    if (FAILED(hr)) {
-        abort();
-    }
+    Direct2D::Init();
 }
 inline void PainterImpl::Shutdown() {
     DWrite::Shutdown();
     Wincodec::Shutdown();
-
-    if (d2d_factory->Release() == 0) {
-        d2d_factory = nullptr;
-    }
+    Direct2D::Shutdown();
 }
 // Internal helpers
 inline void PainterImpl::do_hr(HRESULT hr) {
@@ -909,7 +883,7 @@ inline auto PainterImpl::get_brush_impl(const D2D1_RECT_F &r) -> ID2D1Brush* {
             ));
             return brushs.solid.Get();
         }
-        case BrushType::Texture : {
+        case BrushType::Bitmap : {
             // Bitmap, use bitmap brush
             auto buffer = std::get_if<PixBuffer>(&brush->data);
             auto iter = brush->brushes.find(this);
@@ -1601,7 +1575,7 @@ inline void BrushImpl::set_color(const GLColor &c) {
 inline void BrushImpl::set_image(const PixBuffer &img) {
     reset_cache();
     data = img;
-    btype = BrushType::Texture;
+    btype = BrushType::Bitmap;
 }
 inline void BrushImpl::set_gradient(const LinearGradient & g) {
     reset_cache();
@@ -1697,7 +1671,7 @@ inline auto PenImpl::lazy_eval() -> ID2D1StrokeStyle *{
             case DashStyle::DashDotDot  : d2d_style = D2D1_DASH_STYLE_DASH_DOT_DOT; break;
         }
 
-        HRESULT hr = d2d_factory->CreateStrokeStyle(
+        HRESULT hr = Direct2D::GetInstance()->CreateStrokeStyle(
             D2D1::StrokeStyleProperties(
                 d2d_cap,
                 d2d_cap,
@@ -2438,7 +2412,7 @@ void PainterPath::open() {
 
         // Call factory to create it
         HRESULT hr;
-        hr = d2d_factory->CreatePathGeometry(&priv->path);
+        hr = Direct2D::GetInstance()->CreatePathGeometry(&priv->path);
         if (FAILED(hr)) {
             D2D_WARN("CreatePathGeometry failed %d", hr);
             BTK_THROW(std::runtime_error("CreatePathGeometry failed"));
@@ -2448,7 +2422,7 @@ void PainterPath::open() {
     HRESULT hr;
     if (priv->is_double_open) {
         // Double open, combine mode
-        hr = d2d_factory->CreatePathGeometry(&priv->helper);
+        hr = Direct2D::GetInstance()->CreatePathGeometry(&priv->helper);
         hr = priv->helper->Open(&priv->sink);
     }
     else {
@@ -2477,7 +2451,7 @@ void PainterPath::close() {
         // Conbime
         ComPtr<ID2D1PathGeometry> dst;
         ComPtr<ID2D1GeometrySink> sink;
-        hr = d2d_factory->CreatePathGeometry(&dst);
+        hr = Direct2D::GetInstance()->CreatePathGeometry(&dst);
 
         hr = dst->Open(&sink);
         hr = priv->path->CombineWithGeometry(priv->helper.Get(), D2D1_COMBINE_MODE_UNION, nullptr, sink.Get());
@@ -2579,6 +2553,16 @@ void  PainterPath::set_transform(const FMatrix &mat) {
         priv->mat = btkmat_to_d2d(mat);
     }
 }
+void  PainterPath::set_winding(PathWinding winding) {
+    if (priv) {
+        D2D1_FILL_MODE mode;
+        switch (winding) {
+            case PathWinding::CW  : mode = D2D1_FILL_MODE_ALTERNATE; break;
+            case PathWinding::CCW : mode = D2D1_FILL_MODE_WINDING;   break;
+        }
+        priv->sink->SetFillMode(mode);
+    }
+}
 
 PainterPath &PainterPath::operator =(PainterPath &&p) {
     delete priv;
@@ -2631,7 +2615,7 @@ namespace Win32 {
         return Wincodec::GetInstance();
     }
     void *D2dFactory() {
-        return d2d_factory;
+        return Direct2D::GetInstance();
     }
     void *DWriteFactory() {
         return DWrite::GetInstance();

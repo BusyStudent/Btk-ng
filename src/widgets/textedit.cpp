@@ -1,6 +1,3 @@
-#include "Btk/detail/macro.hpp"
-#include "Btk/painter.hpp"
-#include "Btk/rect.hpp"
 #include "build.hpp"
 
 #include <Btk/widgets/textedit.hpp>

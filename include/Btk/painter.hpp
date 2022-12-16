@@ -20,10 +20,11 @@ class PenImpl        ;
 
 // Enum for brush type
 enum class BrushType      : uint8_t {
-    Solid,
-    LinearGradient,
-    RadialGradient,
-    Texture,
+    Solid,          //< Just a color
+    LinearGradient, //< a LinearGradient
+    RadialGradient, //< a RadialGradient
+    Texture,        //< a gpu texture based on painter
+    Bitmap,         //< Just a pixel buffer
 };
 enum class CoordinateMode : uint8_t {
     Absolute, // Absolute coordinates
@@ -513,6 +514,8 @@ class PainterPathSink {
         virtual void arc_to(float x1, float y1, float x2, float y2, float radius) = 0;
 
         virtual void close_path() = 0;
+
+        virtual void set_winding(PathWinding winding) = 0;
 };
 
 /**
@@ -547,7 +550,7 @@ class BTKAPI PainterPath : public PainterPathSink {
         void add_line(float x1, float y1, float x2, float y2);
 
         void close_path() override;
-        
+
         void clear();
 
         // Query
@@ -557,6 +560,9 @@ class BTKAPI PainterPath : public PainterPathSink {
 
         // Transform
         void  set_transform(const FMatrix &mat);
+
+        // Winding
+        void  set_winding(PathWinding winding) override;
 
         PainterPath &operator =(PainterPath &&);
     private:

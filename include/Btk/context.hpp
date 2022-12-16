@@ -124,6 +124,7 @@ class FbContext : public GraphicsContext {
     public:
         virtual pointer_t get_pixels_address() = 0;
         virtual PixFormat get_pixels_format() = 0;
+        virtual int       get_pixels_pitch() = 0;
         virtual Size      get_size() = 0;
 };
 
