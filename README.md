@@ -1,8 +1,10 @@
 # Btk
 
-Fast, lightweight and easy to use UIToolkit for building user interfaces.  
+Fast, lightweight and easy to use UIToolkit for building user interfaces. 
 
-It still at early developing.  
+Written in C++17
+
+Its goal is less dependency and mini
 
 ## Example
 
@@ -17,20 +19,20 @@ using namespace BTK_NAMESPACE; //< The namespace is configurable, default in Btk
 class App : public Widget {
     public:
         App() {
-            btn.signal_clicked().connect([this, n = 0]() mutable {
-                n += 1;
-                if (n == 5) {
-                    this->close();
-                }
-            });
+            set_window_title("My Window");
 
-            // Or add widget like this
-            auto label = new Label("HelloWorld");
-            add_child(label);
+            btn.set_text("Hello,click to close the window");
+            btn.signal_clicked().connect(&App::on_button_clicked, this);
+            // Also it can connect to lambda function or a callable
+        }
+        void on_button_clicked() {
+            close();
         }
     private:
         // Add some widget on the root
         Button btn{this};
+        // Or new like this
+        // new Button(this);
 };
 
 int main() {
@@ -44,7 +46,8 @@ int main() {
 
     App app;
     app.show();
-    ctxt.run();
+
+    return ctxt.run();
 }
 
 
@@ -55,8 +58,12 @@ int main() {
 - Utf8 support
 - Cross platform
 - Template based signal system
+- HI-DPI Support
+- No external dependencies on windows
 
 ## Add this packages
+
+In XMake  
 
 ``` lua
 add_repositories("btk-project https://github.com/Btk-Project/xmake-repo")
@@ -99,8 +106,6 @@ add_packages("btk")
 
 ## Existing bugs
 
-
-
 ## Todo List
 
 - [ ] Compelete PainterEffect, refactorying it
@@ -109,8 +114,12 @@ add_packages("btk")
 
 ## Install
 
-- Linux 
+- Linux
 
 ```sh
 $ apt install libcairo2-dev libpango1.0-dev libsdl2-dev
 ```
+
+## LICENSE  
+
+MIT License
