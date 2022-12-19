@@ -37,7 +37,8 @@ using namespace BTK_NAMESPACE;
 
 // Event
 
-#define SDL_TIMER_EVENT (SDL_LASTEVENT - 10086)
+#define SDL_TIMER_EVENT   (SDL_LASTEVENT - 10086)
+#define SDL_REPAINT_EVENT (SDL_LASTEVENT - 10087)
 
 // Type checker
 
@@ -110,6 +111,7 @@ class SDLWindow : public AbstractWindow {
 
         // Internal
         void       load_dpi(Uint32 display);
+        void       do_repaint();
     private:
         float       vdpi = 96.0f;
         float       hdpi = 96.0f;
@@ -121,6 +123,10 @@ class SDLWindow : public AbstractWindow {
         Widget     *widget = nullptr;
         WindowFlags flags  = {};
         SDL_SysWMinfo info;
+
+        // For merge paint events
+        Uint32      last_repaint_ticks = 0; //< Last time request repaint ticks
+        Uint32      last_paint_time = 0;    //< Last time the paint was doned
     friend class SDLDispatcher;
     friend class SDLDriver;
 };
@@ -443,7 +449,7 @@ void SDLDispatcher::dispatch_sdl_window(SDL_Event *event) {
             }
             break;
         }
-#if     SDL_VERSION_ATLEAST(2, 0, 11)
+#if     SDL_VERSION_ATLEAST(2, 0, 15)
         case SDL_WINDOWEVENT_DISPLAY_CHANGED : {
             // We should reload dpi on display changed
             // May bug here?
@@ -496,6 +502,15 @@ int SDLDispatcher::run() {
                     tevent.set_timestamp(timestamp);
 
                     dispatch(&tevent);
+                }
+                continue;
+            }
+            if (event.type == SDL_REPAINT_EVENT) {
+                auto winid = event.user.windowID;
+                auto timestamp = reinterpret_cast<timestamp_t>(event.user.data1);
+                auto iter = driver->windows.find(winid);
+                if (iter!= driver->windows.end()) {
+                    iter->second->do_repaint();
                 }
                 continue;
             }
@@ -747,10 +762,16 @@ void SDLWindow::repaint() {
     SDL_Event event;
     SDL_zero(event);
 
-    event.window.event = SDL_WINDOWEVENT_EXPOSED;
-    event.window.timestamp = SDL_GetTicks();
-    event.window.type = SDL_WINDOWEVENT;
-    event.window.windowID = SDL_GetWindowID(win);
+    // event.window.event = SDL_WINDOWEVENT_EXPOSED;
+    // event.window.timestamp = SDL_GetTicks();
+    // event.window.type = SDL_WINDOWEVENT;
+    // event.window.windowID = SDL_GetWindowID(win);
+    if (last_repaint_ticks != 0) {
+        // Merge
+    }
+
+    event.type = SDL_REPAINT_EVENT;
+    event.user.windowID = SDL_GetWindowID(win);
 
     SDL_PushEvent(&event);
 #endif
@@ -996,6 +1017,15 @@ void   SDLWindow::load_dpi(Uint32 idx) {
         dpi_scaling = false;
     }
 #endif
+}
+void   SDLWindow::do_repaint() {
+    PaintEvent event;
+    event.set_widget(widget);
+    event.set_timestamp(GetTicks());
+
+    widget->handle(event);
+    
+    last_paint_time = SDL_GetTicks();
 }
 
 uint32_t SDLWindow::id() const {

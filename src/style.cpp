@@ -62,23 +62,39 @@ auto Palette::set_color(Group group, Role role, const GLColor &cl) -> void {
 }
 
 void PaletteBreeze(Palette *palette) {
-    // palette->set_color(Palette::Inactive, );
-    palette->set_color(Palette::Inactive, Palette::Window, Color(239, 240, 241));
-    palette->set_color(Palette::Inactive, Palette::Button, Color(252, 252, 252));
-    palette->set_color(Palette::Inactive, Palette::Input, Color(252, 252, 252));
-    palette->set_color(Palette::Inactive, Palette::Border, Color(188, 190, 191));
-    palette->set_color(Palette::Inactive, Palette::Hightlight, Color(61 , 174, 233));
+    // Make brush for button actived / inactived
+    LinearGradient gradient;
+    gradient.set_start_point(0.5f, 0.0f);
+    gradient.set_end_point(0.5f  , 1.0f);
+    gradient.add_stop(0.0f, Color(241, 242, 243));
+    gradient.add_stop(1.0f, Color(232, 233, 234));
+    palette->set_brush(Palette::Button, gradient); //< Set for all groups
+    palette->set_brush(Palette::ButtonHovered, gradient);
+    // Make for pressed
+    gradient.clear();
+    gradient.add_stop(0.0f, Color(150, 210, 238));
+    gradient.add_stop(1.0f, Color(134, 188, 212));
+    palette->set_brush(Palette::ButtonPressed, gradient);
+    palette->set_brush(Palette::Active, Palette::ButtonHovered, gradient); //< As same as active
+    // Make for nohovered active button
+    palette->set_brush(Palette::Active, Palette::Button, Color(61 , 174, 233)); 
+    
+    // Color(252, 252, 252);
+
+    palette->set_color(Palette::Window, Color(239, 240, 241));
+    palette->set_color(Palette::Input, Color(252, 252, 252));
+    palette->set_color(Palette::Border, Color(179, 181, 182));
+    palette->set_color(Palette::Hightlight, Color(61 , 174, 233));
 
 
     // Text
-    palette->set_color(Palette::Inactive, Palette::Text, Color::Black);
-    palette->set_color(Palette::Inactive, Palette::PlaceholderText, Color::Gray);
-    palette->set_color(Palette::Inactive, Palette::HightlightedText, Color::White);
+    palette->set_color(Palette::Text, Color::Black);
+    palette->set_color(Palette::PlaceholderText, Color::Gray);
+    palette->set_color(Palette::HightlightedText, Color::White);
 
-    palette->copy_group(*palette, Palette::Active, Palette::Inactive);
-    palette->copy_group(*palette, Palette::Disable, Palette::Inactive);
-
-    palette->set_color(Palette::Active, Palette::Border, Color(61 , 174, 233));
+    // palette->set_color(Palette::Active, Palette::Border, Color(61 , 174, 233));
+    // Active group
+    palette->set_brush(Palette::Active, Palette::Border, Color(166, 216, 243));
 }
 
 // Style
@@ -129,7 +145,11 @@ void StyleBreeze(Style *style) {
 
     style->font = Font(nameu8, std::abs(lf.lfHeight));
 #else
-    style->font = Font("", 12);
+    const char *sysfont = ::getenv("BTK_SYSFONT");
+    if (!sysfont) {
+        sysfont = "Noto Sans Regular";
+    }
+    style->font = Font(sysfont, 12);
 #endif
     
     // Icon
@@ -148,6 +168,8 @@ void StyleBreeze(Style *style) {
     LinearGradient linear;
     linear.add_stop(0, Color::Gray);
     linear.add_stop(1, Color::Transparent);
+    linear.set_start_point(0.5f, 0.0f);
+    linear.set_end_point(0.5f, 1.0f);
 
     style->shadow = linear;
 

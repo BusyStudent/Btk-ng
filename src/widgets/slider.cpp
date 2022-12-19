@@ -49,7 +49,7 @@ bool Slider::paint_event(PaintEvent &) {
     auto s       = style();
     auto &p = painter();
 
-    p.set_antialias(true);
+    p.set_antialias(window_dpi().x > 96.0f);
 
     // Fill the content rect
     p.set_color(s->background);

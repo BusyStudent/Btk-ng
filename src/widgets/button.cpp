@@ -10,6 +10,7 @@ BTK_NS_BEGIN
 Button::Button(Widget *parent, u8string_view txt) : AbstractButton(parent) {
     auto style = this->style();
     resize(style->button_width, style->button_height);
+    set_focus_policy(FocusPolicy::Mouse);
 
     if (!txt.empty()) {
         set_text(txt);
@@ -29,13 +30,20 @@ bool Button::paint_event(PaintEvent &event) {
     // Begin draw
     auto border = rect.apply_margin(2.0f);
 
-    // Disable antialiasing
-    gc.set_antialias(true);
+    // In low dpi screens, we didnot need to antialiasing the rectangle
+    gc.set_antialias(window_dpi().x > 96.0f);
+    gc.push_transform();
 
     // Background
     if (_pressed) {
         // c = style->highlight;
-        gc.set_brush(palette().hightlight());
+        // Make a little translate
+        gc.translate(0.5, 0);
+        gc.set_brush(palette().button_pressed());
+    }
+    else if (under_mouse()) {
+        // Hover
+        gc.set_brush(palette().button_hovered());
     }
     else{
         // c = style->background;
@@ -44,7 +52,7 @@ bool Button::paint_event(PaintEvent &event) {
     // gc.set_color(c.r, c.g, c.b, c.a);
     gc.fill_rect(border);
 
-    if (under_mouse() && !_pressed) {
+    if (under_mouse()) {
         // c = style->highlight;
         gc.set_brush(palette().hightlight());
     }
@@ -54,7 +62,7 @@ bool Button::paint_event(PaintEvent &event) {
     }
 
     // Border
-    if (!(_flat && !_pressed && !under_mouse())) {
+    if (!_flat) {
         // We didnot draw border on _flat mode
         // gc.set_color(c.r, c.g, c.b, c.a);
         gc.draw_rect(border);
@@ -62,13 +70,14 @@ bool Button::paint_event(PaintEvent &event) {
 
     // Text
     if (!_text.empty()) {
-        if (_pressed) {
+        if (_pressed || !has_focus() || under_mouse()) {
+            // Normal text color on nofocus or under pressed
             // c = style->highlight_text;
-            gc.set_brush(palette().hightlighted_text());
+            gc.set_brush(palette().text());
         }
         else{
             // c = style->text;
-            gc.set_brush(palette().text());
+            gc.set_brush(palette().hightlighted_text());
         }
         gc.set_text_align(Alignment::Center | Alignment::Middle);
         gc.set_font(font());
@@ -85,6 +94,7 @@ bool Button::paint_event(PaintEvent &event) {
 
     // Recover antialiasing
     gc.set_antialias(true);
+    gc.pop_transform();
     
     return true;
 }
@@ -115,6 +125,18 @@ bool Button::mouse_leave(MotionEvent &event) {
     repaint();
     return true;
 }
+bool Button::focus_gained(FocusEvent &event) {
+    BTK_LOG("Button::focus_gained\n");
+    set_palette_current_group(Palette::Active);
+    repaint();
+    return true;
+}
+bool Button::focus_lost(FocusEvent &event) {
+    BTK_LOG("Button::focus_lost\n");
+    set_palette_current_group(Palette::Inactive);
+    repaint();
+    return true;
+}
 
 Size Button::size_hint() const {
     auto style = this->style();
@@ -129,6 +151,7 @@ Size Button::size_hint() const {
     return Size(style->button_width, style->button_height);
 }
 
+// RadioButton
 RadioButton::RadioButton(Widget *p) : AbstractButton(p) {
     resize(size_hint());
 }

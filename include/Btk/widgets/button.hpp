@@ -84,6 +84,8 @@ class BTKAPI Button      : public AbstractButton {
         bool mouse_release(MouseEvent &event) override;
         bool mouse_enter(MotionEvent &event) override;
         bool mouse_leave(MotionEvent &event) override;
+        bool focus_gained(FocusEvent &event) override;
+        bool focus_lost(FocusEvent &event) override;
 
         Size size_hint() const override;
     private:

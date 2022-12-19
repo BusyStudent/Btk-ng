@@ -99,8 +99,5 @@ int main() {
     Player p;
     p.show();
 
-    Button btn;
-    btn.show();
-
     return ctxt.run();
 }

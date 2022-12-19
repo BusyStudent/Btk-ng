@@ -838,6 +838,7 @@ auto Painter::create_texture(const PixBuffer &buf) -> Texture {
 
 
 void Painter::begin() {
+    // Begin frame, set scaling & current frame buffer object
     if (priv->window) {
         auto [win_w, win_h] = priv->window->size();
         auto [fb_w, fb_h] = priv->get_framebuffer_size(priv);
@@ -848,6 +849,8 @@ void Painter::begin() {
             double(fb_w) / win_w,
             double(fb_h) / win_h
         );
+
+        priv->set_surface_size(priv, fb_w, fb_h);
     }
     cairo_push_group(priv->cr);
 }
@@ -1828,6 +1831,9 @@ void PainterPath::bezier_to(float x1, float y1, float x2, float y2, float x3, fl
 }
 void PainterPath::close_path() {
     cairo_close_path(priv->cr);
+}
+void PainterPath::set_winding(PathWinding winding) {
+    BTK_UNUSED(winding);
 }
 FRect PainterPath::bounding_box() const {
     double x1, y1, x2, y2;

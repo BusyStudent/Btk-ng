@@ -248,7 +248,8 @@ bool ProgressBar::paint_event(PaintEvent &) {
 
     auto border = rect.apply_margin(2.0f);
 
-    gc.set_antialias(true);
+    // In low dpi screens, we didnot need to antialiasing the rectangle
+    gc.set_antialias(window_dpi().x > 96.0f);
 
     // Background
     gc.set_color(style->background);

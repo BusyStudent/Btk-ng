@@ -17,7 +17,7 @@ FileDialog::~FileDialog() {
 }
 int FileDialog::run() {
     assert(native);
-    native->initialize(!uint32_t(opt & Open));
+    native->initialize((opt & Open) != Open);
     return native->run();
 }
 StringList FileDialog::result() const {

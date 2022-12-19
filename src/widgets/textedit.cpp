@@ -283,8 +283,9 @@ bool TextEdit::paint_event(PaintEvent &) {
     auto style = this->style();
 
     auto border = rect().cast<float>().apply_margin(2.0f);
-
-    p.set_antialias(true);
+    
+    // In low dpi screens, we didnot need to antialiasing the rectangle
+    p.set_antialias(window_dpi().x > 96.0f);
     // Border and background
     p.set_color(style->background);
     p.fill_rect(border);

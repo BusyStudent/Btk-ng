@@ -23,6 +23,8 @@ class BTKAPI Palette {
         enum Role  : uint8_t {
             Window, //< Background color
             Button, //< Button background color
+            ButtonHovered, //< Button hovered background
+            ButtonPressed, //< Button pressed background
             Input,  //< TextInput / Edit background color
             Border, //< All border color
             Hightlight,
@@ -38,6 +40,8 @@ class BTKAPI Palette {
         auto copy_group(const Palette &p, Group dst, Group src) -> void;
         auto set_brush(Group gp, Role r, const Brush &brhs) -> void;
         auto set_color(Group gp, Role r, const GLColor &cl) -> void;
+        auto set_brush(Role r, const Brush &clhs)           -> void;
+        auto set_color(Role r, const GLColor &cl)           -> void;
         auto brush_at(Group gp, Role r) const -> const Brush &;
         auto color_at(Group gp, Role r) const -> GLColor;
         auto empty()                    const -> bool;
@@ -56,6 +60,12 @@ class BTKAPI Palette {
         }
         auto button() const -> const Brush & {
             return brush_at(group, Button);
+        }
+        auto button_hovered() const -> const Brush & {
+            return brush_at(group, ButtonHovered);
+        }
+        auto button_pressed() const -> const Brush & {
+            return brush_at(group, ButtonPressed);
         }
         auto input() const -> const Brush & {
             return brush_at(group, Input);
@@ -99,12 +109,12 @@ class Style {
         Color highlight_text;
 
         // Button
-        Color button_boarder;
-        Color button_background;
-        Color button_hovered_border;
-        Color button_hovered_background;
-        Color button_pressed_border;
-        Color button_pressed_background;
+        // Color button_boarder;
+        // Color button_background;
+        // Color button_hovered_border;
+        // Color button_hovered_background;
+        // Color button_pressed_border;
+        // Color button_pressed_background;
 
         int   button_width; //< Default button width
         int   button_height; //< Default button height
@@ -146,6 +156,18 @@ class Style {
         float shadow_offset_y;
         float shadow_radius;
 };
+
+inline auto Palette::set_brush(Role role, const Brush &brush) -> void {
+    set_brush(Inactive, role, brush);
+    set_brush(Active, role, brush);
+    set_brush(Disable, role, brush);
+}
+inline auto Palette::set_color(Role role, const GLColor &color) -> void {
+    set_color(Inactive, role, color);
+    set_color(Active, role, color);
+    set_color(Disable, role, color);
+}
+
 
 BTKAPI void StyleBreeze(Style *style);
 BTKAPI void PaletteBreeze(Palette *palette);

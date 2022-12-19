@@ -419,16 +419,16 @@ bool MediaPlayerImpl::video_proc() {
         video_mtx.lock();
 
         // av_hwframe_transfer_data(video_frame.get(), ;
-        // ret = sws_scale(
-        //     video_cvt.get(),
-        //     video_frame->data,
-        //     video_frame->linesize,
-        //     0,
-        //     video_ctxt->height,
-        //     video_frame2->data,
-        //     video_frame2->linesize
-        // );
-        ret = sws_scale_frame(video_cvt.get(), video_frame2.get(), video_frame.get());
+        ret = sws_scale(
+            video_cvt.get(),
+            video_frame->data,
+            video_frame->linesize,
+            0,
+            video_ctxt->height,
+            video_frame2->data,
+            video_frame2->linesize
+        );
+        // ret = sws_scale_frame(video_cvt.get(), video_frame2.get(), video_frame.get());
         video_mtx.unlock();
 
         // Push to surface
@@ -503,7 +503,7 @@ void MediaPlayerImpl::clock_update() {
     position = new_position;
 }
 void MediaPlayerImpl::audio_send() {
-    if (!audio_ctxt) {
+    if (!audio_ctxt || audio_stream < 0) {
         return;
     }
 
@@ -514,6 +514,9 @@ void MediaPlayerImpl::audio_send() {
     }
 }
 bool MediaPlayerImpl::audio_proc() {
+    if (!audio_ctxt || audio_stream < 0) {
+        return false;
+    }
     int ret = avcodec_receive_frame(audio_ctxt.get(), audio_frame.get());
     if (ret == AVERROR_EOF || ret == AVERROR(EAGAIN)) {
         // We need more packet
@@ -593,7 +596,7 @@ void MediaPlayerImpl::play() {
         0
     );
     if (audio_stream < 0) {
-        video_stream = -1;
+        audio_stream = -1;
     }
 
     if (video_stream < 0 && audio_stream < 0) {

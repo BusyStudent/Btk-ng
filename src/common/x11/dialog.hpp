@@ -69,9 +69,12 @@ X11FileDialog::~X11FileDialog() {
 }
 int X11FileDialog::run() {
     assert(native_client != nullptr);
+
+    FILE *fp = nullptr;
+    pid_t pid;
+
     if (strcmp(native_client, "zenity") == 0) {
         StringRefList args = {"zenity","--file-selection"};
-        pid_t pid;
 
         if (allow_multi) {
             args.push_back("--multiple");
@@ -82,39 +85,61 @@ int X11FileDialog::run() {
         args.push_back("--title");
         args.push_back(title);
 
-        FILE *fp = Popen(args, &pid);
+        fp = Popen(args, &pid);
         if (!fp) {
             return EXIT_FAILURE;
         }
-
-        // Wait the exit
-        // FIXME :  Block here
-        int stat;
-        waitpid(pid, &stat, WNOHANG);
-
-        u8string in;
-        while (!feof(fp)) {
-            auto ch = fgetc(fp);
-            if (ch == EOF || ch == '\n') {
-                break;
-            }
-            in.push_back(char(ch));
-        }
-        fclose(fp);
-
-        BTK_LOG("[X11Dialog] Process stat code %d\n", stat);
-        BTK_LOG("[X11Dialog] Get Result String %s\n", in.c_str());
-
-        if (allow_multi) {
-            res = in.split(" ");
+    }
+    else if (strcmp(native_client, "kdialog") == 0) {
+        // KDialog
+        StringRefList args = {"kdialog"};
+        if (is_save) {
+            args.push_back("--getsavefilename");
         }
         else {
-            res.clear();
-            res.push_back(in);
+            args.push_back("--getopenfilename");
+            if (allow_multi) {
+                args.push_back("--multiple");
+            }
         }
-        return stat;
+        args.push_back("--title");
+        args.push_back(title);
+
+        fp = Popen(args, &pid);
+        if (!fp) {
+            return EXIT_FAILURE;
+        }
     }
-    return EXIT_FAILURE;
+    else {
+        return EXIT_FAILURE;
+    }
+
+    // Wait the exit
+    // FIXME :  Block here
+    int stat;
+    waitpid(pid, &stat, WNOHANG);
+
+    u8string in;
+    while (!feof(fp)) {
+        auto ch = fgetc(fp);
+        if (ch == EOF || ch == '\n') {
+            break;
+        }
+        in.push_back(char(ch));
+    }
+    fclose(fp);
+
+    BTK_LOG("[X11Dialog] Process stat code %d\n", stat);
+    BTK_LOG("[X11Dialog] Get Result String %s\n", in.c_str());
+
+    if (allow_multi) {
+        res = in.split(" ");
+    }
+    else {
+        res.clear();
+        res.push_back(in);
+    }
+    return stat;
 }
 bool X11FileDialog::initialize(bool save) {
     is_save = save;
@@ -142,14 +167,20 @@ FILE* X11FileDialog::Popen(const StringRefList &arr, pid_t *_pi) {
     args = static_cast<char**>(alloca((arr.size() + 1) * sizeof(char*)));
 
     // Copy args
+    BTK_LOG("[X11Dialog] Popen(");
+
     size_t i;
     for(i = 0;i < arr.size(); i++) {
         auto &data = arr[i];
         args[i] = static_cast<char*>(alloca(data.size() + 1));
         memcpy(args[i], data.data(), data.size());
         args[i][data.size()] = '\0';
+
+        BTK_LOG("%s ", args[i]);
     }
     args[arr.size()] = nullptr;
+
+    BTK_LOG(")\n");
 
 
     int fds[2];

@@ -110,6 +110,9 @@ class Gradient {
         void add_stop(float offset, const GLColor &color) {
             _stops.push_back(ColorStop{offset, color});
         }
+        void clear() {
+            _stops.clear();
+        }
 
         auto stops() const -> const std::vector<ColorStop> & {
             return _stops;
@@ -247,6 +250,7 @@ class BTKAPI Brush {
         Brush();
         Brush(Brush &&);
         Brush(const Brush     &brush);
+        Brush(const Color     &color);
         Brush(const GLColor   &color);
         Brush(const PixBuffer &pixbuf);
         Brush(const LinearGradient &gradient);
@@ -816,6 +820,9 @@ inline void Painter::push_scissor(const FRect &r) {
 }
 
 // Brush implementation
+inline Brush::Brush(const Color   &c) : Brush() {
+    set_color(c);
+}
 inline Brush::Brush(const GLColor &c) : Brush() {
     set_color(c);
 }

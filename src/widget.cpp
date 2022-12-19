@@ -534,6 +534,9 @@ bool Widget::is_window() const {
 bool Widget::is_root() const {
     return _parent == nullptr;
 }
+bool Widget::has_focus() const {
+    return _focused;
+}
 Widget *Widget::parent() const {
     return _parent;
 }
@@ -545,6 +548,11 @@ auto   Widget::font() const -> const Font & {
 }
 auto   Widget::palette() const -> const Palette & {
     return _palette;
+}
+
+// Palette
+auto    Widget::set_palette_current_group(Palette::Group gp) -> void {
+    _palette.set_current_group(gp);
 }
 
 // Size Hint

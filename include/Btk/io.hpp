@@ -114,13 +114,24 @@ inline bool FileStream::seekable() {
     return ret == 0;
 }
 inline int64_t FileStream::tell() {
+    // Hacky implementation
+#if defined(_MSC_VER) || defined(__GLIBC__)
     fpos_t ps;
     int ret = ::fgetpos(fp, &ps);
     if (ret == 0) {
+#if defined(__GLIBC__)
+        return ps.__pos;
+#else
         return ps;
+#endif
     }
     errcode = errno;
     return -1;
+#else
+    auto ret = ::ftell(fp);
+    errcode = errno;
+    return ret;
+#endif
 }
 inline int64_t FileStream::write(const void *buf, size_t size) {
     auto ret = ::fwrite(buf, 1, size, fp);

@@ -249,6 +249,13 @@ class BTKAPI Widget : public Object {
          */
         bool    is_root() const;
         /**
+         * @brief Check current widget has focus now
+         * 
+         * @return true 
+         * @return false 
+         */
+        bool    has_focus() const;
+        /**
          * @brief Get font of the widget
          * 
          * @return const Font& 
@@ -260,6 +267,12 @@ class BTKAPI Widget : public Object {
          * @return const Palette& 
          */
         auto    palette() const -> const Palette &;
+        /**
+         * @brief Set the palette current group object
+         * 
+         * @param group the group object
+         */
+        auto    set_palette_current_group(Palette::Group) -> void;
         /**
          * @brief Get width of the widget
          * 
