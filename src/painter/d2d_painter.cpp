@@ -434,6 +434,7 @@ class PainterImpl {
         
         // Texture
         auto create_texture(PixFormat fmt, int w, int h) -> TextureImpl *;
+        auto create_texture(TextureSource src, void *da) -> TextureImpl *;
 
         // Target 
         bool set_target(TextureImpl *tex);
@@ -1519,6 +1520,12 @@ inline auto PainterImpl::create_texture(PixFormat fmt, int w, int h) -> TextureI
 
     return tex;
 }
+// inline auto PainterImpl::create_texture(TextureSource src, void *data) -> TextureImpl *{
+//     target->CreateSharedBitmap(
+
+//     );
+// }
+
 // Notify
 inline void PainterImpl::notify_resize(int w, int h) {
     // Emm, In HIDPI Direct2D seem need framebuffer size, not logical size
@@ -2304,95 +2311,95 @@ GLColor   Brush::color() const {
 
 // PainterEffect
 
-PainterEffect::PainterEffect() {
-    priv = nullptr;
-}
-PainterEffect::PainterEffect(PainterEffect &&e) {
-    priv = e.priv;
-    e.priv = nullptr;
-}
-PainterEffect::PainterEffect(EffectType t) {
-    priv = new PainterEffectImpl;
-    switch (t) {
-        case EffectType::Blur : priv->id = &CLSID_D2D1GaussianBlur; break; 
-    }
-}
-PainterEffect::~PainterEffect() {
-    delete priv;
-}
+// PainterEffect::PainterEffect() {
+//     priv = nullptr;
+// }
+// PainterEffect::PainterEffect(PainterEffect &&e) {
+//     priv = e.priv;
+//     e.priv = nullptr;
+// }
+// PainterEffect::PainterEffect(EffectType t) {
+//     priv = new PainterEffectImpl;
+//     switch (t) {
+//         case EffectType::Blur : priv->id = &CLSID_D2D1GaussianBlur; break; 
+//     }
+// }
+// PainterEffect::~PainterEffect() {
+//     delete priv;
+// }
 
-bool PainterEffect::attach(const Painter &p) {
-    if (priv) {
-        if (p.priv->context) {
-            if (priv->context == p.priv->context) {
-                return true;
-            }
-            priv->context = p.priv->context;
-            return priv->context->CreateEffect(
-                *priv->id,
-                &priv->effect
-            ) == S_OK;
-        }
-        // Not d3d backend, unsupported
-        return false;
-    }
-    return false;
-}
-bool PainterEffect::set_input(const Texture &tex) {
-    if (priv && !tex.empty()) {
-        priv->effect->SetInput(0, tex.priv->bitmap.Get());
-        return true;
-    }
-    return false;
-}
-bool PainterEffect::set_value(EffectParam param, ...) {
-    va_list varg;
-    va_start(varg, param);
+// bool PainterEffect::attach(const Painter &p) {
+//     if (priv) {
+//         if (p.priv->context) {
+//             if (priv->context == p.priv->context) {
+//                 return true;
+//             }
+//             priv->context = p.priv->context;
+//             return priv->context->CreateEffect(
+//                 *priv->id,
+//                 &priv->effect
+//             ) == S_OK;
+//         }
+//         // Not d3d backend, unsupported
+//         return false;
+//     }
+//     return false;
+// }
+// bool PainterEffect::set_input(const Texture &tex) {
+//     if (priv && !tex.empty()) {
+//         priv->effect->SetInput(0, tex.priv->bitmap.Get());
+//         return true;
+//     }
+//     return false;
+// }
+// bool PainterEffect::set_value(EffectParam param, ...) {
+//     va_list varg;
+//     va_start(varg, param);
 
-    bool ret = true;
+//     bool ret = true;
 
-    switch (param) {
-        case EffectParam::BlurStandardDeviation : {
-            ret = SUCCEEDED(priv->effect->SetValue(D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, va_arg(varg, float)));
-            break;
-        }
-        default : {
-            ret = false;
-            break;
-        }
-    }
+//     switch (param) {
+//         case EffectParam::BlurStandardDeviation : {
+//             ret = SUCCEEDED(priv->effect->SetValue(D2D1_GAUSSIANBLUR_PROP_STANDARD_DEVIATION, va_arg(varg, float)));
+//             break;
+//         }
+//         default : {
+//             ret = false;
+//             break;
+//         }
+//     }
 
-    va_end(varg);
-    return ret;
-}
-Texture PainterEffect::output() const {
-    if (priv) {
-        ComPtr<ID2D1Bitmap> bitmap;
-        ComPtr<ID2D1Image> image;
-        priv->effect->GetOutput(&image);
+//     va_end(varg);
+//     return ret;
+// }
+// Texture PainterEffect::output() const {
+//     if (priv) {
+//         ComPtr<ID2D1Bitmap> bitmap;
+//         ComPtr<ID2D1Image> image;
+//         priv->effect->GetOutput(&image);
 
-        if (SUCCEEDED(image.As(&bitmap))) {
-            Texture tex;
-            tex.priv = new TextureImpl;
-            tex.priv->bitmap = bitmap;
-            return tex;
-        }
-    }
-    return Texture();
-}
-PainterEffect &PainterEffect::operator =(PainterEffect &&e) {
-    if (&e != this) {
-        delete priv;
-        priv = e.priv;
-        e.priv = nullptr;
-    }
-    return *this;
-}
-PainterEffect &PainterEffect::operator =(std::nullptr_t) {
-    delete priv;
-    priv = nullptr;
-    return *this;
-}
+//         if (SUCCEEDED(image.As(&bitmap))) {
+//             Texture tex;
+//             tex.priv = new TextureImpl;
+//             tex.priv->bitmap = bitmap;
+//             return tex;
+//         }
+//     }
+//     return Texture();
+// }
+// PainterEffect &PainterEffect::operator =(PainterEffect &&e) {
+//     if (&e != this) {
+//         delete priv;
+//         priv = e.priv;
+//         e.priv = nullptr;
+//     }
+//     return *this;
+// }
+// PainterEffect &PainterEffect::operator =(std::nullptr_t) {
+//     delete priv;
+//     priv = nullptr;
+//     return *this;
+// }
 // PainterPath
 
 PainterPath::PainterPath() {

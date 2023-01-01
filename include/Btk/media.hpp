@@ -13,12 +13,31 @@ class MediaPlayerImpl;
 class MediaContent;
 class MediaPlayer;
 
+// Enum for audio format
+enum class AudioSampleFormat : uint8_t {
+    Uint8,
+    Sint16,
+    Sint32,
+    Float32
+};
+
 // Interface, needed for polymorphism, mixed in with other classes
 class AbstractVideoSurface {
     public:
         virtual bool begin(PixFormat *req) = 0;
         virtual bool write(PixFormat fmt, cpointer_t data, int pitch, int w, int h) = 0;
         virtual bool end() = 0;
+};
+class AbstractAudioDevice {
+    public:
+        using AudioRoutinue = std::function<void(void *buffer, int byte)>;
+
+        virtual bool open(AudioSampleFormat fmt, int sample_rate, int channals) = 0;
+        virtual bool close() = 0;
+
+        virtual void bind(const AudioRoutinue &routinue) = 0;
+        virtual void pause(bool paused) = 0;
+        virtual bool is_paused() = 0;
 };
 
 class VideoWidget : public AbstractVideoSurface, public Widget {
@@ -36,6 +55,11 @@ class VideoWidget : public AbstractVideoSurface, public Widget {
         Color   background = Color::Black;
         Size    native_resolution = {0, 0};
         Texture texture;
+};
+
+// Bultin audio device implementation
+class AudioDevice : public AbstractAudioDevice {
+
 };
 
 class MediaStream : public IOStream {

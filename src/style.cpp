@@ -114,6 +114,7 @@ void StyleBreeze(Style *style) {
     style->button_height = 32;
     // Button radius
     style->button_radius = 0;
+    style->button_icon_spacing = 4;
 
     style->radio_button_circle_pad = 4;
     style->radio_button_circle_inner_pad = 4;

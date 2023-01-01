@@ -6,7 +6,28 @@
 
 BTK_NS_BEGIN
 
+// AbstractButton
+void AbstractButton::set_flat(bool flat) {
+    _flat = flat;
+    repaint();
+}
+void AbstractButton::set_icon(const PixBuffer &icon) {
+    if (icon.empty()) {
+        _has_icon = false;
+        return;
+    }
+    auto s = style();
+    _icon.set_image(icon.resize(s->icon_width, s->icon_height));
+    _has_icon = true;
+}
+void AbstractButton::set_text(u8string_view us) {     
+    _text = us;
+    _textlay.set_font(font());
+    _textlay.set_text(_text);
+    repaint();
+}
 
+// Button
 Button::Button(Widget *parent, u8string_view txt) : AbstractButton(parent) {
     auto style = this->style();
     resize(style->button_width, style->button_height);
@@ -85,7 +106,7 @@ bool Button::paint_event(PaintEvent &event) {
 
         gc.push_scissor(border);
         gc.draw_text(
-            _text,
+            _textlay,
             border.x + border.w / 2,
             border.y + border.h / 2
         );

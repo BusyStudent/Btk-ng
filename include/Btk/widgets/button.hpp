@@ -8,14 +8,9 @@ class BTKAPI AbstractButton : public Widget {
     public:
         using Widget::Widget;
 
-        void set_text(u8string_view us) {
-            _text = us;
-            repaint();
-        }
-        void set_flat(bool flat) {
-            _flat = flat;
-            repaint();
-        }
+        void set_flat(bool flat);
+        void set_text(u8string_view us);
+        void set_icon(const PixBuffer &icon);
         auto text() const -> u8string_view {
             return _text;
         }
@@ -24,10 +19,11 @@ class BTKAPI AbstractButton : public Widget {
         BTK_EXPOSE_SIGNAL(_howered);
         BTK_EXPOSE_SIGNAL(_clicked);
     protected:
-
-        u8string _text;
+        TextLayout _textlay; //< The text layout of this text
+        u8string _text;      //< The text
         Brush    _icon; //< Button icon (if any)
         bool     _flat = false;
+        bool     _has_icon = false;
 
         Signal<void()> _howered;
         Signal<void()> _clicked;

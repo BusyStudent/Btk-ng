@@ -27,15 +27,15 @@ class BTKAPI Palette {
             ButtonPressed, //< Button pressed background
             Input,  //< TextInput / Edit background color
             Border, //< All border color
-            Hightlight,
+            Hightlight, //< Highlight background color
 
-            Text,
-            PlaceholderText,
-            HightlightedText,
+            Text, //< Text
+            PlaceholderText, //< Placeholder text
+            HightlightedText, //< Hightlighted text
 
-            Shadow,
+            Shadow, //< Shadow
 
-            MaxRole,
+            MaxRole, //< Maximum
         };
         auto copy_group(const Palette &p, Group dst, Group src) -> void;
         auto set_brush(Group gp, Role r, const Brush &brhs) -> void;
@@ -52,6 +52,9 @@ class BTKAPI Palette {
         // Current color group access
         auto set_current_group(Group gp) -> void {
             group = gp;
+        }
+        auto current_group() const -> Group {
+            return group;
         }
 
         // Access
@@ -98,6 +101,10 @@ class BTKAPI Palette {
         Group        group = Inactive; //< Current role
 };
 
+/**
+ * @brief Style for widgets
+ * 
+ */
 class Style {
     public:
         Color text;
@@ -120,10 +127,13 @@ class Style {
         int   button_height; //< Default button height
         float button_radius; //< Default button radius
 
+        int   button_icon_spacing; //< Default button spacing between icon and text
+
         int   radio_button_circle_pad;
         int   radio_button_circle_r; //< Default radio button box width
         int   radio_button_circle_inner_pad;
         int   radio_button_text_pad;
+
         // ProgressBar
         int   progressbar_width; //< Default progressbar width
         int   progressbar_height; //< Default progressbar height

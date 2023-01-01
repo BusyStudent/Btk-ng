@@ -46,9 +46,9 @@ bool PopupWidget::paint_event(PaintEvent &) {
     p.fill_rect(rect());
     p.pop_transform();
 
-    p.set_color(style()->window);
+    p.set_brush(palette().window());
     p.fill_rect(rect());
-    p.set_color(style()->border);
+    p.set_brush(palette().border());
     p.draw_rect(rect());
 
     return true;

@@ -40,6 +40,9 @@ enum class PainterFeature : uint8_t {
     Dash,              //< Does the painter support dash?
     Path,              //< Does the painter support rendering paths?
 };
+enum class TextureSource : uint8_t {
+    DXGISurface, //< Create texture from DXGISurface
+};
 enum class EffectParam : uint8_t {
     BlurStandardDeviation, //< Blur : type float
 };
@@ -481,27 +484,26 @@ class BTKAPI TextLayout {
  * @brief Native imaging effect for painter (maybe unavliable)
  * 
  */
-class BTKAPI PainterEffect {
-    public:
-        PainterEffect();
-        PainterEffect(EffectType type);
-        PainterEffect(PainterEffect &&);
-        ~PainterEffect();
+// class BTKAPI PainterEffect {
+//     public:
+//         PainterEffect();
+//         PainterEffect(EffectType type);
+//         PainterEffect(PainterEffect &&);
+//         ~PainterEffect();
 
-        PainterEffect &operator =(PainterEffect &&);
-        PainterEffect &operator =(std::nullptr_t);
+//         PainterEffect &operator =(PainterEffect &&);
+//         PainterEffect &operator =(std::nullptr_t);
 
-        bool attach(const Painter &p);
-        bool set_input(const Texture &tex);
-        bool set_input(const PixBuffer &buf);
-        bool set_value(EffectParam param, ...);
+//         bool attach(const Painter &p);
+//         bool set_input(const Texture &tex);
+//         bool set_input(const PixBuffer &buf);
+//         bool set_value(EffectParam param, ...);
 
-        Texture output() const;
-    private:
-        PainterEffectImpl *priv;
-    friend class Painter;
-};
-
+//         Texture output() const;
+//     private:
+//         PainterEffectImpl *priv;
+//     friend class Painter;
+// };
 /**
  * @brief Receiver of path (method object)
  * 
@@ -730,6 +732,7 @@ class BTKAPI Painter {
         auto transform_matrix() -> FMatrix;
 
         // Texture
+        auto create_shared_texture(TextureSource src, int w, int h, void *data) -> Texture;
         auto create_texture(PixFormat fmt, int w, int h) -> Texture;
         auto create_texture(const PixBuffer &buf)        -> Texture;
 
