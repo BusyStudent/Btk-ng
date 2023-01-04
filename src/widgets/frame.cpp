@@ -1,11 +1,9 @@
 #include "build.hpp"
 
-#include <Btk/context.hpp>
-#include <Btk/comctl.hpp>
+#include <Btk/widgets/frame.hpp>
 #include <Btk/event.hpp>
-#include <Btk/layout.hpp>
 
-// Common useful widgets
+// Frame
 
 BTK_NS_BEGIN
 

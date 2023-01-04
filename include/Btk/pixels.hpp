@@ -1,6 +1,5 @@
 #pragma once
 
-#include <Btk/detail/blend.hpp>
 #include <Btk/rect.hpp>
 #include <Btk/defs.hpp>
 
@@ -67,6 +66,15 @@ enum class PixFormat         : uint32_t {
     BGR24  = 3,
     Gray8  = 4, //< Grayscale
 };
+// Blend mode / Bend Factor
+enum class BlendMode         : uint32_t {
+    None = 0,
+    Alpha = 1 << 0,
+    Add = 1 << 1,
+    Subtract = 1 << 2,
+    Modulate = 1 << 3,
+};
+
 
 /**
  * @brief Palette for index based image

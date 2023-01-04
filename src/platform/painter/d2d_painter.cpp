@@ -2615,18 +2615,4 @@ void Pen::set_line_cap(LineCap cap) {
     priv->cap = cap;
 }
 
-
-// Exposed factory
-namespace Win32 {
-    void *WicFactory() {
-        return Wincodec::GetInstance();
-    }
-    void *D2dFactory() {
-        return Direct2D::GetInstance();
-    }
-    void *DWriteFactory() {
-        return DWrite::GetInstance();
-    }
-}
-
 BTK_NS_END

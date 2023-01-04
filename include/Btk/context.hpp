@@ -203,6 +203,7 @@ class AbstractFileDialog : public Any {
 
 #if 1
 
+extern GraphicsDriverInfo PlatformDriverInfo;
 extern GraphicsDriverInfo Win32DriverInfo;
 extern GraphicsDriverInfo SDLDriverInfo;
 extern GraphicsDriverInfo XcbDriverInfo;

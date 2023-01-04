@@ -41,19 +41,8 @@ UIContext::UIContext(GraphicsDriver *driv) {
 
     thread_id = std::this_thread::get_id(); 
 }
-UIContext::UIContext() {
-
-#if defined(BTK_DRIVER)
-    _driver = BTK_DRIVER.create();
-#else
-    abort();
-#endif
-    _dispatcher = GetDispatcher();
-    PaletteBreeze(&palette);
-    StyleBreeze(&style);
-    SetUIContext(this);
-
-    thread_id = std::this_thread::get_id(); 
+UIContext::UIContext() : UIContext(PlatformDriverInfo.create()) {
+    
 }
 UIContext::~UIContext() {
     delete _driver;

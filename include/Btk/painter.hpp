@@ -865,15 +865,12 @@ inline void PainterPath::add_line(float x1, float y1, float x2, float y2) {
     line_to(x2, y2);
 }
 
-
-// Platform specific declarations
-#if defined(_WIN32)
-namespace Win32 {
-    BTKAPI void *WicFactory();
-    BTKAPI void *D2dFactory();
-    BTKAPI void *DWriteFactory();
+// Lerp
+constexpr inline ColorStop lerp(const ColorStop &a, const ColorStop &b, float t) noexcept {
+    return ColorStop {
+        lerp(a.offset, b.offset, t),
+        lerp(a.color, b.color, t)
+    };
 }
-#endif
-
 
 BTK_NS_END

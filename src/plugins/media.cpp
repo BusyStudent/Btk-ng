@@ -1,7 +1,7 @@
 #include "build.hpp"
 #include "common/utils.hpp"
 
-#include <Btk/media.hpp>
+#include <Btk/plugins/media.hpp>
 #include <condition_variable>
 #include <atomic>
 #include <thread>

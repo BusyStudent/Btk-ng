@@ -2,9 +2,9 @@
 #include <Btk/widgets/button.hpp>
 #include <Btk/widgets/dialog.hpp>
 #include <Btk/widgets/slider.hpp>
+#include <Btk/plugins/media.hpp>
 #include <Btk/context.hpp>
 #include <Btk/layout.hpp>
-#include <Btk/media.hpp>
 
 using namespace BTK_NAMESPACE;
 
