@@ -23,10 +23,10 @@ class X11FileDialog : public AbstractFileDialog {
         ~X11FileDialog();
 
         int        run()    override;
-        bool       initialize(bool save) override;
+        bool       initialize() override;
         void       set_dir(u8string_view dir) override;
         void       set_title(u8string_view title) override;
-        void       set_allow_multi(bool v) override;
+        void       set_option(Option opt) override;
         StringList result() override;
 
         static bool  Supported();
@@ -141,8 +141,7 @@ int X11FileDialog::run() {
     }
     return stat;
 }
-bool X11FileDialog::initialize(bool save) {
-    is_save = save;
+bool X11FileDialog::initialize() {
     return true;
 }
 void X11FileDialog::set_dir(u8string_view dir) {
@@ -151,8 +150,9 @@ void X11FileDialog::set_dir(u8string_view dir) {
 void X11FileDialog::set_title(u8string_view t) {
     title = t;
 }
-void X11FileDialog::set_allow_multi(bool v) {
-    allow_multi = v;
+void X11FileDialog::set_option(Option opt) {
+    is_save = ((opt & Option::Save) == Option::Save);
+    allow_multi = ((opt & Option::Multi) == Option::Multi);
 }
 StringList X11FileDialog::result() {
     return res;

@@ -8,7 +8,7 @@
 BTK_NS_BEGIN
 
 // Enum for Mouse Button
-enum class MouseButton : int {
+enum class MouseButton : uint32_t {
     Left,
     Middle,
     Right,
@@ -328,11 +328,6 @@ class TextInputEvent : public WidgetEvent {
     private:
         u8string _text;
 };
-class ReparentEvent : public WidgetEvent {
-    private:
-        Widget *_old;
-        Widget *_new;
-};
 class FocusEvent : public WidgetEvent {
     public:
         FocusEvent(Type type) : WidgetEvent(type) {}
@@ -367,6 +362,15 @@ class DropEvent : public WidgetEvent {
         u8string _text;
         int _x;
         int _y;
+};
+class ChangeEvent   : public WidgetEvent {
+    public:
+        using WidgetEvent::WidgetEvent;
+};
+class ReparentEvent : public ChangeEvent {
+    private:
+        Widget *_old;
+        Widget *_new;
 };
 
 class TimerEvent : public Event {
@@ -416,18 +420,6 @@ class CallEvent : public Event {
     private:
         void (*_func)(void *user) = nullptr;
         void  *_user              = nullptr;
-};
-
-
-
-union EventCollections {
-    Event event = {};
-    WidgetEvent widget;
-    ResizeEvent resize;
-    MouseEvent mouse;
-    CallEvent call;
-    QuitEvent quit;
-    KeyEvent key;
 };
 
 BTKAPI EventType RegisterEvent();

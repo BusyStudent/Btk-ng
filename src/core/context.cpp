@@ -1,7 +1,9 @@
 #include "build.hpp"
 
+#include <Btk/detail/platform.hpp>
 #include <Btk/context.hpp>
 #include <Btk/painter.hpp>
+#include <bTK/event.hpp>
 #include <Btk/style.hpp>
 #include <thread> //< For std::this_thread::yield()
 #include <chrono>
@@ -91,6 +93,13 @@ bool  EventQueue::poll(Event **event) {
     *event = ev;
     spin.unlock();
     return *event;
+}
+
+void EventLoop::stop() {
+    return dispatcher->interrupt();
+}
+int  EventLoop::run() {
+    return dispatcher->run();
 }
 
 bool EventDispatcher::dispatch(Event *event) {

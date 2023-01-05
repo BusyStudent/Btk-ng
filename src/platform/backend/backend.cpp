@@ -1,5 +1,6 @@
 #include "build.hpp"
 
+#include <Btk/detail/platform.hpp>
 #include <Btk/context.hpp>
 
 BTK_NS_BEGIN 
@@ -10,7 +11,7 @@ GraphicsDriverInfo PlatformDriverInfo = {
     [] () {
         return BTK_DRIVER.create();
     },
-    BTK_STRINGIFY(BTK_DRIVER)
+    BTK_STRINGIFY_EXPAND(BTK_DRIVER)
 };
 
 BTK_NS_END

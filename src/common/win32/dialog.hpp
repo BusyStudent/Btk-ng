@@ -1,7 +1,7 @@
 #pragma once
 
 #include "build.hpp"
-#include <Btk/context.hpp>
+#include <Btk/widgets/dialog.hpp>
 
 #include <ShlObj.h>
 #include <wrl.h>
@@ -17,13 +17,14 @@ using Microsoft::WRL::ComPtr;
 class Win32FileDialog : public AbstractFileDialog {
     public:
         int        run()    override;
-        bool       initialize(bool save) override;
+        bool       initialize() override;
         void       set_dir(u8string_view dir) override;
         void       set_title(u8string_view title) override;
-        void       set_allow_multi(bool v) override;
+        void       set_option(Option opt) override;
         StringList result() override;
     private:
         ComPtr<IFileDialog> dialog;
+        Option              option;
 };
 
 // Win32FileDialog
@@ -34,11 +35,11 @@ int  Win32FileDialog::run() {
     }
     return EXIT_SUCCESS;
 }
-bool Win32FileDialog::initialize(bool is_open) {
+bool Win32FileDialog::initialize() {
     const IID *clsid;
     const IID *iid;
 
-    if (is_open) {
+    if ((option & Option::Open) == Option::Open) {
         clsid = &CLSID_FileOpenDialog;
         iid   = &__uuidof(IFileOpenDialog);
     }
@@ -55,6 +56,16 @@ bool Win32FileDialog::initialize(bool is_open) {
         *iid,
         reinterpret_cast<void**>(dialog.ReleaseAndGetAddressOf())
     );
+    if (FAILED(hr)) {
+        return false;
+    }
+
+    FILEOPENDIALOGOPTIONS opt;
+    dialog->GetOptions(&opt);
+    dialog->SetOptions(
+        (option & Option::Multi) == Option::Multi ? opt | FOS_ALLOWMULTISELECT : opt ^ FOS_ALLOWMULTISELECT
+    );
+
     return SUCCEEDED(hr);
 }
 void Win32FileDialog::set_dir(u8string_view view) {
@@ -66,13 +77,8 @@ void Win32FileDialog::set_title(u8string_view title) {
         reinterpret_cast<const WCHAR*>(title.to_utf16().c_str())
     );
 }
-void Win32FileDialog::set_allow_multi(bool v) {    
-    FILEOPENDIALOGOPTIONS opt;
-    HRESULT hr;
-    dialog->GetOptions(&opt);
-    dialog->SetOptions(
-        v ? opt | FOS_ALLOWMULTISELECT : opt ^ FOS_ALLOWMULTISELECT
-    );
+void Win32FileDialog::set_option(Option opt) {
+    option = opt;
 }
 auto Win32FileDialog::result() -> StringList {
     StringList ret;

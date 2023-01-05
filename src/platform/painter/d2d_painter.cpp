@@ -5,7 +5,8 @@
 #include "common/win32/wincodec.hpp"
 #include "common/win32/direct2d.hpp"
 
-#include <Btk/context.hpp>
+#include <Btk/detail/platform.hpp>
+#include <Btk/detail/device.hpp>
 #include <Btk/painter.hpp>
 #include <Btk/object.hpp>
 #include <wincodec.h>

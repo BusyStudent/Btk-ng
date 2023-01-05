@@ -3,6 +3,7 @@
 #include <Btk/context.hpp>
 #include <Btk/widget.hpp>
 #include <Btk/comctl.hpp>
+#include <Btk/event.hpp>
 #include <iostream>
 
 using namespace BTK_NAMESPACE;

@@ -1,5 +1,6 @@
 #include "build.hpp"
 
+#include <Btk/detail/platform.hpp>
 #include <Btk/widgets/textedit.hpp>
 #include <Btk/context.hpp>
 #include <Btk/event.hpp>

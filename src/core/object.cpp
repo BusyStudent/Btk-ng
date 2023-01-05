@@ -1,7 +1,9 @@
 #include "build.hpp"
 
+#include <Btk/detail/platform.hpp>
 #include <Btk/context.hpp>
 #include <Btk/object.hpp>
+#include <Btk/event.hpp>
 #include <vector>
 #include <set>
 
@@ -86,7 +88,7 @@ Object::~Object() {
     //Delete timer if needed
     if (priv) {
         for (auto timerid : priv->timers) {
-            priv->ctxt->timer_del(this, timerid);
+            priv->ctxt->dispatcher()->timer_del(this, timerid);
         }
     }
 
@@ -125,7 +127,7 @@ bool        Object::ui_thread() const {
 
 // Timer
 timerid_t  Object::add_timer(timertype_t t,uint32_t ms) {
-    auto timerid = implment()->ctxt->timer_add(this, t, ms);
+    auto timerid = implment()->ctxt->dispatcher()->timer_add(this, t, ms);
     if (timerid != 0) {
         implment()->timers.insert(timerid);
     }
@@ -133,7 +135,7 @@ timerid_t  Object::add_timer(timertype_t t,uint32_t ms) {
 }
 bool       Object::del_timer(timerid_t timerid) {
     if (implment()->timers.erase(timerid) > 0) {
-        return implment()->ctxt->timer_del(this, timerid);
+        return implment()->ctxt->dispatcher()->timer_del(this, timerid);
     }
     return false;
 }
@@ -146,14 +148,14 @@ void       Object::defer_delete() {
         delete static_cast<Object *>(obj);
     });
     event.set_user(this);
-    ctxt->send_event(event);
+    ctxt->dispatcher()->send(event);
 }
 void       Object::defer_call(DeferRoutinue rt, pointer_t user) {
     auto ctxt = ui_context();
     CallEvent event;
     event.set_func(rt);
     event.set_user(user);
-    ctxt->send_event(event);
+    ctxt->dispatcher()->send(event);
 }
 
 // Event Filter

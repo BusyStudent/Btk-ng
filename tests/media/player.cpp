@@ -4,6 +4,7 @@
 #include <Btk/widgets/slider.hpp>
 #include <Btk/plugins/media.hpp>
 #include <Btk/context.hpp>
+#include <Btk/event.hpp>
 #include <Btk/layout.hpp>
 
 using namespace BTK_NAMESPACE;

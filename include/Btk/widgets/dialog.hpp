@@ -27,14 +27,22 @@ class BTKAPI  FileDialog : public Widget {
         Option              opt = {};
 };
 
+class AbstractFileDialog : public Any {
+    public:
+        using Option = FileDialog::Option;
+
+        virtual int        run() = 0;
+        virtual bool       initialize() = 0;
+        virtual void       set_dir(u8string_view dir) = 0;
+        virtual void       set_title(u8string_view title) = 0;
+        virtual void       set_option(Option opt) = 0;
+        virtual StringList result() = 0;
+};
+
 BTK_FLAGS_OPERATOR(FileDialog::Option, uint32_t);
 
 inline auto FileDialog::option() const -> Option {
     return opt;
 }
-inline void FileDialog::set_option(Option o) {
-    opt = o;
-}
-
 
 BTK_NS_END

@@ -83,6 +83,7 @@ BTK_FLAGS_OPERATOR(Orientation, uint8_t);
 BTK_FLAGS_OPERATOR(Alignment,   uint8_t);
 
 // Forward declarations
+class EventDispatcher;
 class EventQueue;
 class EventLoop;
 class UIContext;
@@ -110,6 +111,7 @@ class AbstractCursor;
 class AbstractScreen;
 
 // Painting
+class GraphicsDriverInfo;
 class GraphicsContext;
 class GraphicsDriver;
 class GLContext;
@@ -127,6 +129,9 @@ class StringRefList;
 // Keyboard
 enum class Key      : uint32_t;
 enum class Modifier : uint16_t;
+
+// Mouse
+enum class MouseButton : uint32_t;
 
 // Alias
 using  any_t      = Any *;

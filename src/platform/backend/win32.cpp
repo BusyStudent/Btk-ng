@@ -3,7 +3,10 @@
 #include "common/win32/dialog.hpp"
 #include "common/dlloader.hpp"
 
+#include <Btk/detail/platform.hpp>
+#include <Btk/detail/device.hpp>
 #include <Btk/context.hpp>
+#include <Btk/event.hpp>
 #include <unordered_map>
 #include <Windows.h>
 #include <wingdi.h>

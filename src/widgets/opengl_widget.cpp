@@ -1,8 +1,10 @@
 #include "build.hpp"
 
+#include <Btk/detail/platform.hpp>
+#include <Btk/detail/device.hpp>
 #include <Btk/opengl/opengl_widget.hpp>
 #include <Btk/opengl/opengl.hpp>
-#include <Btk/context.hpp>
+#include <Btk/event.hpp>
 
 BTK_NS_BEGIN
 

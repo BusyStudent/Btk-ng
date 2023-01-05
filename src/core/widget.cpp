@@ -1,8 +1,10 @@
 #include "build.hpp"
 
+#include <Btk/detail/platform.hpp>
 #include <Btk/painter.hpp>
 #include <Btk/context.hpp>
 #include <Btk/widget.hpp>
+#include <Btk/event.hpp>
 
 BTK_NS_BEGIN
 
@@ -486,7 +488,7 @@ bool Widget::handle(Event &event) {
         case Event::StyleChanged :
         case Event::FontChanged : {
             repaint();
-            return change_event(event);
+            return change_event(event.as<ChangeEvent>());
         }
         default: {
             break;

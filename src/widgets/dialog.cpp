@@ -1,5 +1,6 @@
 #include "build.hpp"
 
+#include <Btk/detail/platform.hpp>
 #include <Btk/widgets/dialog.hpp>
 #include <Btk/context.hpp>
 
@@ -17,11 +18,17 @@ FileDialog::~FileDialog() {
 }
 int FileDialog::run() {
     assert(native);
-    native->initialize((opt & Open) != Open);
+    native->initialize();
     return native->run();
 }
 StringList FileDialog::result() const {
     return native->result();
+}
+void       FileDialog::set_option(Option o) {
+    opt = o;
+    if (native) {
+        native->set_option(opt);
+    }
 }
 
 BTK_NS_END

@@ -22,6 +22,7 @@ class CloseEvent;
 class WheelEvent;
 class FocusEvent;
 class PaintEvent;
+class ChangeEvent;
 class ResizeEvent;
 class MotionEvent;
 class TextEditEvent;
@@ -387,7 +388,7 @@ class BTKAPI Widget : public Object {
         virtual bool move_event     (MoveEvent  &)     { return false; }
         virtual bool paint_event    (PaintEvent &)     { return false; }
         virtual bool close_event    (CloseEvent &)     { return false; }
-        virtual bool change_event   (Event &)          { return false; }
+        virtual bool change_event   (ChangeEvent &)    { return false; }
         // virtual bool drop_event   (DropEvent &) { return false; }
 
         /**

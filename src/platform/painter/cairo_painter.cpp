@@ -2,8 +2,9 @@
 #include "fallback.hpp"
 #include "common/utils.hpp"
 
+#include <Btk/detail/platform.hpp>
+#include <Btk/detail/device.hpp>
 #include <Btk/painter.hpp>
-#include <Btk/context.hpp>
 #include <Btk/object.hpp>
 #include <pango/pangocairo.h>
 #include <cstdlib>
