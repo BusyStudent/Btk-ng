@@ -201,7 +201,7 @@ bool TextEdit::drag_motion(DragEvent &event) {
 
     return true;
 }
-bool TextEdit::change_event(Event &event) {
+bool TextEdit::change_event(ChangeEvent &event) {
     if (event.type() == Event::FontChanged) {
         _lay.set_font(font());
     }

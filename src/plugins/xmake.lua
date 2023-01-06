@@ -36,7 +36,7 @@ if has_config("multimedia") then
             add_packages("ffmpeg")
         end
 
-        add_files("media.cpp")
+        add_files("media/*.cpp")
     target_end()
 
 end

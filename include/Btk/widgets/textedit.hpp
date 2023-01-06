@@ -33,7 +33,7 @@ class BTKAPI TextEdit : public Widget {
         bool timer_event(TimerEvent &event) override;
         bool paint_event(PaintEvent &event) override;
         bool textinput_event(TextInputEvent &event) override;
-        bool change_event(Event &) override;
+        bool change_event(ChangeEvent &) override;
 
         Size size_hint() const override;
 

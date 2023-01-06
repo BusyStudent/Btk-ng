@@ -13,8 +13,8 @@ class BTKAPI Label : public Widget {
 
         void set_text(u8string_view txt);
 
-        bool paint_event(PaintEvent &event) override;
-        bool change_event(Event     &event) override;
+        bool paint_event(PaintEvent   &event) override;
+        bool change_event(ChangeEvent &event) override;
         Size size_hint() const override; //< Return to text size
     private:
         TextLayout _layout;

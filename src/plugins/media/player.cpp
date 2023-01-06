@@ -20,21 +20,6 @@ extern "C" {
     #include <libavutil/imgutils.h>
     #include <libavutil/avutil.h>
     #include <libavutil/opt.h>
-
-// #define BTK_MINIAUDIO
-#if defined(BTK_MINIAUDIO)
-    #define  MA_IMPLEMENTATION
-    #define  MA_USE_STDINT
-    #define  MA_NO_DECODING
-    #define  MA_NO_ENCODING
-    #define  MA_NO_GENERATION
-    #define  MA_API static
-    #define  MA_DEBUG_OUTPUT
-    #include <miniaudio.h>
-#else
-    #include <SDL2/SDL_audio.h>
-    #include <SDL2/SDL.h>
-#endif
 }
 
 // TODO : Improve sync algo
@@ -168,19 +153,15 @@ class MediaPlayerImpl  : public Object {
         PacketQueue    video_packet_queue;
         std::mutex     video_mtx; //< For Protect video_frame2
 
-#if     defined(BTK_MINIAUDIO)
-        ma_device      audio_device;
-#else
-        SDL_AudioDeviceID audio_device;
-#endif
         DataBuffer     audio_buffer;
         FrameQueue     audio_frame_queue;
         bool           audio_device_inited = false;
         bool           audio_frame_encough = false;
         size_t         audio_buffer_used = 0;
         std::mutex     audio_mtx; //< For Protect audio frame queue
-        
-        std::atomic<double> audio_pts = 0;
+
+        AbstractAudioDevice* audio_device = nullptr;
+        std::atomic<double>  audio_pts = 0;
 
         int            errcode = 0;
 
@@ -214,7 +195,6 @@ class MediaPlayerImpl  : public Object {
         bool audio_device_is_paused();
         void audio_cache_clear();
 };
-
 
 // Begin video player
 MediaPlayerImpl::MediaPlayerImpl() {
@@ -909,82 +889,30 @@ bool MediaPlayerImpl::audio_fillbuffer() {
     return true;
 }
 void MediaPlayerImpl::audio_device_init() {
-
-#if defined(BTK_MINIAUDIO)
-    ma_device_config conf = ma_device_config_init(ma_device_type_playback);
-    conf.dataCallback = [](ma_device *dev, void *out, const void *in, ma_uint32 nframe) {
-        static_cast<MediaPlayerImpl*>(dev->pUserData)->audio_callback(
-            out,
-            nframe * ma_get_bytes_per_frame(
-                dev->playback.format,
-                dev->playback.channels
-            )
+    if (audio_device) {
+        audio_device->bind([this](void *b, uint32_t s) {
+            audio_callback(b, s);
+        });
+        audio_device->open(
+            AudioSampleFormat::Sint32,
+            audio_ctxt->sample_rate,
+            audio_ctxt->channels
         );
-    };
-    conf.pUserData = this;
-    conf.playback.format = ma_format_s32;
-    conf.playback.channels = audio_ctxt->channels;
-    conf.sampleRate = audio_ctxt->sample_rate;
-
-    if (ma_device_init(nullptr, &conf, &audio_device) == MA_SUCCESS) {
-        ma_device_start(&audio_device);
+        audio_device->pause(false);
         audio_device_inited = true;
     }
-#else
-    std::once_flag once;
-    std::call_once(once, SDL_Init, SDL_INIT_AUDIO);
-
-    SDL_AudioSpec spec = {};
-    spec.callback = [](void *user, uint8_t *out, int len) {
-        return static_cast<MediaPlayerImpl*>(user)->audio_callback(out, len);
-    };
-    spec.channels = audio_ctxt->channels;
-    spec.format = AUDIO_S32;
-    spec.freq = audio_ctxt->sample_rate;
-    spec.samples = 1024;
-    spec.userdata = this;
-    // spec.
-
-    audio_device = SDL_OpenAudioDevice(nullptr, false, &spec, nullptr, 0);
-    assert(audio_device > 0);
-
-    PLAYER_LOG("[SDL Audio backend] %s\n", SDL_GetCurrentAudioDriver());
-
-    SDL_PauseAudioDevice(audio_device, 0);
-    audio_device_inited = true;
-#endif
 }
 void MediaPlayerImpl::audio_device_pause(bool v) {
     if (audio_device_inited) {
-#if defined(BTK_MINIAUDIO)
-        if (v) {
-            ma_device_stop(&audio_device);
-        }
-        else {
-            ma_device_start(&audio_device);
-        }
-#else
-        SDL_PauseAudioDevice(audio_device, v);
-#endif
+        audio_device->pause(v);
     }
 }
 bool MediaPlayerImpl::audio_device_is_paused() {
-
-#if defined(BTK_MINIAUDIO)
-    return ma_device_get_state(&audio_device) == ma_device_state_stopped;
-#else
-    return SDL_GetAudioDeviceStatus(audio_device) == SDL_AUDIO_PAUSED;
-#endif
-
+    return audio_device->is_paused();
 }
 void MediaPlayerImpl::audio_device_destroy() {
     if (audio_device_inited) {
-#if defined(BTK_MINIAUDIO)
-        ma_device_uninit(&audio_device);
-#else
-        SDL_CloseAudioDevice(audio_device);
-        audio_device = 0;
-#endif
+        audio_device->close();
         audio_device_inited = false;
         audio_pts = 0;
 
@@ -1151,6 +1079,9 @@ void MediaPlayer::set_url(u8string_view url) {
 }
 void MediaPlayer::set_video_output(AbstractVideoSurface *v) {
     priv->video_output = v;
+}
+void MediaPlayer::set_audio_output(AbstractAudioDevice *a) {
+    priv->audio_device = a;
 }
 void MediaPlayer::set_position(double pos) {
     priv->set_position(pos);

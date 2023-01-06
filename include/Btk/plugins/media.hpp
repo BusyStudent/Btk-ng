@@ -9,9 +9,11 @@ BTK_NS_BEGIN
 
 class MediaContentImpl;
 class MediaPlayerImpl;
+class AudioDeviceImpl;
 
 class MediaContent;
 class MediaPlayer;
+class AudioDevice;
 
 // Enum for audio format
 enum class AudioSampleFormat : uint8_t {
@@ -30,17 +32,20 @@ class AbstractVideoSurface {
 };
 class AbstractAudioDevice {
     public:
-        using AudioRoutinue = std::function<void(void *buffer, int byte)>;
+        using Routinue = std::function<void(void *buffer, uint32_t bytes)>;
 
-        virtual bool open(AudioSampleFormat fmt, int sample_rate, int channals) = 0;
+        virtual bool open(AudioSampleFormat fmt, int sample_rate, int channels) = 0;
         virtual bool close() = 0;
 
-        virtual void bind(const AudioRoutinue &routinue) = 0;
+        virtual void bind(const Routinue &routinue) = 0;
         virtual void pause(bool paused) = 0;
         virtual bool is_paused() = 0;
+
+        virtual void  set_volume(float volume) = 0;
+        virtual float volume() = 0;
 };
 
-class VideoWidget : public AbstractVideoSurface, public Widget {
+class BTKAPI VideoWidget : public AbstractVideoSurface, public Widget {
     public:
         VideoWidget(Widget *parent = nullptr);
         ~VideoWidget();
@@ -58,11 +63,26 @@ class VideoWidget : public AbstractVideoSurface, public Widget {
 };
 
 // Bultin audio device implementation
-class AudioDevice : public AbstractAudioDevice {
+class BTKAPI AudioDevice : public AbstractAudioDevice, public Any {
+    public:
+        AudioDevice();
+        AudioDevice(const AudioDevice &) = delete;
+        ~AudioDevice();
 
+        bool open(AudioSampleFormat fmt, int sample_rate, int channels) override;
+        bool close() override;
+
+        void bind(const Routinue &routinue) override;
+        void pause(bool paused) override;
+        bool is_paused() override;
+
+        void  set_volume(float volume) override;
+        float volume() override;
+    private:
+        AudioDeviceImpl *priv;
 };
 
-class MediaStream : public IOStream {
+class BTKAPI MediaStream : public IOStream {
     public:
 
 };
@@ -73,7 +93,7 @@ class MediaStream : public IOStream {
  * @warning Known bug : Huge Memory leaks on closed window when the playing is still playing, please stop() when close
  * 
  */
-class MediaPlayer : public Object {
+class BTKAPI MediaPlayer : public Object {
     public:
         enum State {
             Playing,
@@ -90,6 +110,7 @@ class MediaPlayer : public Object {
         void stop();
 
         void set_video_output(AbstractVideoSurface *surf);
+        void set_audio_output(AbstractAudioDevice *audio);
         void set_media(const MediaContent &content);
         void set_url(u8string_view url);
 
@@ -107,7 +128,7 @@ class MediaPlayer : public Object {
         MediaPlayerImpl *priv;
 };
 
-class MediaContent {
+class BTKAPI MediaContent {
     public:
         MediaContent();
         MediaContent(u8string_view url);

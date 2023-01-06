@@ -55,7 +55,6 @@ if has_config("tests") then
             add_deps("btk", "btk_multimedia")
 
             add_files("media/player.cpp")
-            add_includedirs("include")
         target_end()
     end
 

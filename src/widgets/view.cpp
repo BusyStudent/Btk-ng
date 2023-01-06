@@ -40,7 +40,7 @@ bool Label::paint_event(PaintEvent &) {
 
     return true;
 }
-bool Label::change_event(Event &event) {
+bool Label::change_event(ChangeEvent &event) {
     if (event.type() == Event::FontChanged) {
         _layout.set_font(font());
     }

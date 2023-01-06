@@ -45,6 +45,7 @@ class Player : public Widget {
             stop.signal_clicked().connect(&MediaPlayer::stop, &player);
 
             player.set_video_output(&video);
+            player.set_audio_output(&audio);
             edit.signal_enter_pressed().connect([&]() {
                 player.set_url(edit.text());
                 player.play();
@@ -89,6 +90,7 @@ class Player : public Widget {
         Button      resume;
         Button      stop;
         Slider      slider;
+        AudioDevice audio;
         VideoWidget video;
 
         bool fullscreen = false;
