@@ -310,9 +310,9 @@ StringRefList u8string_view::split_ref(u8string_view delim, size_t limit) const 
 }
 
 // Stream output operator
-std::ostream &operator <<(std::ostream &os, const u8string &str) {
-    return operator <<(os, str.view());
-}
+// std::ostream &operator <<(std::ostream &os, const u8string &str) {
+//     return operator <<(os, str.view());
+// }
 
 std::ostream &operator <<(std::ostream &os, u8string_view str) {
     // Convert to local encoding

@@ -546,6 +546,12 @@ class BTKAPI u8string {
         bool       operator !=(const char_t *str) const noexcept {
             return !compare(str);
         }
+        bool       operator <(const u8string &str) const noexcept {
+            return _str < str._str;
+        }
+        bool       operator >(const u8string &str) const noexcept {
+            return _str > str._str;
+        }
         reference  operator [](size_t pos) {
             return at(pos);
         }
@@ -738,7 +744,7 @@ inline int  Utf8Strncmp(const char_t *s1, const char_t *s2, size_t n, bool casec
 
 // Stream operator for u8string
 
-BTKAPI std::ostream & operator <<(std::ostream &os, const u8string &str);
+// BTKAPI std::ostream & operator <<(std::ostream &os, const u8string &str);
 BTKAPI std::ostream & operator <<(std::ostream &os, u8string_view   str);
 
 BTK_NS_END

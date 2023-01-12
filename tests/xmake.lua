@@ -37,6 +37,13 @@ if has_config("tests") then
         add_deps("btk")
     target_end()
 
+    target("http_test")
+        add_deps("btk")
+        set_kind("binary")
+        add_files("http_test.cpp")
+
+    target_end()
+
     if has_package("gtest") then 
         -- Add string test
         target("test")
