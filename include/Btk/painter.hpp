@@ -40,8 +40,14 @@ enum class PainterFeature : uint8_t {
     Dash,              //< Does the painter support dash?
     Path,              //< Does the painter support rendering paths?
 };
+enum class TextLayoutHandle : uint8_t {
+    IDWriteTextLayout
+};
 enum class TextureSource : uint8_t {
     DXGISurface, //< Create texture from DXGISurface
+};
+enum class FontHandle  : uint8_t {
+    IDWriteTextFormat,
 };
 enum class EffectParam : uint8_t {
     BlurStandardDeviation, //< Blur : type float
@@ -252,6 +258,7 @@ class BTKAPI Brush {
     public:
         Brush();
         Brush(Brush &&);
+        Brush(Color::Enum      color);
         Brush(const Brush     &brush);
         Brush(const Color     &color);
         Brush(const GLColor   &color);
@@ -303,6 +310,65 @@ class BTKAPI Brush {
          * @return GLColor (failed will return Color::Black)
          */
         GLColor   color() const;
+        /**
+         * @brief Get the transform matrix of the brush
+         * 
+         * @return FMatrix 
+         */
+        FMatrix   matrix() const;
+        /**
+         * @brief Get the bitmap of the brush
+         * 
+         * @return PixBuffer 
+         */
+        PixBuffer bitmap() const;
+        /**
+         * @brief Get the linear_gradient of the brush
+         * 
+         * @return LinearGradient 
+         */
+        LinearGradient linear_gradient() const;
+        /**
+         * @brief Get the radial_gradient of the brush
+         * 
+         * @return RadialGradient 
+         */
+        RadialGradient radial_gradient() const;
+    public:
+        /**
+         * @brief Convert Point to absolute coordinates
+         * 
+         * @param dev The Paint Device
+         * @param obj The Paint object rectangle
+         * @param pt  The Point to convert
+         * @return FPoint The converted point
+         */
+        FPoint    point_to_abs(PaintDevice *dev, const FRect &obj, const FPoint &) const;
+        /**
+         * @brief Convert a rectangle to absolute coordinates
+         * 
+         * @param dev The Paint Device
+         * @param obj The Paint object rectangle
+         * @param rect The rectangle to convert
+         * @return FRect The converted rectangle
+         */
+        FRect     rect_to_abs(PaintDevice *dev, const FRect &obj, const FRect &) const;
+        /**
+         * @brief Bind the deviced depended resource
+         * @note Is is provided for backend
+         * 
+         * @param key The key of the resource
+         * @param resource The device resource (could not be nullptr)
+         */
+        void      bind_device_resource(void *key, PaintResource *resource);
+        /**
+         * @brief Get the deviced depended resources
+         * @note Is is provided for backend
+         * 
+         * @param key The key of the resource
+         * @return PaintResource * The resource, nullptr on not found
+         */
+        auto      query_device_resource(void *key) -> PaintResource *;
     private:
         void begin_mut();
 
@@ -333,15 +399,27 @@ class BTKAPI Texture {
          */
         bool empty() const;
         /**
+         * @brief Get the dpi of the texture
+         * 
+         * @return FPoint 
+         */
+        FPoint dpi() const;
+        /**
+         * @brief Get the logical size of the texture
+         * 
+         * @return FSize 
+         */
+        FSize size() const;
+        /**
          * @brief Get the pixel size of texture
          * 
          * @return Size 
          */
-        Size size() const;
+        Size pixel_size() const;
         /**
          * @brief Update data to texture
          * 
-         * @param where The update area, nullptr on whole texture, out of bounds is ub
+         * @param where The update area (in pixel size) , nullptr on whole texture, out of bounds is ub
          * @param data The pointer of pixel data
          * @param pitch The pitch of pixel data
          */
@@ -431,6 +509,12 @@ class BTKAPI TextLayout {
          */
         size_t line() const;
 
+        /**
+         * @brief Get the text of the text block
+         * 
+         * @return u8string_view 
+         */
+        u8string_view text() const;
         /**
          * @brief Hit test by mouse position
          * 
@@ -531,8 +615,15 @@ class PainterPathSink {
 class BTKAPI PainterPath : public PainterPathSink {
     public:
         PainterPath();
+        PainterPath(const PainterPath &);
         PainterPath(PainterPath &&);
         ~PainterPath();
+
+        void swap(PainterPath &);
+
+        PainterPath &operator =(PainterPath &&);
+        PainterPath &operator =(const PainterPath &);
+        PainterPath &operator =(std::nullptr_t);
 
         // Before modifying paths, call open()
         // And after modifying paths, call close()
@@ -557,21 +648,72 @@ class BTKAPI PainterPath : public PainterPathSink {
 
         void close_path() override;
 
+        /**
+         * @brief Clear the path
+         * 
+         */
         void clear();
 
+        /**
+         * @brief Check the path is empty
+         * 
+         * @return true 
+         * @return false 
+         */
+        bool empty()        const;
         // Query
+        /**
+         * @brief Get the bounding box of the path
+         * 
+         * @return FRect 
+         */
         FRect bounding_box() const;
+        /**
+         * @brief Check point is in the path
+         * 
+         * @param x The x of this point
+         * @param y The y of this point
+         * @return true 
+         * @return false 
+         */
         bool  contains(float x, float y) const;
+        /**
+         * @brief Let the content of the path stream to the sink
+         * 
+         * @param sink The sink of reciving this path (could not be nullptr)
+         */
         void  stream(PainterPathSink *sink) const;
 
         // Transform
+        /**
+         * @brief Set the transform object
+         * 
+         * @param mat The transform matrix
+         */
         void  set_transform(const FMatrix &mat);
 
         // Winding
         void  set_winding(PathWinding winding) override;
-
-        PainterPath &operator =(PainterPath &&);
+    public:
+        /**
+         * @brief Bind the deviced depended resource
+         * @note Is is provided for backend
+         * 
+         * @param key The key of the resource
+         * @param resource The device resource (could not be nullptr)
+         */
+        void      bind_device_resource(void *key, PaintResource *resource);
+        /**
+         * @brief Get the deviced depended resources
+         * @note Is is provided for backend
+         * 
+         * @param key The key of the resource
+         * @return PaintResource * The resource, nullptr on not found
+         */
+        auto      query_device_resource(void *key) -> PaintResource *;
     private:
+        void begin_mut();
+
         PainterPathImpl *priv;
     friend class Painter;
 };
@@ -582,7 +724,17 @@ class BTKAPI PainterPath : public PainterPathSink {
  */
 class BTKAPI Font {
     public:
+        /**
+         * @brief Construct a new Font object
+         * 
+         */
         Font();
+        /**
+         * @brief Construct a new Font object
+         * 
+         * @param family The family of the font 
+         * @param size The size of the font
+         */
         Font(u8string_view s, float size);
         Font(const Font &);
         Font(Font &&);
@@ -594,15 +746,49 @@ class BTKAPI Font {
         Font &operator =(const Font &);
         Font &operator =(std::nullptr_t);
 
+        /**
+         * @brief Get the size of the font
+         * 
+         * @return float 
+         */
         float size() const;
+        /**
+         * @brief Check the font is empty or not
+         * 
+         * @return true 
+         * @return false 
+         */
         bool  empty() const;
+        /**
+         * @brief Set the size object
+         * 
+         * @param size 
+         */
         void  set_size(float size);
+        /**
+         * @brief Set the bold
+         * 
+         * @param bold true on enabled
+         */
         void  set_bold(bool bold);
+        /**
+         * @brief Set the italic
+         * 
+         * @param italic true on enabled
+         */
         void  set_italic(bool italic);
+        /**
+         * @brief Set the family object
+         * 
+         * @param family The family of the font
+         */
         void  set_family(u8string_view family);
 
         static auto FromFile(u8string_view fname, float size) -> Font;
         static auto ListFamily()                              -> StringList;
+
+        static void Init();
+        static void Shutdown();
     private:
         void begin_mut();
 
@@ -628,18 +814,68 @@ class BTKAPI Pen {
         Pen &operator =(const Pen &);
         Pen &operator =(std::nullptr_t);
 
+        /**
+         * @brief Set the dash pattern
+         * 
+         * @param pattern The pointer to a float dash array
+         * @param count   The elem number of the dash array
+         */
         void set_dash_pattern(const float *pattern, size_t count);
+        /**
+         * @brief Set the dash pattern
+         * 
+         * @param pattern The vector of the dash array
+         */
         void set_dash_pattern(const std::vector<float> &pattern) {
             set_dash_pattern(pattern.data(), pattern.size());
         }
-        void set_dash_pattern(float pattern) {
-            set_dash_pattern(&pattern, 1);
-        }
+        /**
+         * @brief Set the dash style
+         * 
+         * @param style The dash style of the pen, See DashStyle
+         */
         void set_dash_style(DashStyle style);
+        /**
+         * @brief Set the dash offset
+         * 
+         * @param offset The dash offset
+         */
         void set_dash_offset(float offset);
+        /**
+         * @brief Set the miter limit object
+         * 
+         * @param limit The limit of miter
+         */
         void set_miter_limit(float limit);
+        /**
+         * @brief Set the line join
+         * 
+         * @param join 
+         */
         void set_line_join(LineJoin join);
+        /**
+         * @brief Set the line cap
+         * 
+         * @param cap 
+         */
         void set_line_cap(LineCap cap);
+    public:
+        /**
+         * @brief Bind the deviced depended resource
+         * @note Is is provided for backend
+         * 
+         * @param key The key of the resource
+         * @param resource The device resource (could not be nullptr)
+         */
+        void      bind_device_resource(void *key, PaintResource *resource);
+        /**
+         * @brief Get the deviced depended resources
+         * @note Is is provided for backend
+         * 
+         * @param key The key of the resource
+         * @return PaintResource * The resource, nullptr on not found
+         */
+        auto      query_device_resource(void *key) -> PaintResource *;
     private:
         void begin_mut();
 
@@ -654,8 +890,26 @@ class BTKAPI Pen {
 class BTKAPI Painter {
     public:
         Painter();
-        Painter(Texture &);
-        Painter(PixBuffer &);
+        /**
+         * @brief Construct a new Painter object
+         * 
+         * @param device The PaintDevice object
+         * @param owned Did the painter take ownership of the device (default false)
+         */
+        Painter(PaintDevice *device, bool owned = false);
+        /**
+         * @brief Construct a new Painter object on Texture
+         * 
+         * @param texture The texture
+         */
+        Painter(Texture   &texture);
+        /**
+         * @brief Construct a new Painter object on pixbuffer
+         * 
+         * @param buffer 
+         */
+        Painter(PixBuffer &buffer);
+
         Painter(const Painter&) = delete;
         Painter(Painter &&);
         ~Painter();
@@ -665,8 +919,6 @@ class BTKAPI Painter {
         void set_color(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255);
         void set_brush(const Brush &);
         void set_font(const  Font  &);
-        //< Pass nullptr to disable pen
-        void set_pen(const Pen *); 
         void set_pen(const Pen &);
         void set_stroke_width(float width);
         void set_text_align(align_t align);
@@ -681,6 +933,10 @@ class BTKAPI Painter {
         void end();
         void clear();
 
+        void save();
+        void reset();
+        void restore();
+
         // Draw
         void draw_rect(float x, float y, float w, float h);
         void draw_line(float x1, float y1, float x2, float y2);
@@ -689,7 +945,7 @@ class BTKAPI Painter {
         void draw_rounded_rect(float x, float y, float w, float h, float r);
 
         void draw_rect(const FRect &);
-        void draw_lines(const FPoint *fp, size_t n);
+        void draw_line(const FPoint &, const FPoint &);
         void draw_rounded_rect(const FRect &, float r);
         
         void draw_image(const Texture &tex, const FRect *dst, const FRect *src);
@@ -709,15 +965,12 @@ class BTKAPI Painter {
         void fill_mask(const Texture &mask, const FRect *dst, const FRect *src);
 
         // Scissor
-        void push_scissor(float x, float y, float w, float h);
-        void push_scissor(const FRect &);
-        void pop_scissor();
+        void set_scissor(float x, float y, float w, float h);
+        void scissor(float x, float y, float w, float h);
+        void reset_scissor();
 
-
-        // Vector Graphics
-        void begin_path();
-        void close_path();
-        void end_path();
+        void set_scissor(const FRect &);
+        void scissor(const FRect &);
 
         // Transform
         void transform(const FMatrix  &);
@@ -727,43 +980,29 @@ class BTKAPI Painter {
         void skew_x(float angle);
         void skew_y(float angle);
         void reset_transform();
-        void push_transform();
-        void pop_transform();
         auto transform_matrix() -> FMatrix;
 
         // Texture
-        auto create_shared_texture(TextureSource src, int w, int h, void *data) -> Texture;
-        auto create_texture(PixFormat fmt, int w, int h) -> Texture;
-        auto create_texture(const PixBuffer &buf)        -> Texture;
-
-        // Get color / brush / alpha
-        auto pen()   const -> Pen;
-        auto brush() const -> Brush;
-        auto color() const -> GLColor;
-        auto alpha() const -> float;
-
-        // Target
-        void push_group(int w, int h);
-        void pop_group_to();
-
-        // Notify 
-        void notify_resize(int w, int h); //< Target size changed
+        auto create_texture(PixFormat fmt, int w, int h, float xdpi = 96.0f, float ydpi = 96.0f) -> Texture;
+        auto create_texture(const PixBuffer &buf)                                    -> Texture;
 
         // Assign
         void operator =(Painter &&);
 
-        // Construct painter from 
-        static Painter FromWindow(AbstractWindow *window);
-        static Painter FromDxgiSurface(void *surface);
-        static Painter FromHwnd(void * hwnd);
-        static Painter FromHdc(void * hdc);
-        static Painter FromXlib(void * dpy, void * win);
-        static Painter FromXcb(void * dpy, void * win);
+        // Construct painter from
+        static Painter FromWindow(AbstractWindow *);
         static Painter FromPixBuffer(PixBuffer &);
-        static Painter FromTexture(Texture &);
 
-        // Getters
-        static bool HasFeature(PainterFeature f);
+        // Deprecated
+        [[deprecated("Use Painter::save instead")]]
+        void push_transform();
+        [[deprecated("Use Painter::restore instead")]]
+        void pop_transform();
+
+        [[deprecated("Use Painter::save + Painter::scissor instead")]]
+        void push_scissor(const FRect &);
+        [[deprecated("Use Painter::restore instead")]]
+        void pop_scissor();
 
         // Initialize painter internal state
         static void Init();
@@ -800,12 +1039,12 @@ inline void Painter::set_color(Color c) {
 inline void Painter::set_color(Color::Enum e) {
     set_color(GLColor(e));
 }
-inline void Painter::set_pen(const Pen &p) {
-    set_pen(&p);
-}
 
 inline void Painter::draw_rect(const FRect &r) {
     draw_rect(r.x, r.y, r.w, r.h);
+}
+inline void Painter::draw_line(const FPoint &from, const FPoint &to) {
+    draw_line(from.x, from.y, to.x, to.y);
 }
 inline void Painter::draw_rounded_rect(const FRect &r, float rad) {
     draw_rounded_rect(r.x, r.y, r.w, r.h, rad);
@@ -818,11 +1057,32 @@ inline void Painter::fill_rounded_rect(const FRect &r, float rad) {
     fill_rounded_rect(r.x, r.y, r.w, r.h, rad);
 }
 
+inline void Painter::scissor(const FRect &r) {
+    scissor(r.x, r.y, r.w, r.h);
+}
+inline void Painter::set_scissor(const FRect &r) {
+    set_scissor(r.x, r.y, r.w, r.h);
+}
+
+// Deprecated Painter implementation
+inline void Painter::push_transform() {
+    save();
+}
+inline void Painter::pop_transform() {
+    restore();
+}
 inline void Painter::push_scissor(const FRect &r) {
-    push_scissor(r.x, r.y, r.w, r.h);
+    save();
+    scissor(r);
+}
+inline void Painter::pop_scissor() {
+    restore();
 }
 
 // Brush implementation
+inline Brush::Brush(Color::Enum    c) : Brush() {
+    set_color(GLColor(c));
+}
 inline Brush::Brush(const Color   &c) : Brush() {
     set_color(c);
 }

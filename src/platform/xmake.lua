@@ -65,7 +65,11 @@ target("btk_platform")
     -- Painter
     if     win32_plat and native_painter then
         -- Add Direct2D
-        add_files("painter/d2d_painter.cpp")
+        -- add_files("painter/d2d_painter.cpp")
+        add_files("painter/d2d_device.cpp")
+
+        -- Register it
+        add_defines("BTK_DIRECT2D_PAINTER")
 
         -- Add direct2d libs
         add_links("d2d1", "dwrite", "uuid", "dxguid")
@@ -81,4 +85,4 @@ target("btk_platform")
     end 
 
     -- Add extra sources
-    add_files("backend/backend.cpp")
+    add_files("backend/init.cpp")

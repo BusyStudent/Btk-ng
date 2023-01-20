@@ -172,9 +172,11 @@ class EventDispatcher {
         BTKAPI bool      dispatch(Event *);
 };
 
-extern GraphicsDriverInfo PlatformDriverInfo;
 extern GraphicsDriverInfo Win32DriverInfo;
 extern GraphicsDriverInfo SDLDriverInfo;
 extern GraphicsDriverInfo XcbDriverInfo;
+
+BTKAPI auto RegisterDriver(GraphicsDriverInfo &) -> void;
+BTKAPI auto CreateDriver()                       -> GraphicsDriver *;
 
 BTK_NS_END

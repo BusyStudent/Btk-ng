@@ -89,7 +89,7 @@ class Canvas : public Widget {
 
             // printf("Canvas::paint_event: %d %d\n", this->width(), this->height());
             gc.set_antialias(true);
-            gc.draw_lines(points,2);
+            gc.draw_line(points[0], points[1]);
 
             // Try make a rect at center of screen
             gc.set_brush(brush);
@@ -129,7 +129,6 @@ class Canvas : public Widget {
             gc.pop_transform();
 
             // Reset pen
-            gc.set_pen(nullptr);
             gc.pop_transform();
 
             return true;
@@ -502,11 +501,11 @@ int main () {
     rb.set_text("This is a radio button");
     rb.resize(200, 32);
 
-    Canvas c;
-    c.show();
-    c.set_window_title("Canvas");
+    // Canvas c;
+    // c.show();
+    // c.set_window_title("Canvas");
 
-    c.resize(800, 600);
+    // c.resize(800, 600);
 
     // Test image view
     ImageView view;
@@ -534,45 +533,45 @@ int main () {
     tedit.resize(200, 32);
     tedit.move(200, 0);
 
-    // Test Hit test
-    Editer   editer;
-    editer.set_window_title("Test TextLayout hit test");
-    editer.show();
+    // // Test Hit test
+    // Editer   editer;
+    // editer.set_window_title("Test TextLayout hit test");
+    // editer.show();
 
-    tedit.set_placeholder("Please enter text");
+    // tedit.set_placeholder("Please enter text");
 
-    tedit.signal_enter_pressed().connect([&]() {
-        widget.set_window_title(tedit.text());
-    });
+    // tedit.signal_enter_pressed().connect([&]() {
+    //     widget.set_window_title(tedit.text());
+    // });
 
-    auto tft = tedit.font();
-    tft.set_bold(true);
-    tft.set_size(15);
-    tedit.set_font(tft);
+    // auto tft = tedit.font();
+    // tft.set_bold(true);
+    // tft.set_size(15);
+    // tedit.set_font(tft);
 
-    // Test layout
-    Widget lay_root;
-    Button lay_btn1("Button 1");
-    Button lay_btn2("Button 2");
-    Button lay_btn3("Button 3");
-    BoxLayout layout(LeftToRight);
+    // // Test layout
+    // Widget lay_root;
+    // Button lay_btn1("Button 1");
+    // Button lay_btn2("Button 2");
+    // Button lay_btn3("Button 3");
+    // BoxLayout layout(LeftToRight);
 
-    layout.attach(&lay_root);
-    layout.add_widget(&lay_btn1, 1, Alignment::Middle | Alignment::Center);
-    layout.add_widget(&lay_btn2, 2, Alignment::Middle | Alignment::Center);
-    layout.add_spacing(50);
-    layout.add_widget(&lay_btn3, 1, Alignment::Middle | Alignment::Center);
+    // layout.attach(&lay_root);
+    // layout.add_widget(&lay_btn1, 1, Alignment::Middle | Alignment::Center);
+    // layout.add_widget(&lay_btn2, 2, Alignment::Middle | Alignment::Center);
+    // layout.add_spacing(50);
+    // layout.add_widget(&lay_btn3, 1, Alignment::Middle | Alignment::Center);
 
-    auto sublay = new BoxLayout(TopToBottom);
-    layout.add_layout(sublay);
-    sublay->add_widget(new Button("SubButton 1"));
-    sublay->add_widget(new Button("SubButton 2"));
-    sublay->add_widget(new Button("SubButton 3"));
-    sublay->add_stretch(1);
+    // auto sublay = new BoxLayout(TopToBottom);
+    // layout.add_layout(sublay);
+    // sublay->add_widget(new Button("SubButton 1"));
+    // sublay->add_widget(new Button("SubButton 2"));
+    // sublay->add_widget(new Button("SubButton 3"));
+    // sublay->add_stretch(1);
 
-    layout.add_stretch(1);
+    // layout.add_stretch(1);
 
-    lay_root.show();
+    // lay_root.show();
 
 
     context.run();

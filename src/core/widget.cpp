@@ -216,9 +216,9 @@ bool Widget::handle(Event &event) {
                 _rect.h = e.height();
 
                 // Painter notify
-                if (_win != nullptr) {
-                    _painter.notify_resize(e.width(), e.height());
-                }
+                // if (_win != nullptr) {
+                //     _painter.notify_resize(e.width(), e.height());
+                // }
             }
             return resize_event(e);
         }

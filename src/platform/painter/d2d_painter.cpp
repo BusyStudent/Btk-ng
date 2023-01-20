@@ -1,3 +1,5 @@
+/*
+#if 0
 #include "build.hpp"
 #include "fallback.hpp"
 #include "common/utils.hpp"
@@ -5,6 +7,7 @@
 #include "common/win32/wincodec.hpp"
 #include "common/win32/direct2d.hpp"
 
+#include <Btk/detail/reference.hpp>
 #include <Btk/detail/platform.hpp>
 #include <Btk/detail/device.hpp>
 #include <Btk/painter.hpp>
@@ -2617,3 +2620,5 @@ void Pen::set_line_cap(LineCap cap) {
 }
 
 BTK_NS_END
+#endif
+*/

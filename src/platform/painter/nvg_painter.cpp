@@ -1,3 +1,5 @@
+/*
+#if 0
 // nanovg interface
 //
 // Copyright (c) 2009-2013 Mikko Mononen memon@inside.org
@@ -1324,3 +1326,5 @@ BTK_NS_END
 //         // TODO 
 //     }
 // }
+#endif
+*/

@@ -114,11 +114,16 @@ class AbstractScreen;
 class GraphicsDriverInfo;
 class GraphicsContext;
 class GraphicsDriver;
+class PaintResource;
+class PaintDevice;
+class PainterPath;
+class TextLayout;
 class GLContext;
 class PixBuffer;
 class Painter;
 class Texture;
 class Brush;
+class Pen;
 
 // String 
 class u8string;
@@ -132,6 +137,13 @@ enum class Modifier : uint16_t;
 
 // Mouse
 enum class MouseButton : uint32_t;
+
+// PixFormat
+enum class PixFormat   : uint32_t;
+
+// Signal
+template <typename T>
+class Signal;
 
 // Alias
 using  any_t      = Any *;
