@@ -134,6 +134,15 @@
 // C++ Version
 #define BTK_CXX20 (__cplusplus > 201703L)
 
+// C++ Function name
+#if   defined(__GNUC__)
+#define BTK_FUNCTION __PRETTY_FUNCTION__
+#elif defined(_MSC_VER)
+#define BTK_FUNCTION __FUNCSIG__
+#else
+#define BTK_FUNCTION __FUNCTION__
+#endif
+
 
 // Simple Once call 
 #define BTK_ONCE(...)               \

@@ -5,6 +5,7 @@
 #include <Btk/detail/platform.hpp>
 #include <Btk/detail/reference.hpp>
 #include <Btk/detail/device.hpp>
+#include <Btk/detail/types.hpp>
 #include <Btk/painter.hpp>
 #include <variant>
 #include <stack>
@@ -44,6 +45,13 @@ class PaintResourceManager : public Trackable {
             auto con = resource->signal_destroyed().connect(
                 Bind(&PaintResourceManager::on_context_destroyed, this, context)
             );
+            BTK_LOG(
+                "[PaintResourceManager::add_resource] add(%p, %p : %s)\n", 
+                context, 
+                resource, 
+                Btk_typename(resource)
+            );
+
             resources.emplace(context, std::make_pair(con, resource));
         }
 
@@ -60,6 +68,12 @@ class PaintResourceManager : public Trackable {
             for (auto &p : resources) {
                 // Disconnect all connections
                 p.second.first.disconnect();
+                BTK_LOG(
+                    "[PaintResourceManager::reset_manager] del(%p, %p : %s)\n", 
+                    p.first, 
+                    p.second.second.get(), 
+                    Btk_typename(p.second.second.get())
+                );
             }
             resources.clear();
         }
@@ -67,6 +81,12 @@ class PaintResourceManager : public Trackable {
         void on_context_destroyed(void *ctxt) {
             auto iter = resources.find(ctxt);
             if (iter != resources.end()) {
+                BTK_LOG(
+                    "[PaintResourceManager::on_context_destroyed] del(%p, %p : %s)\n", 
+                    iter->first, 
+                    iter->second.second.get(), 
+                    Btk_typename(iter->second.second.get())
+                );
                 // Disconnect connection from 
                 iter->second.first.disconnect();
                 resources.erase(iter);
@@ -127,7 +147,7 @@ class BrushImpl       : public PaintResourceManager, public Refable<BrushImpl> {
 };
 class PenImpl          : public PaintResourceManager, public Refable<PenImpl> {
     public:
-        DashStyle                dstyle = DashStyle::Custom;
+        DashStyle                dstyle = DashStyle::Solid; //< Default no dash style
         LineJoin                 join = LineJoin::Miter;
         LineCap                  cap  = LineCap::Flat;
         std::vector<float>       dashes;
@@ -172,28 +192,15 @@ class PainterImpl {
         void reset();
         void restore();
 
-        void fill_rect(const FRect &rect);
-        void fill_rounded_rect(const FRect &rect, float r);
-        void fill_ellipse(const FPoint &center, float xr, float yr);
-        void fill_path(const PainterPath &path);
-
-        void draw_rect(const FRect &rect);
-        void draw_line(const FPoint &from, const FPoint &to);
-        void draw_rounded_rect(const FRect &rect, float r);
-        void draw_ellipse(const FPoint &center, float xr, float yr);
-        void draw_path(const PainterPath &path);
-        void draw_image(AbstractTexture *tex, const FRect *dst,  const FRect *src);
-
-        void draw_text(u8string_view txt, float x, float y);
-        void draw_text(const TextLayout &lay, float x, float y);
-
         // Dirty state 
         void check_dirty();
+        void mark_all_dirty();
         void mark_dirty_from(const PainterState &a, const PainterState &b);
 
-        std::unique_ptr<PaintDevice> device; //< PaintDevice
-        Ref<PaintContext>            ctxt; //< Painter Context
-        std::stack<PainterState>     state; //< Painter State
+        std::unique_ptr<PaintDevice> device = { }; //< PaintDevice
+        Ref<PaintContext>            ctxt  = { }; //< Painter Context
+        std::stack<PainterState>     state = { }; //< Painter State
+        PainterState              defstate = { }; //< Default State (used for compare)
 
         bool                         device_owned; //< Does the painter take ownership of this device
 
@@ -202,6 +209,9 @@ class PainterImpl {
             uint8_t transform : 1; //< Transform matrix was changed by user
             uint8_t scissor   : 1; //< Scissor Rect was changed by user
             uint8_t alpha     : 1; //< alpha was changed by user
+            uint8_t brush     : 1; //< brush was changed by user
+            uint8_t pen       : 1; //< pen was changed by user
+            uint8_t width     : 1; //< stroke width was changed by user
         } dirty;
 };
 
@@ -210,6 +220,8 @@ inline PainterImpl::PainterImpl(PaintDevice *dev, bool owned) :
     ctxt(dev->paint_context()),
     device_owned(owned) 
 {
+    // Push a default state 
+    state.emplace(defstate);
     Btk_memset(&dirty, 0, sizeof(dirty));
 }
 inline PainterImpl::~PainterImpl() {
@@ -240,8 +252,8 @@ inline void PainterImpl::save() {
 }
 inline void PainterImpl::reset() {
     // Reset to default state, need compare state to set dirty state
-    mark_dirty_from(state.top(), { });
-    state.top() = { };
+    mark_dirty_from(state.top(), defstate);
+    state.top() = defstate;
 }
 inline void PainterImpl::restore() {
     BTK_ASSERT(state.size() > 1); // At least has one
@@ -253,58 +265,6 @@ inline void PainterImpl::restore() {
     mark_dirty_from(state.top(), prev);
 }
 
-inline void PainterImpl::fill_rect(const FRect &rect) {
-    check_dirty();
-    ctxt->fill_rect(rect, state.top().brush);
-}
-inline void PainterImpl::fill_rounded_rect(const FRect &rect, float r) {
-    check_dirty();
-    ctxt->fill_rounded_rect(rect, r, state.top().brush);
-}
-inline void PainterImpl::fill_ellipse(const FPoint &center, float xr, float yr) {
-    check_dirty();
-    ctxt->fill_ellipse(center, xr, yr, state.top().brush);
-}
-inline void PainterImpl::fill_path(const PainterPath &path) {
-    check_dirty();
-    ctxt->fill_path(const_cast<PainterPath&>(path), state.top().brush);
-}
-
-inline void PainterImpl::draw_rect(const FRect &rect) {
-    check_dirty();
-    ctxt->draw_rect(rect, state.top().brush, state.top().width, state.top().pen);
-}
-inline void PainterImpl::draw_line(const FPoint &from, const FPoint &to) {
-    check_dirty();
-    ctxt->draw_line(from, to, state.top().brush, state.top().width, state.top().pen);
-}
-inline void PainterImpl::draw_rounded_rect(const FRect &rect, float r) {
-    check_dirty();
-    ctxt->draw_rounded_rect(rect, r, state.top().brush, state.top().width, state.top().pen);
-}
-inline void PainterImpl::draw_ellipse(const FPoint &center, float xr, float yr) {
-    check_dirty();
-    ctxt->draw_ellipse(center, xr, yr, state.top().brush, state.top().width, state.top().pen);
-}
-inline void PainterImpl::draw_path(const PainterPath &path) {
-    check_dirty();
-    ctxt->draw_path(const_cast<PainterPath&>(path), state.top().brush, state.top().width, state.top().pen);
-}
-
-inline void PainterImpl::draw_image(AbstractTexture *texture, const FRect *dst, const FRect *src) {
-    check_dirty();
-    ctxt->draw_image(texture, dst, src);
-}
-
-inline void PainterImpl::draw_text(u8string_view txt, float x, float y) {
-    check_dirty();
-    ctxt->draw_text(state.top().alignment, state.top().font, txt, x, y, state.top().brush);
-}
-inline void PainterImpl::draw_text(const TextLayout &lay, float x, float y) {
-    check_dirty();
-    ctxt->draw_text(state.top().alignment, const_cast<TextLayout&>(lay), x, y, state.top().brush);
-}
-
 inline void PainterImpl::check_dirty() {
     // Keep track of dirty state
     if (dirty.transform) {
@@ -312,10 +272,30 @@ inline void PainterImpl::check_dirty() {
         ctxt->set_transform(&state.top().matrix);
     }
     if (dirty.scissor) {
-        dirty.scissor = false;
         ctxt->set_scissor(
             state.top().has_scissor ? &state.top().scissor : nullptr
         );
+        dirty.scissor = false;
+    }
+    if (dirty.brush) {
+        dirty.brush = false;
+        ctxt->set_brush(state.top().brush);
+    }
+    if (dirty.pen) {
+        dirty.pen = false;
+        ctxt->set_pen(state.top().pen);
+    }
+    if (dirty.width) {
+        dirty.width = false;
+        ctxt->set_stroke_width(state.top().width);
+    }
+    if (dirty.alpha) {
+        dirty.alpha = false;
+        ctxt->set_alpha(state.top().alpha);
+    }
+    if (dirty.antialias) {
+        dirty.antialias = false;
+        ctxt->set_antialias(state.top().antialias);
     }
 }
 inline void PainterImpl::mark_dirty_from(const PainterState &self, const PainterState &other) {
@@ -342,6 +322,26 @@ inline void PainterImpl::mark_dirty_from(const PainterState &self, const Painter
     if (self.antialias != other.antialias) {
         dirty.antialias = true;
     }
+
+    // Pen
+    if (self.pen != other.pen) {
+        dirty.pen = true;
+    }
+
+    // Brush
+    if (self.brush != other.brush) {
+        dirty.brush = true;
+    }
+
+    if (self.width != other.width) {
+        dirty.width = true;
+    }
+}
+inline void PainterImpl::mark_all_dirty() {
+    constexpr uint8_t fill = ~uint8_t(0);
+    for (int i = 0;i < sizeof(dirty); i++) {
+        reinterpret_cast<uint8_t*>(&dirty)[i] = fill;
+    }
 }
 
 Painter::Painter() {
@@ -354,8 +354,6 @@ Painter::Painter(PaintDevice *device, bool owned) {
         delete priv;
         priv = nullptr;
     }
-    // Put a state on it
-    priv->state.emplace();
 }
 Painter::Painter(PixBuffer &buffer) : Painter(CreatePaintDevice(&buffer), true) { }
 Painter::Painter(Texture   &texture) : Painter(texture.priv->texture.get()) { }
@@ -368,56 +366,75 @@ Painter::~Painter() {
     delete priv;
 }
 void Painter::draw_rect(float x, float y, float w, float h) {
-    priv->draw_rect(FRect(x, y, w, h));
+    priv->check_dirty();
+    priv->ctxt->draw_rect(x, y, w, h);
 }
-// void Painter::draw_line(float x1, float y1, float x2, float y2) {
-//     priv->draw_line(x1, y1, x2, y2);
-// }
 void Painter::draw_line(float x1, float y1, float x2, float y2) {
-    priv->draw_line(FPoint(x1, y1), FPoint(x2, y2));
+    priv->check_dirty();
+    priv->ctxt->draw_line(x1, y1, x2, y2);
 }
 void Painter::draw_circle(float x, float y, float r) {
-    priv->draw_ellipse(FPoint(x, y), r, r);
+    priv->check_dirty();
+    priv->ctxt->draw_ellipse(x, y, r, r);
+}
+void Painter::draw_ellipse(float x, float y, float xr, float yr) {
+    priv->check_dirty();
+    priv->ctxt->draw_ellipse(x, y, xr, yr);
 }
 void Painter::draw_rounded_rect(float x, float y, float w, float h, float r) {
-    priv->draw_rounded_rect(FRect(x, y, w, h), r);
+    priv->check_dirty();
+    priv->ctxt->draw_rounded_rect(x, y, w, h, r);
 }
 void Painter::draw_image(const Texture &tex, const FRect *dst, const FRect *src) {
     if (tex.empty()) {
         return;
     }
     priv->check_dirty();
-    priv->draw_image(tex.priv->texture.get(), dst, src);
+    priv->ctxt->draw_image(tex.priv->texture.get(), dst, src);
 }
 void Painter::draw_text(u8string_view txt, float x, float y) {
-    priv->draw_text(txt, x, y);
+    auto &state = priv->state.top();
+
+    priv->check_dirty();
+    priv->ctxt->draw_text(state.alignment, state.font, txt, x, y);
 }
 void Painter::draw_text(const TextLayout &lay, float x, float y) {
     if (lay.priv == nullptr) {
         return;
     }
-    priv->draw_text(lay, x, y);
+    auto &state = priv->state.top();
+
+    priv->check_dirty();
+    priv->ctxt->draw_text(state.alignment, lay, x, y);
 }
 void Painter::draw_path(const PainterPath &path) {
     if (path.priv) {
-        priv->draw_path(path);
+        priv->check_dirty();
+        priv->ctxt->draw_path(path);
     }
 }
 
 void Painter::fill_rect(float x, float y, float w, float h) {
-    priv->fill_rect(FRect(x, y, w, h));
+    priv->check_dirty();
+    priv->ctxt->fill_rect(x, y, w, h);
 }
 void Painter::fill_circle(float x, float y, float r) {
-    priv->fill_ellipse(FPoint(x, y), r, r);
+    priv->check_dirty();
+    priv->ctxt->fill_ellipse(x, y, r, r);
 }
 void Painter::fill_ellipse(float x, float y, float xr, float yr) {
-    priv->fill_ellipse(FPoint(x, y), xr, yr);
+    priv->check_dirty();
+    priv->ctxt->fill_ellipse(x, y, xr, yr);
 }
 void Painter::fill_rounded_rect(float x, float y, float w, float h, float r) {
-    priv->fill_rounded_rect(FRect(x, y, w, h), r);
+    priv->check_dirty();
+    priv->ctxt->fill_rounded_rect(x, y, w, h, r);
 }
 void Painter::fill_path(const PainterPath &path) {
-    priv->fill_path(path);
+    if (path.priv) {
+        priv->check_dirty();
+        priv->ctxt->fill_path(path);
+    }
 }
 
 // Begin
@@ -448,21 +465,26 @@ void Painter::set_text_align(Alignment alignment) {
 }
 void Painter::set_colorf(float r, float g, float b, float a) {
     priv->state.top().brush.set_color(GLColor(r, g, b, a));
+    priv->dirty.brush = true;
 }
 void Painter::set_color(uint8_t r, uint8_t g , uint8_t b, uint8_t a) {
     priv->state.top().brush.set_color(Color(r, g, b, a));
+    priv->dirty.brush = true;
 }
 void Painter::set_brush(const Brush &b) {
     priv->state.top().brush = b;
+    priv->dirty.brush = true;
 }
 void Painter::set_font(const Font &font) {
     priv->state.top().font = font;
 }
 void Painter::set_pen(const Pen &p) {
     priv->state.top().pen = p;
+    priv->dirty.pen = true;
 }
 void Painter::set_stroke_width(float w) {
     priv->state.top().width = w;
+    priv->dirty.width = true;
 }
 void Painter::set_alpha(float alpha) {
     priv->state.top().alpha = alpha;
@@ -519,6 +541,7 @@ void Painter::scissor(float x, float y, float w, float h) {
     else {
         state.scissor = FRect(x, y, w, h);
     }
+    state.has_scissor = true;
     priv->dirty.scissor = true;
 }
 void Painter::reset_scissor() {
@@ -549,6 +572,30 @@ auto Painter::create_texture(const PixBuffer &buf) -> Texture {
         buf.pitch()
     );
     return t;
+}
+
+// Interface for painter on window
+void Painter::notify_dpi_changed(float xdpi, float ydpi) {
+
+#if !defined(BTK_NO_RTTI)
+    if (!dynamic_cast<WindowDevice*>(priv->device.get())) {
+        // Not supported
+        return;
+    }
+#endif
+
+    static_cast<WindowDevice*>(priv->device.get())->set_dpi(xdpi, ydpi);
+}
+void Painter::notify_resize(int w, int h) {
+
+#if !defined(BTK_NO_RTTI)
+    if (!dynamic_cast<WindowDevice*>(priv->device.get())) {
+        // Not supported
+        return;
+    }
+#endif
+
+    static_cast<WindowDevice*>(priv->device.get())->resize(w, h);
 }
 
 // Move
@@ -655,11 +702,12 @@ void PainterPath::stream(PainterPathSink *sink) const {
             }
             case PainterPathImpl::BezierTo : {
                 sink->bezier_to(iter[1], iter[2], iter[3], iter[4], iter[5], iter[6]);
-                sink += 7;
+                iter += 7;
+                break;
             }
             case PainterPathImpl::ArcTo : {
                 sink->arc_to(iter[1], iter[2], iter[3], iter[4], iter[5]);
-                sink += 6;
+                iter += 6;
                 break;
             }
             case PainterPathImpl::ClosePath : {
@@ -708,6 +756,12 @@ void Brush::set_gradient(const RadialGradient & g) {
     priv->data = g;
     priv->btype = BrushType::RadialGradient;
 }
+FRect     Brush::rect() const {
+    if (priv) {
+        return priv->rect;
+    }
+    return FRect(0.0f, 0.0f, 1.0f, 1.0f);
+}
 BrushType Brush::type() const {
     if (priv) {
         return priv->btype;
@@ -736,7 +790,13 @@ FMatrix     Brush::matrix() const {
     }
     ::abort();
 }
-LinearGradient Brush::linear_gradient() const {
+CoordinateMode Brush::coordinate_mode() const {
+    if (priv) {
+        return priv->cmode;
+    }
+    return CoordinateMode::Relative;
+}
+const LinearGradient &Brush::linear_gradient() const {
     if (priv) {
         if (priv->btype == BrushType::LinearGradient) {
             return std::get<LinearGradient>(priv->data);
@@ -745,7 +805,7 @@ LinearGradient Brush::linear_gradient() const {
     // No data
     ::abort();
 }
-RadialGradient Brush::radial_gradient() const {
+const RadialGradient &Brush::radial_gradient() const {
     if (priv) {
         if (priv->btype == BrushType::RadialGradient) {
             return std::get<RadialGradient>(priv->data);
@@ -803,6 +863,15 @@ FRect  Brush::rect_to_abs(PaintDevice *device, const FRect &obj, const FRect &fr
     ret.h = rel.h * fr.h;
     return ret;
 }
+bool  Brush::operator ==(const Brush &other) const {
+    if (priv == other.priv) {
+        return true;
+    }
+    return false;
+}
+bool  Brush::operator !=(const Brush &other) const {
+    return !operator ==(other);
+}
 
 // Impl textures
 Texture::Texture() {
@@ -856,7 +925,9 @@ FPoint Texture::dpi() const {
     return priv->texture->dpi();
 }
 void   Texture::set_interpolation_mode(InterpolationMode mode) {
-
+    if (priv) {
+        priv->texture->set_interpolation_mode(mode);
+    }
 }
 // void Texture::set_interpolation_mode(InterpolationMode m) {
 //     D2D1_BITMAP_INTERPOLATION_MODE mode;
@@ -887,6 +958,7 @@ Pen::Pen() {
 }
 void Pen::set_dash_pattern(const float *pat, size_t n) {
     begin_mut();
+    priv->dstyle = DashStyle::Custom;
     priv->dashes.assign(pat, pat + n);
 }
 void Pen::set_dash_offset(float offset) {
@@ -910,6 +982,55 @@ void Pen::set_line_cap(LineCap cap) {
     priv->cap = cap;
 }
 
+bool Pen::empty() const {
+    return priv == nullptr;
+}
+bool Pen::operator ==(const Pen &other) const {
+    if (priv == other.priv) {
+        return true;
+    }
+    return false;
+}
+bool Pen::operator !=(const Pen &other) const {
+    return !operator ==(other);
+}
+
+auto Pen::dash_pattern() const -> DashPattern {
+    if (priv) {
+        return priv->dashes;
+    }
+    return { };
+}
+auto Pen::dash_offset() const -> float {
+    if (priv) {
+        return priv->dash_offset;
+    }
+    return 0.0f;
+}
+auto Pen::dash_style() const -> DashStyle {
+    if (priv) {
+        return priv->dstyle;
+    }
+    return DashStyle::Solid;
+}
+auto Pen::miter_limit() const -> float {
+    if (priv) {
+        return priv->miter_limit;
+    }
+    return 10.0f;
+}
+auto Pen::line_join() const -> LineJoin {
+    if (priv) {
+        return priv->join;
+    }
+    return LineJoin::Miter;
+}
+auto Pen::line_cap() const -> LineCap {
+    if (priv) {
+        return priv->cap;
+    }
+    return LineCap::Flat;
+}
 
 // Impl factory methods
 static

@@ -10,6 +10,10 @@
  */
 #pragma once
 
+#if defined(__GNUC__)
+#define WIDL_EXPLICIT_AGGREGATE_RETURNS
+#endif
+
 #include "build.hpp"
 #include <d2d1.h>
 
@@ -72,17 +76,5 @@ class Direct2DInitializer {
             Direct2D::Shutdown();
         }
 };
-
-// Because MinGW has a compiler Bug, so we have to implement GetXXX at asm
-
-inline auto GetD2D1BitmapPixelSize(ID2D1Bitmap *bitmap) -> D2D1_SIZE_U {
-    // Check is GCC
-#if defined(__GNUC__) && !defined(__clang__)
-    // Use asm implementation
-    //
-#else
-    return bitmap->GetPixelSize();
-#endif
-}
 
 BTK_NS_END2(BTK_NAMESPACE::Win32)

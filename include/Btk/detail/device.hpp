@@ -14,6 +14,7 @@
 #pragma once
 
 #include <Btk/detail/macro.hpp>
+#include <Btk/pixels.hpp>
 #include <Btk/rect.hpp>
 
 // Using RTTI to Get the type of it
@@ -36,10 +37,13 @@ enum class PaintContextFeature : uint8_t {
     GradientBrush, //< Supports gradient
 };
 enum class PaintContextState  : uint8_t {
+    StrokeWidth, //< The stroke width     (float *)
     Antialias,   //< The antialiasing mode (bool  *) true    on enabled
     Transform,   //< The Transform matrix (FMatrix *) nullptr on Identity
     Scissor,     //< The scissor to clip  (FRect *)   nullptr on no scissor
     Alpha,       //< The alpha value      (float)
+    Brush,       //< The brush            (Brush *)
+    Pen,         //< The Pen styles       (Pen *)
 };
 enum class PaintContextHandle : uint8_t {
     ID2D1RenderTarget,
@@ -120,6 +124,15 @@ class PaintResource {
         virtual auto signal_destroyed() -> Signal<void()>& = 0;
 };
 /**
+ * @brief Interface for notify resize dpi changed event on window
+ * 
+ */
+class WindowDevice : public PaintDevice {
+    public:
+        virtual void set_dpi(float x, float y) = 0;
+        virtual void resize(int w, int h) = 0;
+};
+/**
  * @brief Paint Context
  * 
  */
@@ -129,22 +142,22 @@ class PaintContext : public PaintResource, public GraphicsContext {
         virtual void clear(Brush &) = 0;
 
         // Draw
-        virtual bool draw_path(PainterPath &path, Brush &brush, float stroke_width, Pen &pen) = 0;
-        virtual bool draw_line(FPoint from, FPoint to, Brush &brush, float stroke_width, Pen &pen) = 0;
-        virtual bool draw_rect(FRect rect, Brush &brush, float stroke_width, Pen &pen) = 0;
-        virtual bool draw_rounded_rect(FRect rect, float r, Brush &brush, float stroke_width, Pen &pen) = 0;
-        virtual bool draw_ellipse(FPoint center, float xr, float yr, Brush &brush, float stroke_width, Pen &pen) = 0;
+        virtual bool draw_path(const PainterPath &path) = 0;
+        virtual bool draw_line(float x1, float y1, float x2, float y2) = 0;
+        virtual bool draw_rect(float x, float y, float w, float h) = 0;
+        virtual bool draw_rounded_rect(float x, float y, float w, float h, float r) = 0;
+        virtual bool draw_ellipse(float x, float y, float xr, float yr) = 0;
         virtual bool draw_image(AbstractTexture *image, const FRect *dst, const FRect *src) = 0;
 
         // Text
-        virtual bool draw_text(Alignment, Font &font, u8string_view text, float x, float y, Brush &) = 0;
-        virtual bool draw_text(Alignment, TextLayout &layout            , float x, float y, Brush &) = 0;
+        virtual bool draw_text(Alignment, Font &font, u8string_view text, float x, float y) = 0;
+        virtual bool draw_text(Alignment, const TextLayout &layout      , float x, float y) = 0;
 
         // Fill
-        virtual bool fill_path(PainterPath &path, Brush &brush) = 0;
-        virtual bool fill_rect(FRect rect, Brush &brush) = 0;
-        virtual bool fill_rounded_rect(FRect rect, float r, Brush &brush) = 0;
-        virtual bool fill_ellipse(FPoint center, float xr, float yr, Brush &brush) = 0;
+        virtual bool fill_path(const PainterPath &path) = 0;
+        virtual bool fill_rect(float x, float y, float w, float h) = 0;
+        virtual bool fill_rounded_rect(float x, float y, float w, float h, float r) = 0;
+        virtual bool fill_ellipse(float x, float y, float xr, float yr) = 0;
         virtual bool fill_mask(AbstractTexture *mask, const FRect *dst, const FRect *src) = 0;
 
         // Texture
@@ -218,6 +231,18 @@ class PaintContext : public PaintResource, public GraphicsContext {
         inline bool set_antialias(bool enabled) {
             return set_state(PaintContextState::Antialias, &enabled);
         }
+
+        inline bool set_stroke_width(float width) {
+            return set_state(PaintContextState::StrokeWidth, &width);
+        }
+        
+        inline bool set_brush(const Brush &brush) {
+            return set_state(PaintContextState::Brush, &brush);
+        }
+
+        inline bool set_pen(const Pen &pen) {
+            return set_state(PaintContextState::Pen, &pen);
+        }
 };
 
 /**
@@ -234,6 +259,12 @@ class AbstractTexture : public PaintResource, public PaintDevice {
          * @param pitch 
          */
         virtual void update(const Rect *rect, cpointer_t data, int pitch) = 0;
+        /**
+         * @brief Set the interpolation mode object
+         * 
+         * @param mode InterpolationMode (default in linear)
+         */
+        virtual void set_interpolation_mode(InterpolationMode mode) = 0;
 };
 
 /**
@@ -284,12 +315,32 @@ BTKAPI auto RegisterPaintDevice(const char *type, PaintDevice *(*fn)(void *sourc
 template <typename T>
 inline auto CreatePaintDevice(T *source) -> PaintDevice *{
     using Type = std::decay_t<T>;
-    return CreatePaintDevice(typeid(Type).name(), source);
+#if   defined(BTK_NO_RTTI)
+    return CreatePaintDevice(BTK_FUNCTION, source);
+#elif defined(_MSC_VER)
+    return CreatePaintDevice(typeid(Type).raw_name(), source);
+#else
+    return CreatePaintDevice(typeid(Type).name(), source); 
+#endif
 }
+
+/**
+ * @brief Register a Paint Device create function
+ * 
+ * @tparam T The type of the source
+ * @param fn The create function
+ */
 template <typename T>
 inline auto RegisterPaintDevice(PaintDevice *(*fn)(std::conditional_t<std::is_pointer_v<T>, T, T*> source)) -> void {
     using Type = std::decay_t<T>;
+#if   defined(BTK_NO_RTTI)
+    return RegisterPaintDevice(BTK_FUNCTION, reinterpret_cast<PaintDevice *(*)(void *)>(fn));
+#elif defined(_MSC_VER)
+    return RegisterPaintDevice(typeid(Type).raw_name(), reinterpret_cast<PaintDevice *(*)(void *)>(fn));
+#else
     return RegisterPaintDevice(typeid(Type).name(), reinterpret_cast<PaintDevice *(*)(void *)>(fn));
+#endif
+    
 }
 
 BTK_NS_END

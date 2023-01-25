@@ -201,7 +201,20 @@ void Font::Init() {
 void Font::Shutdown() {
     DWrite::Shutdown();
 }
-
+bool Font::native_handle(FontHandle what, void *out) const {
+    if (what != FontHandle::IDWriteTextFormat) {
+        return false;
+    }
+    if (!priv) {
+        return false;
+    }
+    auto ft = priv->lazy_eval();
+    if (!ft) {
+        return false;
+    }
+    *static_cast<IDWriteTextFormat **>(out) = ft;
+    return true;
+}
 // TextLayout
 COW_IMPL(TextLayout);
 
@@ -377,6 +390,20 @@ bool TextLayout::line_metrics(TextLineMetricsList *metrics) const {
         return true;
     }
     return false;
+}
+bool TextLayout::native_handle(TextLayoutHandle what, void *out) const {
+    if (what != TextLayoutHandle::IDWriteTextLayout) {
+        return false;
+    }
+    if (!priv) {
+        return false;
+    }
+    auto lay = priv->lazy_eval();
+    if (!lay) {
+        return false;
+    }
+    *static_cast<IDWriteTextLayout **>(out) = lay;
+    return true;
 }
 
 BTK_NS_END

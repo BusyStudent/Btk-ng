@@ -47,7 +47,9 @@ enum class TextureSource : uint8_t {
     DXGISurface, //< Create texture from DXGISurface
 };
 enum class FontHandle  : uint8_t {
-    IDWriteTextFormat,
+    IDWriteFactory,       //< DWrite IDWriteFactory object
+    IDWriteTextFormat,    //< DWrite IDWriteTextFormat object
+    PangoFontDescription  //< PangoFontDescription object
 };
 enum class EffectParam : uint8_t {
     BlurStandardDeviation, //< Blur : type float
@@ -299,6 +301,12 @@ class BTKAPI Brush {
         void set_gradient(const RadialGradient &g);
 
         /**
+         * @brief Get the rectangle of the brush
+         * 
+         * @return FRect 
+         */
+        FRect    rect() const;
+        /**
          * @brief Get current type of the brush
          * 
          * @return BrushType 
@@ -323,17 +331,33 @@ class BTKAPI Brush {
          */
         PixBuffer bitmap() const;
         /**
+         * @brief Get the coordinate mode of the brush
+         * 
+         * @return CoordinateMode 
+         */
+        CoordinateMode coordinate_mode() const;
+        /**
          * @brief Get the linear_gradient of the brush
          * 
          * @return LinearGradient 
          */
-        LinearGradient linear_gradient() const;
+        const LinearGradient &linear_gradient() const;
         /**
          * @brief Get the radial_gradient of the brush
          * 
          * @return RadialGradient 
          */
-        RadialGradient radial_gradient() const;
+        const RadialGradient &radial_gradient() const;
+
+        /**
+         * @brief Check if the brush is equal to another brush
+         * 
+         * @param brush 
+         * @return true 
+         * @return false 
+         */
+        bool operator ==(const Brush &brush) const;
+        bool operator !=(const Brush &brush) const;
     public:
         /**
          * @brief Convert Point to absolute coordinates
@@ -557,6 +581,16 @@ class BTKAPI TextLayout {
          * @return false 
          */
         bool line_metrics(TextLineMetricsList *metrics = nullptr) const;
+
+        /**
+         * @brief Get the native handle of the textlayout
+         * 
+         * @param what The requested handle
+         * @param out The pointer to the output buffer
+         * @return true Has the requested handle
+         * @return false 
+         */
+        bool native_handle(TextLayoutHandle what, void *out) const;
     private:
         void begin_mut();
 
@@ -784,6 +818,16 @@ class BTKAPI Font {
          */
         void  set_family(u8string_view family);
 
+        /**
+         * @brief Get the native handle of the font
+         * 
+         * @param what The requested handle
+         * @param out The pointer to the output buffer
+         * @return true Has the requested handle
+         * @return false 
+         */
+        bool  native_handle(FontHandle what, void *out) const;
+
         static auto FromFile(u8string_view fname, float size) -> Font;
         static auto ListFamily()                              -> StringList;
 
@@ -803,6 +847,8 @@ class BTKAPI Font {
  */
 class BTKAPI Pen {
     public:
+        using DashPattern = const std::vector<float> &;
+
         Pen();
         Pen(const Pen &);
         Pen(Pen &&);
@@ -859,6 +905,24 @@ class BTKAPI Pen {
          * @param cap 
          */
         void set_line_cap(LineCap cap);
+
+        /**
+         * @brief Check the brush is empty or not
+         * 
+         * @return true 
+         * @return false 
+         */
+        bool empty() const;
+
+        DashPattern dash_pattern() const;
+        DashStyle dash_style() const;
+        float     dash_offset() const;
+        float     miter_limit() const;
+        LineJoin  line_join() const;
+        LineCap   line_cap() const;
+
+        bool operator ==(const Pen &) const;
+        bool operator !=(const Pen &) const;
     public:
         /**
          * @brief Bind the deviced depended resource
@@ -881,6 +945,15 @@ class BTKAPI Pen {
 
         PenImpl *priv;
     friend class Painter;
+};
+
+/**
+ * @brief Record the painter command 
+ * 
+ */
+class BTKAPI PainterRecorder {
+    public:
+        void play(Painter &) const;
 };
 
 /**
@@ -985,6 +1058,10 @@ class BTKAPI Painter {
         // Texture
         auto create_texture(PixFormat fmt, int w, int h, float xdpi = 96.0f, float ydpi = 96.0f) -> Texture;
         auto create_texture(const PixBuffer &buf)                                    -> Texture;
+
+        // Interface for painter on window
+        void notify_dpi_changed(float xdpi, float ydpi);
+        void notify_resize(int w, int h);
 
         // Assign
         void operator =(Painter &&);
