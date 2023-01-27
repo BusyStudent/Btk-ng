@@ -540,6 +540,13 @@ class BTKAPI TextLayout {
          */
         u8string_view text() const;
         /**
+         * @brief Get all text outlines from it
+         * 
+         * @param dpi 
+         * @return PainterPath 
+         */
+        PainterPath outline(float dpi = 96.0f) const;
+        /**
          * @brief Hit test by mouse position
          * 
          * @param x logical x pos (begin at 0)
@@ -643,10 +650,10 @@ class PainterPathSink {
 };
 
 /**
- * @brief Container of path, (implemented in native way)
+ * @brief Container of path, (implemented in indenpency way)
  * 
  */
-class BTKAPI PainterPath : public PainterPathSink {
+class BTKAPI PainterPath final : public PainterPathSink {
     public:
         PainterPath();
         PainterPath(const PainterPath &);
@@ -727,6 +734,11 @@ class BTKAPI PainterPath : public PainterPathSink {
         void  set_transform(const FMatrix &mat);
 
         // Winding
+        /**
+         * @brief Set the winding object
+         * 
+         * @param winding The winding show that next shape show be solid or hole
+         */
         void  set_winding(PathWinding winding) override;
     public:
         /**

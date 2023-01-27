@@ -1,6 +1,7 @@
 #include "build.hpp"
 #include "common/utils.hpp"
 #include "common/win32/dwrite.hpp"
+#include "common/win32/direct2d.hpp"
 
 #undef min
 #undef max
@@ -254,6 +255,37 @@ size_t TextLayout::line() const {
         }
     }
     return 0;
+}
+u8string_view TextLayout::text() const {
+    if (priv) {
+        return priv->text;
+    }
+    return { };
+}
+PainterPath   TextLayout::outline(float dpi) const {
+    // TODO : Bug here
+    if (!priv) {
+        return { };
+    }
+    auto lay = priv->lazy_eval();
+    if (!lay) {
+        return { };
+    }
+
+    PainterPath path;
+    Win32::IDWritePathRenderer<PainterPath> render(&path);
+    render.set_dpi(dpi);
+
+    path.open();
+    lay->Draw(
+        nullptr,
+        &render,
+        0,
+        0
+    );
+    path.close();
+
+    return path;
 }
 bool TextLayout::hit_test(float x, float y, TextHitResult *res) const {
     if (priv) {

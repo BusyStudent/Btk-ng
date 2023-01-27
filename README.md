@@ -102,6 +102,7 @@ add_packages("btk")
 | FileDialog    |                 |                          |
 | MenuBar       | Not yet         |                          |
 | GLWidget      |                 | For use OpenGL           |
+| ListBox       | Not yet         | Display string items     |
 | VideoWidget   |                 | Video output for MediaPlayer (multimedia plugin) |
 
 ## Existing bugs
@@ -111,7 +112,6 @@ add_packages("btk")
 - [ ] Compelete PainterEffect, refactorying it
 - [ ] Compelete Nanovg Painter
 - [ ] Improve Style
-- [ ] Improve Way to set context default driver
 
 ## Install
 

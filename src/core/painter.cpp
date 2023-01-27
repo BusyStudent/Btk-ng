@@ -109,6 +109,7 @@ class PainterPathImpl : public PaintResourceManager, public Refable<PainterPathI
             QuadTo, 
             BezierTo, 
             ClosePath,
+            SetWinding
         };
 
         // Opcode : Datalen
@@ -665,14 +666,17 @@ void PainterPath::close_path() {
     priv->add_cmds(PainterPathImpl::ClosePath);
 }
 void PainterPath::clear() {
-    COW_RELEASE(priv);
+    // Reuse memory
+    if (priv) {
+        priv->paths.clear();
+    }
 }
 void PainterPath::set_transform(const FMatrix &mat) {
     begin_mut();
     priv->matrix = mat;
 }
 void PainterPath::set_winding(PathWinding winding) {
-    
+    priv->add_cmds(PainterPathImpl::SetWinding, { float(winding) });
 }
 
 void PainterPath::stream(PainterPathSink *sink) const {
@@ -715,13 +719,21 @@ void PainterPath::stream(PainterPathSink *sink) const {
                 iter += 1;
                 break;
             }
+            case PainterPathImpl::SetWinding : {
+                sink->set_winding(PathWinding(iter[1]));
+                iter += 2;
+                break;
+            }
         }
     }
 
     sink->close();
 }
 bool PainterPath::empty() const {
-    return priv == nullptr;
+    if (priv) {
+        return priv->paths.empty();
+    }
+    return true;
 }
 FRect PainterPath::bounding_box() const {
     BTK_ONCE(BTK_LOG("PainterPath::bounding_box() unimplmented\n"));

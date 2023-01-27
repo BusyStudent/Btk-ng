@@ -84,4 +84,45 @@ class BTKAPI ProgressBar : public Widget {
         Signal<void()> _range_changed;
 };
 
+class ListItem {
+    public:
+        u8string text;
+        Font     font;
+};
+/**
+ * @brief A ListBox of strings representing
+ * 
+ */
+class ListBox : public Widget {
+    public:
+        ListBox(Widget *parent = nullptr);
+        ~ListBox();
+
+        bool paint_event(PaintEvent &event) override;
+        bool resize_event(ResizeEvent &event) override;
+
+
+        void insert_item(size_t idx, const ListItem &item);
+        void add_item(const ListItem &item);
+
+        /**
+         * @brief Current Item selected
+         * 
+         * @return ListItem* 
+         */
+        ListItem *current_item() const;
+
+        BTK_EXPOSE_SIGNAL(_current_item_changed);
+        BTK_EXPOSE_SIGNAL(_item_clicked);
+        BTK_EXPOSE_SIGNAL(_item_enter);
+    private:
+        std::vector<ListItem> _items;
+        Widget               *_vslider = nullptr;
+
+        Signal<void()>        _current_item_changed;
+        Signal<void()>        _item_clicked;
+        Signal<void()>        _item_enter;
+        Signal<void()>        _item_leave;
+};
+
 BTK_NS_END

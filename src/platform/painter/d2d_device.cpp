@@ -1,6 +1,7 @@
 #include "build.hpp"
 #include "fallback.hpp"
 #include "common/win32/direct2d.hpp"
+#include "common/win32/wincodec.hpp"
 #include "common/win32/dwrite.hpp"
 
 #include <Btk/detail/reference.hpp>
@@ -33,8 +34,10 @@
 BTK_PRIV_BEGIN
 
 // Forward declarations
+using Win32::WincodecInitializer;
 using Win32::Direct2DInitializer;
-using Win32::DWriteInitializer;;
+using Win32::DWriteInitializer;
+using Win32::Wincodec;
 using Win32::Direct2D;
 using Win32::DWrite;
 
@@ -125,7 +128,7 @@ class D2DRenderTarget  : public PaintContext {
  * @brief Draw bitmap to 
  * 
  */
-class D2DBitmapTarget  : public D2DRenderTarget {
+class D2DBitmapTarget final : public D2DRenderTarget {
     public:
         /**
          * @brief Construct a new D2DBitmapTarget object
@@ -146,10 +149,21 @@ class D2DBitmapTarget  : public D2DRenderTarget {
         ComPtr<ID2D1BitmapRenderTarget> bitmap_target;
         ComPtr<ID2D1Bitmap>             dst;
 };
-class D2DDeviceContext : public D2DRenderTarget {
+
+#if   defined(BTK_DIRECT2D_EXTENSION1)
+class D2DDeviceContext final : public D2DRenderTarget {
     public:
-        
+        D2DDeviceContext(PaintDevice *dev, IDXGISwapChain *sw, ID2D1DeviceContext *ctxt) :
+            D2DRenderTarget(dev, ctxt), d3d_swapchain(sw), d2d_context(ctxt) { }
+
+        void swap_buffers() override {
+            d3d_swapchain->Present(0, 0);
+        }
+    public:
+        ComPtr<IDXGISwapChain>         d3d_swapchain;
+        ComPtr<ID2D1DeviceContext>     d2d_context;
 };
+#endif
 /**
  * @brief Interface exposed to 
  * 
@@ -169,6 +183,7 @@ class D2DPaintDevice    : public WindowDevice {
 
     private:
         Direct2DInitializer      initializer;
+        WincodecInitializer     winitializer;
     protected:
         // Factorys of D2D1
         ComPtr<ID2D1Factory>     factory;
@@ -185,7 +200,7 @@ class D2DPaintDevice    : public WindowDevice {
  * @brief ID2D1HwndRenderTarget
  * 
  */
-class D2DHwndDevice       : public D2DPaintDevice {
+class D2DHwndDevice final   : public D2DPaintDevice {
     public:
         D2DHwndDevice(HWND hwnd);
     private:
@@ -199,11 +214,14 @@ class D2DHwndDevice       : public D2DPaintDevice {
  * @brief Direct2D 1.1 
  * 
  */
-class D2DPaintDeviceEx     : public D2DPaintDevice {
+class D2DPaintDeviceEx final  : public D2DPaintDevice {
     public:
         D2DPaintDeviceEx(HWND hwnd);
 
+        auto paint_context() -> PaintContext *;
         void resize(int w, int h) override;
+
+        HWND                 hwnd = nullptr;
 
         ComPtr<ID3D11Device> d3d_device;
         ComPtr<ID3D11DeviceContext> d3d_context;
@@ -219,7 +237,7 @@ class D2DPaintDeviceEx     : public D2DPaintDevice {
  * @brief ID2D1PathGeometry wrapper , This lifetime decided by the Factorys
  * 
  */
-class D2DPath            : public PaintResource, public PainterPathSink {
+class D2DPath         final : public PaintResource, public PainterPathSink {
     public:
         BTK_MAKE_PAINT_RESOURCE
 
@@ -250,7 +268,7 @@ class D2DPath            : public PaintResource, public PainterPathSink {
  * @brief D2D1Brush wrapper , This lifetime decided by the RenderTarget
  * 
  */
-class D2DBrush          : public PaintResource {
+class D2DBrush      final  : public PaintResource {
     public:
         BTK_MAKE_PAINT_RESOURCE
 
@@ -267,7 +285,7 @@ class D2DBrush          : public PaintResource {
  * @brief D2D1StrokeStyle wrapper , This lifetime decided by the Factorys
  * 
  */
-class D2DPen            : public PaintResource {
+class D2DPen         final : public PaintResource {
     public:
         BTK_MAKE_PAINT_RESOURCE
 
@@ -284,7 +302,7 @@ class D2DPen            : public PaintResource {
  * @brief ID2D1Bitmap wrapper , This lifetime decided by the RenderTarget
  * 
  */
-class D2DTexture         : public AbstractTexture {
+class D2DTexture      final : public AbstractTexture {
     public:
         BTK_MAKE_PAINT_RESOURCE
 
@@ -487,6 +505,26 @@ bool D2DRenderTarget::draw_text(Alignment align, Font &font, u8string_view text,
         return false;
     }
     auto u16 = text.to_utf16();
+
+    if (align == AlignLeft + AlignTop && brush.type() == BrushType::Solid) {
+        // Left Top & brush is solid
+        auto [r, g, b, a] = brush.color();
+        solid_brush->SetColor(D2D1::ColorF(r, g, b, a));
+        solid_brush->SetOpacity(alpha);
+
+        auto client = D2D1::InfiniteRect();
+        client.left = x;
+        client.top = y;
+
+        target->DrawText(
+            reinterpret_cast<const WCHAR*>(u16.c_str()),
+            u16.length(),
+            fmt,
+            &client,
+            solid_brush.Get()
+        );
+        return true;
+    }
 
     ComPtr<IDWriteTextLayout> layout;
     HRESULT hr = DWrite::GetInstance()->CreateTextLayout(
@@ -1143,8 +1181,8 @@ void D2DPath::close_path() {
 void D2DPath::set_winding(PathWinding winding) {
     D2D1_FILL_MODE mode;
     switch (winding) {
-        case PathWinding::CW  : mode = D2D1_FILL_MODE_ALTERNATE; break;
-        case PathWinding::CCW : mode = D2D1_FILL_MODE_WINDING;   break;
+        case PathWinding::Solid : mode = D2D1_FILL_MODE_WINDING; break;
+        case PathWinding::Hole : mode = D2D1_FILL_MODE_ALTERNATE;   break;
     }
     sink->SetFillMode(mode);
 }
@@ -1161,7 +1199,28 @@ D2DPaintDevice::D2DPaintDevice() {
 }
 D2DPaintDevice::D2DPaintDevice(PixBuffer *buffer) {
     // CUrrently unsupported now
-    ::abort();
+    if (buffer->format() != PixFormat::RGBA32) {
+        BTK_THROW(std::runtime_error("PixBuffer must have RGBA32 format"));
+    }
+
+    ComPtr<IWICBitmap> bitmap;
+    HRESULT hr;
+
+    hr = Wincodec::GetInstance()->CreateBitmapFromMemory(
+        buffer->width(),
+        buffer->height(),
+        GUID_WICPixelFormat32bppRGB,
+        buffer->pitch(),
+        buffer->pitch() * buffer->height(),
+        buffer->pixels<BYTE>(),
+        bitmap.GetAddressOf()
+    );
+
+    hr = Direct2D::GetInstance()->CreateWicBitmapRenderTarget(
+        bitmap.Get(),
+        D2D1::RenderTargetProperties(),
+        target.GetAddressOf()
+    );
 }
 D2DPaintDevice::~D2DPaintDevice() {
 
@@ -1224,6 +1283,125 @@ void D2DHwndDevice::resize(int w, int h) {
     GetClientRect(hwnd, &rect);
     hw_target->Resize(D2D1::SizeU(rect.right - rect.left, rect.bottom - rect.top));
 }
+
+#if  defined(BTK_DIRECT2D_EXTENSION1)
+// FIXME : DPI Incorrent here
+D2DPaintDeviceEx::D2DPaintDeviceEx(HWND hwnd) : hwnd(hwnd) {
+    // Create d3d device & swapchains
+
+    // Prepare features level
+    HRESULT hr;
+
+    DXGI_SWAP_CHAIN_DESC desc = {};
+    RECT rect;
+    HDC  dc;
+
+    dc = GetDC(hwnd);
+    GetClientRect(hwnd, &rect);
+    
+    desc.BufferDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+    desc.BufferDesc.Width = rect.right - rect.left;
+    desc.BufferDesc.Height = rect.bottom - rect.top;
+    desc.BufferDesc.RefreshRate.Denominator = 1;
+    desc.BufferDesc.RefreshRate.Numerator = GetDeviceCaps(dc, VREFRESH);
+
+
+    desc.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+    desc.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+    // Sample
+    desc.SampleDesc.Count = 1;
+    desc.SampleDesc.Quality = 0;
+
+    desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+    desc.BufferCount = 2;
+    desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+    // Output
+    desc.OutputWindow = hwnd;
+    desc.Windowed = TRUE;
+    desc.Flags = 0;
+
+    UINT dev_flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
+    
+#if !defined(NDEBUG) && defined(_MSC_VER)
+    dev_flags |= D3D11_CREATE_DEVICE_DEBUG;
+#endif
+
+    ReleaseDC(hwnd, dc);
+
+
+    hr = D3D11CreateDeviceAndSwapChain(
+        nullptr,
+        D3D_DRIVER_TYPE_HARDWARE,
+        nullptr,
+        dev_flags,
+        nullptr,
+        0,
+        D3D11_SDK_VERSION,
+        &desc,
+        &d3d_swapchain,
+        &d3d_device,
+        nullptr,
+        &d3d_context
+    );
+
+    ComPtr<IDXGIDevice> dxgi_device;
+    hr = d3d_device.As(&dxgi_device);
+    if (FAILED(hr)) {
+        BTK_THROW(std::runtime_error("Failed to Get DXGI Surface\n"));
+    }
+
+    hr = factory1->CreateDevice(dxgi_device.Get(), d2d_device.GetAddressOf());
+    if (FAILED(hr)) {
+        BTK_THROW(std::runtime_error("Failed to Create D2D Device\n"));
+    }
+
+    hr = d2d_device->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, d2d_context.GetAddressOf());
+    if (FAILED(hr)) {
+        BTK_THROW(std::runtime_error("Failed to Create D2D DeviceContext\n"));
+    }
+
+    // Resize the buffer
+    resize(rect.right - rect.left, rect.bottom - rect.top);
+}
+void D2DPaintDeviceEx::resize(int w, int h) {
+    FLOAT xdpi, ydpi;
+    d2d_context->GetDpi(&xdpi, &ydpi);
+
+    RECT rect;
+    GetClientRect(hwnd, &rect);
+    w = rect.right - rect.left;
+    h = rect.bottom - rect.top;
+
+    // Unbind from old target
+    d2d_context->SetTarget(nullptr);
+    d3d_backbuffer.Reset();
+
+    ComPtr<IDXGISurface> surface;
+    ComPtr<ID2D1Bitmap1> bitmap;
+    HRESULT hr = d3d_swapchain->ResizeBuffers(0, w, h, DXGI_FORMAT_B8G8R8A8_UNORM, 0);
+    hr = d3d_swapchain->GetBuffer(0, IID_PPV_ARGS(&surface));
+    hr = d2d_context->CreateBitmapFromDxgiSurface(
+        surface.Get(),
+        D2D1::BitmapProperties1(
+            D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
+            D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED),
+            xdpi,
+            ydpi
+        ),
+        bitmap.GetAddressOf()
+    );
+    d2d_context->SetTarget(bitmap.Get());
+}
+auto D2DPaintDeviceEx::paint_context() -> PaintContext * {
+    if 	(!context) {
+        context.reset(new D2DDeviceContext(this, d3d_swapchain.Get(), d2d_context.Get()));
+    }
+    return context.get();
+}
+
+#endif
+
+
 // Register Function
 extern "C" void __BtkPlatform_D2D_Init() {
     RegisterPaintDevice<PixBuffer>([](PixBuffer *buf) -> PaintDevice * {

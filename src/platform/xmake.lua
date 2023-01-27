@@ -72,7 +72,7 @@ target("btk_platform")
         add_defines("BTK_DIRECT2D_PAINTER")
 
         -- Add direct2d libs
-        add_links("d2d1", "dwrite", "uuid", "dxguid")
+        add_links("d2d1", "dwrite", "d3d11", "uuid", "dxguid")
     elseif is_plat("linux") and native_painter then
         -- Add cairo
         add_files("painter/cairo_painter.cpp")

@@ -435,19 +435,24 @@ bool Widget::handle(Event &event) {
                 }
             }
             // Unhandled or no child under mouse
-            return drag_begin(drag);
+            if (drag_begin(drag)) {
+                // Self accept it
+                dragging_widget = this;
+            }
+            return false;
         }
         case Event::DragEnd : {
             auto drag = event.as<DragEvent>();
-            if (dragging_widget) {
+            if (dragging_widget && dragging_widget != this) {
                 // Notify drag end
                 dragging_widget->handle(event);
-                dragging_widget = nullptr;
             }
+            dragging_widget = nullptr;
             return drag_end(drag);
         }
         case Event::DragMotion : {
-            if (dragging_widget) {
+            // It may is self accepted this drag
+            if (dragging_widget && dragging_widget != this) {
                 if (dragging_widget->handle(event)) {
                     return true;
                 }
