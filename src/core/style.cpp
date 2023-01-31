@@ -154,8 +154,8 @@ void StyleBreeze(Style *style) {
 #endif
     
     // Icon
-    style->icon_width = 16;
-    style->icon_height = 16;
+    style->icon_width = 20;
+    style->icon_height = 20;
 
     // Window default
     style->window_height = 100;

@@ -149,6 +149,30 @@ class D2DBitmapTarget final : public D2DRenderTarget {
         ComPtr<ID2D1BitmapRenderTarget> bitmap_target;
         ComPtr<ID2D1Bitmap>             dst;
 };
+/**
+ * @brief Wic Bitmap Target
+ * 
+ */
+class D2DWicBitmapTarget final : public D2DRenderTarget {
+    public:
+        D2DWicBitmapTarget(PaintDevice *device, ID2D1RenderTarget *target, PixBuffer *pixbuffer, IWICBitmap *bitmap) :
+            D2DRenderTarget(device, target), pixbuffer(pixbuffer), bitmap(bitmap) { }
+
+        void swap_buffers() override {
+            ComPtr<IWICBitmapLock> lock;
+            HRESULT hr;
+            BYTE *data;
+            UINT size;
+            hr = bitmap->Lock(nullptr, WICBitmapLockRead, lock.GetAddressOf()); 
+            hr = lock->GetDataPointer(&size, &data);
+
+            BTK_ASSERT(size == pixbuffer->pitch() * pixbuffer->height());
+            Btk_memcpy(pixbuffer->pixels(), data, size);
+        }
+    public:
+        PixBuffer                    *pixbuffer; //< Pixels buffer write to
+        ComPtr<IWICBitmap>               bitmap;
+};
 
 #if   defined(BTK_DIRECT2D_EXTENSION1)
 class D2DDeviceContext final : public D2DRenderTarget {
@@ -171,7 +195,6 @@ class D2DDeviceContext final : public D2DRenderTarget {
 class D2DPaintDevice    : public WindowDevice {
     public:
         D2DPaintDevice();
-        D2DPaintDevice(PixBuffer *buffer);
         ~D2DPaintDevice();
 
         auto paint_context() -> PaintContext * override;
@@ -197,6 +220,20 @@ class D2DPaintDevice    : public WindowDevice {
 };
 
 /**
+ * @brief Render to software pixel buffer
+ * 
+ */
+class D2DWicDevice final : public D2DPaintDevice {
+    public:
+        D2DWicDevice(PixBuffer *pixbuffer);
+
+        auto paint_context() -> PaintContext *;
+    private:
+        PixBuffer         *pixbuffer;
+        ComPtr<IWICBitmap> bitmap;
+};
+
+/**
  * @brief ID2D1HwndRenderTarget
  * 
  */
@@ -214,9 +251,9 @@ class D2DHwndDevice final   : public D2DPaintDevice {
  * @brief Direct2D 1.1 
  * 
  */
-class D2DPaintDeviceEx final  : public D2DPaintDevice {
+class D2DHwndDeviceEx final  : public D2DPaintDevice {
     public:
-        D2DPaintDeviceEx(HWND hwnd);
+        D2DHwndDeviceEx(HWND hwnd);
 
         auto paint_context() -> PaintContext *;
         void resize(int w, int h) override;
@@ -1197,31 +1234,6 @@ D2DPaintDevice::D2DPaintDevice() {
 #endif
 
 }
-D2DPaintDevice::D2DPaintDevice(PixBuffer *buffer) {
-    // CUrrently unsupported now
-    if (buffer->format() != PixFormat::RGBA32) {
-        BTK_THROW(std::runtime_error("PixBuffer must have RGBA32 format"));
-    }
-
-    ComPtr<IWICBitmap> bitmap;
-    HRESULT hr;
-
-    hr = Wincodec::GetInstance()->CreateBitmapFromMemory(
-        buffer->width(),
-        buffer->height(),
-        GUID_WICPixelFormat32bppRGB,
-        buffer->pitch(),
-        buffer->pitch() * buffer->height(),
-        buffer->pixels<BYTE>(),
-        bitmap.GetAddressOf()
-    );
-
-    hr = Direct2D::GetInstance()->CreateWicBitmapRenderTarget(
-        bitmap.Get(),
-        D2D1::RenderTargetProperties(),
-        target.GetAddressOf()
-    );
-}
 D2DPaintDevice::~D2DPaintDevice() {
 
 }
@@ -1265,6 +1277,39 @@ void D2DPaintDevice::set_dpi(FLOAT xdpi, FLOAT ydpi) {
     target->SetDpi(xdpi, ydpi);
 }
 
+// D2D Wic
+D2DWicDevice::D2DWicDevice(PixBuffer *buffer) : pixbuffer(buffer) {
+    // CUrrently unsupported now
+    if (buffer->format() != PixFormat::RGBA32) {
+        BTK_THROW(std::runtime_error("PixBuffer must have RGBA32 format"));
+    }
+
+    HRESULT hr;
+
+    hr = Wincodec::GetInstance()->CreateBitmapFromMemory(
+        buffer->width(),
+        buffer->height(),
+        GUID_WICPixelFormat32bppRGB,
+        buffer->pitch(),
+        buffer->pitch() * buffer->height(),
+        buffer->pixels<BYTE>(),
+        bitmap.GetAddressOf()
+    );
+
+    hr = Direct2D::GetInstance()->CreateWicBitmapRenderTarget(
+        bitmap.Get(),
+        D2D1::RenderTargetProperties(),
+        target.GetAddressOf()
+    );
+}
+auto D2DWicDevice::paint_context() -> PaintContext* {
+    if (!context) {
+        context.reset(new D2DWicBitmapTarget(this, target.Get(), pixbuffer, bitmap.Get()));
+    }
+    return context.get();
+} 
+
+
 D2DHwndDevice::D2DHwndDevice(HWND h) {
     hwnd = h;
     auto hr = Direct2D::GetInstance()->CreateHwndRenderTarget(
@@ -1286,7 +1331,7 @@ void D2DHwndDevice::resize(int w, int h) {
 
 #if  defined(BTK_DIRECT2D_EXTENSION1)
 // FIXME : DPI Incorrent here
-D2DPaintDeviceEx::D2DPaintDeviceEx(HWND hwnd) : hwnd(hwnd) {
+D2DHwndDeviceEx::D2DHwndDeviceEx(HWND hwnd) : hwnd(hwnd) {
     // Create d3d device & swapchains
 
     // Prepare features level
@@ -1363,7 +1408,7 @@ D2DPaintDeviceEx::D2DPaintDeviceEx(HWND hwnd) : hwnd(hwnd) {
     // Resize the buffer
     resize(rect.right - rect.left, rect.bottom - rect.top);
 }
-void D2DPaintDeviceEx::resize(int w, int h) {
+void D2DHwndDeviceEx::resize(int w, int h) {
     FLOAT xdpi, ydpi;
     d2d_context->GetDpi(&xdpi, &ydpi);
 
@@ -1392,7 +1437,7 @@ void D2DPaintDeviceEx::resize(int w, int h) {
     );
     d2d_context->SetTarget(bitmap.Get());
 }
-auto D2DPaintDeviceEx::paint_context() -> PaintContext * {
+auto D2DHwndDeviceEx::paint_context() -> PaintContext * {
     if 	(!context) {
         context.reset(new D2DDeviceContext(this, d3d_swapchain.Get(), d2d_context.Get()));
     }
@@ -1405,7 +1450,7 @@ auto D2DPaintDeviceEx::paint_context() -> PaintContext * {
 // Register Function
 extern "C" void __BtkPlatform_D2D_Init() {
     RegisterPaintDevice<PixBuffer>([](PixBuffer *buf) -> PaintDevice * {
-        return new D2DPaintDevice(buf);
+        return new D2DWicDevice(buf);
     });
     RegisterPaintDevice<AbstractWindow>([](AbstractWindow *win) -> PaintDevice * {
         HWND hwnd;

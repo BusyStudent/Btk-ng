@@ -36,6 +36,11 @@
 #include <d2d1_3.h>
 #endif
 
+#if defined(_MSC_VER)
+#pragma comment(lib, "d2d1.lib")
+#pragma comment(lib, "d3d11.lib")
+#endif
+
 // For PathWinding
 #include <Btk/painter.hpp>
 

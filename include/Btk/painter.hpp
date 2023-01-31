@@ -532,7 +532,12 @@ class BTKAPI TextLayout {
          * @return size_t 
          */
         size_t line() const;
-
+        /**
+         * @brief Get font of this layout
+         * 
+         * @return Font 
+         */
+        Font   font() const;
         /**
          * @brief Get the text of the text block
          * 
@@ -644,8 +649,17 @@ class PainterPathSink {
         virtual void bezier_to(float x1, float y1, float x2, float y2, float x3, float y3) = 0;
         virtual void arc_to(float x1, float y1, float x2, float y2, float radius) = 0;
 
+        /**
+         * @brief Close the current path
+         * 
+         */
         virtual void close_path() = 0;
 
+        /**
+         * @brief Set the winding object (The next shape, call before move_to method)
+         * 
+         * @param winding 
+         */
         virtual void set_winding(PathWinding winding) = 0;
 };
 

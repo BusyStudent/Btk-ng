@@ -256,6 +256,13 @@ size_t TextLayout::line() const {
     }
     return 0;
 }
+Font  TextLayout::font() const {
+    Font ft;
+    if (priv) {
+        ft.priv = priv->font.get();
+    }
+    return ft;
+}
 u8string_view TextLayout::text() const {
     if (priv) {
         return priv->text;

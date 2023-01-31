@@ -17,7 +17,7 @@ void AbstractButton::set_icon(const PixBuffer &icon) {
         return;
     }
     auto s = style();
-    _icon.set_image(icon.resize(s->icon_width, s->icon_height));
+    _icon.set_image(icon);
     _has_icon = true;
 }
 void AbstractButton::set_text(u8string_view us) {     
@@ -89,7 +89,21 @@ bool Button::paint_event(PaintEvent &event) {
         gc.draw_rect(border);
     }   
 
-    // Text
+    // Text & Icon
+    FRect icon_rect = {0.0f, 0.0f, 0.0f, 0.0f};
+
+    if (_icon.type() == BrushType::Bitmap) {
+        // Has Icon
+        // Icon at center of this button, calc it
+        float center_y = border.y + border.h / 2;
+
+        float y = center_y - float(style->icon_height) / 2;
+        float x = border.x + (y - border.y);
+        icon_rect = FRect(x, y, style->icon_width, style->icon_height);
+
+        gc.set_brush(_icon);
+        gc.fill_rect(icon_rect);
+    }
     if (!_text.empty()) {
         if (_pressed || !has_focus() || under_mouse()) {
             // Normal text color on nofocus or under pressed
@@ -104,11 +118,21 @@ bool Button::paint_event(PaintEvent &event) {
         gc.set_font(font());
         // gc.set_color(c.r, c.g, c.b, c.a);
 
-        gc.push_scissor(border);
+        // Text border
+        float icon_width = 0.0f;
+        if (icon_rect.x != 0.0f) {
+            icon_width = icon_rect.w + (icon_rect.x - border.x) * 2;
+        }
+
+        auto tborder = border;
+        tborder.x += icon_width;
+        tborder.w -= icon_width;
+
+        gc.push_scissor(tborder);
         gc.draw_text(
             _textlay,
-            border.x + border.w / 2,
-            border.y + border.h / 2
+            tborder.x + tborder.w / 2,
+            tborder.y + tborder.h / 2
         );
         gc.pop_scissor();
     }
@@ -219,7 +243,7 @@ bool RadioButton::paint_event(PaintEvent &) {
         gc.set_text_align(Alignment::Left | Alignment::Middle);
         gc.set_color(style->text);
         gc.draw_text(
-            _text,
+            _textlay,
             cx + style->radio_button_circle_r + style->radio_button_text_pad,
             cy
         );

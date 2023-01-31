@@ -1,5 +1,6 @@
 #include "build.hpp"
 
+#include <Btk/widgets/slider.hpp>
 #include <Btk/widgets/view.hpp>
 #include <Btk/event.hpp>
 
@@ -318,4 +319,272 @@ bool ProgressBar::paint_event(PaintEvent &) {
     return true;
 }
 
+ListBox::ListBox(Widget *parent) : Widget(parent) {
+    _vslider = new ScrollBar(this, Vertical);
+    _vslider->hide();
+    _vslider->signal_value_changed().connect(&ListBox::vslider_value_changed, this);
+
+    _hslider = new ScrollBar(this, Horizontal);
+    _hslider->hide();
+    _hslider->signal_value_changed().connect(&ListBox::hslider_value_changed, this);
+
+    set_focus_policy(FocusPolicy::Mouse);
+}
+ListBox::~ListBox() {
+
+}
+
+void ListBox::clear() {
+    _items.clear();
+    _current = -1;
+
+    items_changed();
+}
+void ListBox::insert_item(size_t idx, const ListItem &item) {
+    if (idx > _items.size()) {
+        idx = _items.size();
+    }
+    auto iter = _items.insert(_items.begin() + idx, item);
+    if (iter->font.empty()) {
+        iter->font = font();
+    }
+
+    iter->layout.set_text(iter->text);
+    iter->layout.set_font(iter->font);
+
+    items_changed();
+}
+void ListBox::add_item(const ListItem &item) {
+    auto &ref = _items.emplace_back(item);
+    if (ref.font.empty()) {
+        ref.font = font();
+    }
+
+    ref.layout.set_text(ref.text);
+    ref.layout.set_font(ref.font);
+
+    items_changed();
+}
+bool ListBox::paint_event(PaintEvent &event) {
+    auto &p = painter();
+    auto r  = rect().apply_margin(style()->margin);
+
+    p.save();
+    p.set_antialias(true);
+    p.set_stroke_width(1.0f);
+
+    // Draw border
+    p.set_brush(palette().input());
+    p.fill_rect(r);
+    if (has_focus()) {
+        p.set_brush(palette().hightlight());
+    }
+    else {
+        p.set_brush(palette().border());
+    }
+    p.draw_rect(r);
+
+    p.set_text_align(AlignLeft + AlignTop);
+
+    // Get Text client area
+    r = r.apply_margin(style()->margin);
+    float x = r.x + _xtranslate;
+    float y = r.y + _ytranslate;
+    int idx = 0;
+
+    p.save();
+    p.scissor(r);
+
+    bool painted = false; //< Has painted text    
+
+    for (auto &item : _items) {
+        auto [w, h] = item.layout.size();
+
+        FRect client(x, y, r.w, h);
+        if (r.is_intersected(client)) {
+            // Draw 
+            if (_current == idx) {
+                // Draw background
+                p.set_brush(palette().hightlight());
+                p.fill_rect(client);
+
+                p.set_brush(palette().hightlighted_text());
+            }
+            else {
+                p.set_brush(palette().text());
+            }
+            p.draw_text(item.layout, x, y);
+
+            painted = true;
+        }
+        else if (painted) {
+            break;
+        }
+        // Increase
+        idx += 1;
+        y   += h;
+    }
+    p.restore();
+    p.restore();
+    return true;
+}
+bool ListBox::resize_event(ResizeEvent &event) {
+    calc_slider();
+    return true;
+}
+bool ListBox::mouse_press(MouseEvent &event) {
+    auto i = item_at(event.x(), event.y());
+    set_current_item(i);
+    if (i) {
+        _item_clicked.emit(i);
+    }
+    return true;
+}
+bool ListBox::mouse_wheel(WheelEvent &event) {
+    if (_vslider->visible()) {
+        // ENABLED 
+        return _vslider->handle(event);
+    }
+    return false;
+}
+bool ListBox::mouse_motion(MotionEvent &event) {
+    // TODO : Handle Mosue motion to tigger _item_enter
+    // Maybe we need cache here
+    return true;
+}
+bool ListBox::focus_gained(FocusEvent &event) {
+    repaint();
+    return true;
+}
+bool ListBox::focus_lost(FocusEvent &event) {
+    repaint();
+    return true;
+}
+
+ListItem *ListBox::item_at(float x, float y) {
+    // Detranslate y
+    y -= _ytranslate;
+    x -= _xtranslate;
+
+    auto s = style();
+    auto item_viewport = rect().apply_margin(s->margin).apply_margin(s->margin);
+
+    float cur_x = item_viewport.x;
+    float cur_y = item_viewport.y;
+    for (auto &item : _items) {
+        auto [w, h] = item.layout.size();
+        FRect rect(cur_x, cur_y, item_viewport.w, h);
+        if (rect.contains(x, y)) {
+            return &item;
+        }
+
+        cur_y   += h;
+    }
+
+    return nullptr;
+}
+ListItem *ListBox::item_at(int idx) {
+    if (idx > _items.size() || idx < 0) {
+        return nullptr;
+    }
+    return &_items[idx];
+}
+ListItem *ListBox::current_item() {
+    if (_current < 0 || _current >= _items.size()) {
+        return nullptr;
+    }
+    return &_items[_current];
+}
+
+void ListBox::remove_item(ListItem *item) {
+    if (!item) {
+        return;
+    }
+    auto idx = index_of(item);
+    if (idx == _current) {
+        // Current Index
+        set_current_item(nullptr);
+    }
+    _items.erase(_items.begin() + idx);
+    items_changed();
+}
+
+void ListBox::set_current_item(ListItem *item) {
+    int now;
+    if (!item) {
+        now = -1;
+    }
+    else {
+        now = (item - _items.data());
+    }
+    if (now == _current) {
+        return;
+    }
+    _current = now;
+    repaint();
+    _current_item_changed.emit();
+}
+
+int  ListBox::index_of(const ListItem *item) const {
+    if (!item) {
+        return -1;
+    }
+    return item - _items.data();
+}
+
+void ListBox::items_changed() {
+    calc_slider();
+    repaint();
+}
+void ListBox::calc_slider() {
+    // Calc the Height of the string list
+    auto s = style();
+    auto item_viewport = rect().apply_margin(s->margin).apply_margin(s->margin);
+    float height = 0.0f;
+    
+    for (auto &item : _items) {
+        auto [w, h] = item.layout.size();
+        height += h;
+    }
+
+
+    // Check is bigger than slider
+    if (height > item_viewport.h) {
+        // Should enable slider
+        float diff = height - item_viewport.h;
+        auto cur = _vslider->value();
+
+        _vslider->show();
+        _vslider->set_page_step(item_viewport.h);
+        _vslider->set_single_step(height / _items.size());
+        _vslider->set_range(0, diff);
+        _vslider->set_value(min<double>(diff, cur));
+
+        // BTK_LOG("Slider line step %lf\n", slider->single_step());
+        // BTK_LOG("Slider page step %lf\n", slider->page_step());
+        
+        // Place at
+        _vslider->move(item_viewport.x + item_viewport.w - _vslider->width(), item_viewport.y);
+        _vslider->resize(_vslider->width(), item_viewport.h);
+    }
+    else {
+        // Disable
+        _vslider->hide();
+        _vslider->set_range(0, 100);
+        _vslider->set_value(0);
+        _ytranslate = 0;
+    }
+}
+void ListBox::vslider_value_changed() {
+    if (_vslider->visible()) {
+        _ytranslate = -_vslider->value();
+        repaint();
+    }
+}
+void ListBox::hslider_value_changed() {
+    if (_hslider->visible()) {
+        _xtranslate = -_hslider->value();
+        repaint();
+    }
+}
 BTK_NS_END

@@ -407,6 +407,7 @@ int main () {
     Button w(&widget);
     Button v(&widget);
     Button u(&widget);
+    Button dbg(&widget);
     ProgressBar p(&widget);
     ProgressBar q(&widget);
     Slider      s(&widget);
@@ -528,10 +529,74 @@ int main () {
         return false;
     }, nullptr);
 
+    ListBox ltbox(&widget);
+    ltbox.move(300, 100);
+    ltbox.resize(400, 300);
+    Button   ltadd(&widget);
+    Button   ltdel(&widget);
+    Button   ltrnd(&widget);
+    TextEdit ltedit(&widget);
+
+    // Edit behind the listbox
+    ltedit.move(300, 68);
+    ltedit.resize(200, 32);
+    ltadd.move(500, 68);
+    ltadd.set_text("Insert");
+    ltdel.move(ltadd.x() + ltadd.width(), ltadd.y());
+    ltdel.set_text("Delete");
+    ltrnd.move(ltdel.x() + ltdel.width(), ltadd.y());
+    ltrnd.set_text("Random add");    
+
+    auto ltfont = ltedit.font();
+    ltfont.set_size(20);
+    ltfont.set_italic(true);
+    ltbox.set_font(ltfont);
+
+    ltedit.signal_enter_pressed().connect([&]() {
+        ListItem item;
+        item.text = ltedit.text();
+        ltbox.add_item(item);
+    });
+    ltadd.signal_clicked().connect([&]() {
+        ListItem item;
+        item.text = ltedit.text();
+        ltbox.add_item(item);
+    });
+    ltdel.signal_clicked().connect([&]() {
+        auto item = ltbox.current_item();
+        if (item) {
+            ltbox.remove_item(item);
+        }
+        else {
+            ltbox.clear();
+        }
+    });
+    ltrnd.signal_clicked().connect([&]() {
+        for (int i = 0; i < 20; i++) {
+            // Random generate string
+            char buffer[20] = {};
+            for (auto &ch : buffer) {
+                // Make a ansic char
+                ch = rand() 
+                    % (std::numeric_limits<char>::max() - '0') + '0';
+            }
+            ListItem item;
+            item.text = std::string(buffer, sizeof(buffer));
+            ltbox.add_item(item);
+        }
+    });
     // Test Text input
     TextEdit tedit(&widget);
     tedit.resize(200, 32);
     tedit.move(200, 0);
+
+    dbg.move(tedit.x() + tedit.width(), tedit.y());
+    dbg.signal_clicked().connect([&, enabled = true]() mutable {
+        widget.set_attribute(WidgetAttrs::Debug, enabled);  
+        enabled = !enabled;
+    });
+    dbg.set_text("Debug");
+    dbg.set_icon(test_image());
 
     // // Test Hit test
     Editer   editer;

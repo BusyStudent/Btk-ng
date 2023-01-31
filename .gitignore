@@ -6,6 +6,7 @@
 
 /.vscode/compile_commands.json
 /.vscode/settings.json
+/.vscode/launch.json
 
 # Clangd
 /compile_commands.json

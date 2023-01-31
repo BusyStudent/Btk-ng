@@ -221,19 +221,31 @@ PixBuffer PixBuffer::resize(int w, int h) const {
     auto wic = Win32::Wincodec::GetInstance();
 
     ComPtr<IWICBitmapScaler> scaler;
+    ComPtr<IWICFormatConverter> converter;
+    HRESULT hr;
 
-    wic->CreateBitmapScaler(&scaler);
+    hr = wic->CreateBitmapScaler(&scaler);
+    hr = wic->CreateFormatConverter(&converter);
 
     Win32::IBtkBitmap source(this);
     // Scale the bitmap to the new size
     // Emm, WICBitmapInterpolationModeHighQualityCubic is undefined in MinGW :(
-    scaler->Initialize(&source, w, h, WICBitmapInterpolationModeCubic);
+    hr = scaler->Initialize(&source, w, h, WICBitmapInterpolationModeCubic);
+
+    hr = converter->Initialize(
+        scaler.Get(),
+        GUID_WICPixelFormat32bppRGBA,
+        WICBitmapDitherTypeNone,
+        nullptr,
+        0.0,
+        WICBitmapPaletteTypeCustom
+    );
 
     // Create a new PixBuffer
-    PixBuffer buf(w, h);
+    PixBuffer buf(PixFormat::RGBA32, w, h);
 
     // Copy to the new PixBuffer
-    scaler->CopyPixels(
+    hr = converter->CopyPixels(
         nullptr,
         buf._pitch,
         buf._pitch * h,
