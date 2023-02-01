@@ -9,7 +9,7 @@ class PaintBox: public Widget {
         PaintBox() {
             auto f = font();
             f.set_size(60);
-            layout.set_text("Hello World");
+            layout.set_text("Hello World 你好 世界");
             layout.set_font(f);
 
             path = layout.outline();
@@ -21,6 +21,7 @@ class PaintBox: public Widget {
         bool drag_end(DragEvent &event) override;
 
         bool key_press(KeyEvent &event) override;
+        bool mouse_wheel(WheelEvent &event) override;
     private:
         std::vector<std::vector<FPoint>> points;
         TextLayout layout;
@@ -64,6 +65,26 @@ bool PaintBox::paint_event(PaintEvent &event) {
             p.draw_line(vec[i], vec[i+1]);
         }
     }
+
+    p.draw_path(path);
+    p.set_text_align(AlignLeft + AlignTop);
+    p.draw_text(layout, 0, 0);
+
+    auto [w, h] = layout.size();
+    p.draw_rect(0, 0, w, h);
+
+    return true;
+}
+bool PaintBox::mouse_wheel(WheelEvent &event) {
+    auto f = layout.font();
+    auto size = f.size();
+    size = clamp(size + event.y(), 1.0f, 1000.0f);
+
+    f.set_size(size);
+    layout.set_font(f);
+    path = layout.outline();
+
+    repaint();
 
     return true;
 }

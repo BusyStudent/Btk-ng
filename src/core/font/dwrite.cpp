@@ -1,4 +1,5 @@
 #include "build.hpp"
+#include "dwrite_outline.hpp"
 #include "common/utils.hpp"
 #include "common/win32/dwrite.hpp"
 #include "common/win32/direct2d.hpp"
@@ -30,12 +31,18 @@ class FontImpl : public Refable <FontImpl> {
 class TextLayoutImpl : public Refable <TextLayoutImpl> {
     public:
         IDWriteTextLayout *lazy_eval();
+        PainterPath        outline(float dpi);
 
         ComPtr<IDWriteTextLayout> layout; //< Layout of the text, created on need
         Ref<FontImpl>             font;   //< Font of the text
         u8string                  text;   //< Text to render
         float                     max_width = std::numeric_limits<float>::max(); //< Max width of the text
         float                     max_height = std::numeric_limits<float>::max(); //< Max height of the text
+        
+        // Cached field
+        FSize                     cached_size = {-1.0f, -1.0f};
+        PainterPath               cached_path = { };
+        float                     cached_path_dpi = 0.0f;
 };
 
 // FontImpl
@@ -59,7 +66,22 @@ inline auto FontImpl::lazy_eval() -> IDWriteTextFormat * {
     }
     return format.Get();
 }
+
 // TextLayout
+inline auto TextLayoutImpl::outline(float dpi) -> PainterPath {
+    if (dpi != cached_path_dpi) {
+        cached_path_dpi = dpi;
+        cached_path.clear();
+    }
+    if (!cached_path.empty()) {
+        return cached_path;
+    }
+    if (FAILED(DWriteGetTextLayoutOutline(lazy_eval(), dpi, &cached_path))) {
+        // Failed, remove path
+        cached_path.clear();
+    }
+    return cached_path;
+}
 inline auto TextLayoutImpl::lazy_eval() -> IDWriteTextLayout * {
     if (layout == nullptr) {
         // Create one
@@ -217,28 +239,39 @@ bool Font::native_handle(FontHandle what, void *out) const {
     return true;
 }
 // TextLayout
-COW_IMPL(TextLayout);
+COW_BASIC_IMPL(TextLayout);
 
 TextLayout::TextLayout() {
     priv = nullptr;
 }
 void TextLayout::set_text(u8string_view txt) {
     begin_mut();
-    priv->layout.Reset(); //< Clear previous layout
     priv->text = txt;
 }
 void TextLayout::set_font(const Font &fnt) {
     begin_mut();
-    priv->layout.Reset(); //< Clear previous layout
     priv->font.reset(fnt.priv);
+}
+void TextLayout::begin_mut() {
+    COW_MUT(priv);
+    // Clear state
+    priv->layout.Reset(); //< Clear previous layout
+    priv->cached_path_dpi = 0.0f;
+    priv->cached_path.clear();
+    priv->cached_size = {-1.0f, -1.0f};
 }
 FSize TextLayout::size() const {
     if (priv) {
+        if (priv->cached_size.is_valid()) {
+            return priv->cached_size;
+        }
         auto layout = priv->lazy_eval();
         if (layout) {
             DWRITE_TEXT_METRICS m;
             layout->GetMetrics(&m);
             // This size include white space
+            priv->cached_size.w = m.widthIncludingTrailingWhitespace;
+            priv->cached_size.h = m.height;
             return FSize(m.widthIncludingTrailingWhitespace, m.height);
         }
     }
@@ -259,7 +292,7 @@ size_t TextLayout::line() const {
 Font  TextLayout::font() const {
     Font ft;
     if (priv) {
-        ft.priv = priv->font.get();
+        ft.priv = COW_REFERENCE(priv->font.get());
     }
     return ft;
 }
@@ -274,25 +307,7 @@ PainterPath   TextLayout::outline(float dpi) const {
     if (!priv) {
         return { };
     }
-    auto lay = priv->lazy_eval();
-    if (!lay) {
-        return { };
-    }
-
-    PainterPath path;
-    Win32::IDWritePathRenderer<PainterPath> render(&path);
-    render.set_dpi(dpi);
-
-    path.open();
-    lay->Draw(
-        nullptr,
-        &render,
-        0,
-        0
-    );
-    path.close();
-
-    return path;
+    return priv->outline(dpi);
 }
 bool TextLayout::hit_test(float x, float y, TextHitResult *res) const {
     if (priv) {
