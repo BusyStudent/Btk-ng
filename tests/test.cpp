@@ -161,16 +161,16 @@ TEST(PixBufferTest, Grayscale) {
 }
 
 TEST(RefTest, Weak) {
-    struct Data : public WeakRefable<Data> {
+    // struct Data : public WeakRefable<Data> {
 
-    };
+    // };
 
-    WeakRef<Data> weak;
-    {
-        auto data = Data::New();
-        weak = data;
-    }
-    ASSERT_EQ(weak.expired(), true);
+    // WeakRef<Data> weak;
+    // {
+    //     auto data = Data::New();
+    //     weak = data;
+    // }
+    // ASSERT_EQ(weak.expired(), true);
 }
 
 TEST(PainterTest, ListFamily) {

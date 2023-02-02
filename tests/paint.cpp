@@ -4,12 +4,12 @@
 
 using namespace BTK_NAMESPACE;
 
-class PaintBox: public Widget {
+class PaintBox : public Widget {
     public:
         PaintBox() {
             auto f = font();
             f.set_size(60);
-            layout.set_text("Hello World 你好 世界");
+            layout.set_text("Hello World 你好 世界\n next line 下一行");
             layout.set_font(f);
 
             path = layout.outline();
@@ -66,9 +66,11 @@ bool PaintBox::paint_event(PaintEvent &event) {
         }
     }
 
+    p.set_color(Color::Cyan);
+    p.fill_path(path);
+
+    p.set_color(Color::Black);
     p.draw_path(path);
-    p.set_text_align(AlignLeft + AlignTop);
-    p.draw_text(layout, 0, 0);
 
     auto [w, h] = layout.size();
     p.draw_rect(0, 0, w, h);

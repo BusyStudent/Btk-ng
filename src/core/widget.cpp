@@ -977,7 +977,6 @@ void Widget::debug_draw() {
     }
     auto &p = painter();
     p.set_color(Color::Red);
-    p.set_color(Color::Red);
     p.draw_rect(_rect);
 }
 

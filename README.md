@@ -102,7 +102,7 @@ add_packages("btk")
 | FileDialog    |                 |                          |
 | MenuBar       | Not yet         |                          |
 | GLWidget      |                 | For use OpenGL           |
-| ListBox       | Not yet         | Display string items     |
+| ListBox       |                 | Display string items     |
 | VideoWidget   |                 | Video output for MediaPlayer (multimedia plugin) |
 
 ## Existing bugs

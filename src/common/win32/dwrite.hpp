@@ -3,6 +3,22 @@
 #include "build.hpp"
 #include <dwrite.h>
 
+
+#if __has_include(<dwrite_1.h>)
+#define BTK_DWRITE_EXTENSION1
+#include <dwrite_1.h>
+#endif
+
+#if __has_include(<dwrite_2.h>)
+#define BTK_DWRITE_EXTENSION2
+#include <dwrite_2.h>
+#endif
+
+#if __has_include(<dwrite_3.h>)
+#define BTK_DWRITE_EXTENSION3
+#include <dwrite_3.h>
+#endif
+
 #if defined(_MSC_VER)
 #pragma comment(lib, "dwrite.lib")
 #endif
