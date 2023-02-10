@@ -194,6 +194,8 @@ class MediaPlayerImpl  : public Object {
         void audio_device_pause(bool v);
         bool audio_device_is_paused();
         void audio_cache_clear();
+
+        int  interrupt_callback();
 };
 
 // Begin video player
@@ -349,11 +351,10 @@ bool MediaPlayerImpl::video_proc() {
             // FIXME : Sync video to audio, this way is little dirty
             if (position > pts + 0.1) {
                 // audio is quicker
-                PLAYER_LOG("[Video codec] Too last, drop %c frame %lf\n", av_get_picture_type_char(video_frame->pict_type) ,pts);
-                PLAYER_LOG("[Video codec] Player position %lf\n", position.load());
-                PLAYER_LOG("[Video codec] audio position %lf\n", audio_pts.load());
-                video_has_prev = false;
-                continue;
+                // PLAYER_LOG("[Video codec] Too last, drop %c frame %lf\n", av_get_picture_type_char(video_frame->pict_type) ,pts);
+                // PLAYER_LOG("[Video codec] Player position %lf\n", position.load());
+                // PLAYER_LOG("[Video codec] audio position %lf\n", audio_pts.load());
+                goto draw; //< Draw Faster
             }
             // Convert to ms
             auto pts_diff = (pts - video_prev_pts) * 1000;
@@ -391,6 +392,8 @@ bool MediaPlayerImpl::video_proc() {
                 continue;
             }
         }
+
+        draw:
 
         // PLAYER_LOG("[Video codec] video frame pts %lf\n", pts);
 
@@ -476,7 +479,7 @@ void MediaPlayerImpl::clock_update() {
     // Emit signal if
     if (int64_t(new_position) != int64_t(position.load())) {
         if (!signal_position_changed.empty()) {
-            defer_call(&Signal<void(double)>::emit, &signal_position_changed, position.load());
+            defer_call(&Signal<void(double)>::emit, &signal_position_changed, int64_t(position.load()));
         }
     }
 
@@ -531,7 +534,14 @@ void MediaPlayerImpl::play() {
     if (video_url.empty()) {
         return;
     }
-    AVFormatContext *ps = nullptr;
+    AVFormatContext *ps = avformat_alloc_context();
+
+    ps->flags |= AVFMT_FLAG_GENPTS;
+    ps->interrupt_callback.callback = [](void *player) -> int {
+        return static_cast<MediaPlayerImpl*>(player)->interrupt_callback();
+    };
+    ps->interrupt_callback.opaque = this;
+
     int ret = avformat_open_input(
         &ps,
         video_url.c_str(),
@@ -769,6 +779,8 @@ void MediaPlayerImpl::audio_callback(void *out, uint32_t byte) {
 
         audio_pts = audio_pts + double(ncopyed) / (2 * audio_ctxt->channels * audio_ctxt->sample_rate);
 
+        auto diff = position - audio_pts;
+
         if (byte) {
             // We need more data
             if (!audio_fillbuffer()) {
@@ -781,6 +793,10 @@ void MediaPlayerImpl::audio_callback(void *out, uint32_t byte) {
         if (prev_pts != audio_pts) {
             prev_pts = audio_pts;
             // PLAYER_LOG("[Audio Thread] audio pts %lf\n", prev_pts);
+        }
+
+        if (std::abs(diff) > 0.15) {
+            // BTK_LOG("[Audio thread] diff is bigger than %lf\n", diff);
         }
 #endif
     }
@@ -805,6 +821,9 @@ bool MediaPlayerImpl::audio_fillbuffer() {
             return false;
         }
     }
+    // Time diff
+    auto diff = position - audio_pts;
+
     // Resampling
     auto frame = audio_frame_queue.front().get();
 
@@ -848,7 +867,7 @@ bool MediaPlayerImpl::audio_fillbuffer() {
     }
 
     auto nsamples = av_rescale_rnd(
-        frame->nb_samples,
+        swr_get_delay(cvt, audio_ctxt->sample_rate) + frame->nb_samples,
         audio_ctxt->sample_rate,
         audio_ctxt->sample_rate,
         AV_ROUND_UP
@@ -865,7 +884,7 @@ bool MediaPlayerImpl::audio_fillbuffer() {
     );
     assert(ret >= 0);
 
-    audio_buffer.resize(samples_size);
+    audio_buffer.resize(ret);
     audio_buffer_used = 0;
 
     // Begin convert
@@ -927,6 +946,10 @@ void MediaPlayerImpl::audio_cache_clear() {
     audio_buffer.clear();
     audio_buffer_used = 0;
 }
+int  MediaPlayerImpl::interrupt_callback() {
+    return 0;
+}
+
 void MediaPlayerImpl::pause() {
     audio_device_pause(true);
 

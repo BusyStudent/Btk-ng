@@ -343,7 +343,12 @@ class D2DTexture      final : public AbstractTexture {
     public:
         BTK_MAKE_PAINT_RESOURCE
 
-        D2DTexture(D2DRenderTarget *target, ID2D1Bitmap *bitmap) : target(target), bitmap(bitmap) {}
+        D2DTexture(D2DRenderTarget *target, ID2D1Bitmap *bitmap) : target(target), bitmap(bitmap) {
+            // In most way, HwndTarget in Windows 8.1 or later use DeviceContext, so we can use it
+#if     defined(BTK_DIRECT2D_EXTENSION1)
+            this->bitmap.As(&bitmap1);
+#endif
+        }
 
         auto signal_destroyed() -> Signal<void()> & override {
             return target->signal_destroyed();

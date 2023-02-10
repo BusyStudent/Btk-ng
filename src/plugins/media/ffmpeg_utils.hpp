@@ -4,7 +4,9 @@
 
 extern "C" {
     #include <libavformat/avformat.h>
+    #include <libavcodec/avcodec.h>
     #include <libswresample/swresample.h>
+    #include <libswscale/swscale.h>
 }
 
 BTK_PRIV_BEGIN
@@ -33,6 +35,30 @@ class AVTraits<AVFormatContext> {
     public:
         void operator()(AVFormatContext *ptr) {
             avformat_close_input(&ptr);
+        }
+};
+
+template <>
+class AVTraits<AVCodecContext> {
+    public:
+        void operator()(AVCodecContext *ptr) {
+            avcodec_free_context(&ptr);
+        }
+};
+
+template <>
+class AVTraits<SwrContext> {
+    public:
+        void operator()(SwrContext *ptr) {
+            swr_free(&ptr);
+        }
+};
+
+template <>
+class AVTraits<SwsContext> {
+    public:
+        void operator()(SwsContext *ptr) {
+            sws_freeContext(ptr);
         }
 };
 
