@@ -92,6 +92,9 @@ void PaletteBreeze(Palette *palette) {
     palette->set_color(Palette::PlaceholderText, Color::Gray);
     palette->set_color(Palette::HightlightedText, Color::White);
 
+    palette->set_color(Palette::Shadow, Color::Gray);
+    palette->set_color(Palette::Light, Color(61 , 174, 233, 255 / 2.5));
+
     // palette->set_color(Palette::Active, Palette::Border, Color(61 , 174, 233));
     // Active group
     palette->set_brush(Palette::Active, Palette::Border, Color(166, 216, 243));

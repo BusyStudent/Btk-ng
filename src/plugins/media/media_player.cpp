@@ -38,16 +38,28 @@ void MediaPlayer::set_position(double pos) {
     priv->set_position(pos);
 }
 
+auto MediaPlayer::signal_media_status_changed() -> Signal<void(MediaStatus)> & {
+    return priv->signal_media_status_changed();    
+}
 auto MediaPlayer::signal_duration_changed() -> Signal<void(double)> & {
     return priv->signal_duration_changed();
 }
 auto MediaPlayer::signal_position_changed() -> Signal<void(double)> & {
     return priv->signal_position_changed();
 }
+auto MediaPlayer::signal_state_changed() -> Signal<void(State)> & {
+    return priv->signal_state_changed();
+}
 auto MediaPlayer::signal_error() -> Signal<void()> & {
     return priv->signal_error();
 }
 
+bool MediaPlayer::seekable() const {
+    return priv->seekable();
+}
+double MediaPlayer::buffered() const {
+    return priv->buffered();
+}
 double MediaPlayer::duration() const {
     return priv->duration();
 }
@@ -55,7 +67,9 @@ double MediaPlayer::position() const {
     return priv->position();
 }
 u8string MediaPlayer::error_string() const {
-    return "Not Impl";
+    char buffer[AV_ERROR_MAX_STRING_SIZE];
+    int errcode = priv->error_code();
+    return av_make_error_string(buffer, sizeof(buffer), errcode);
 }
 
 

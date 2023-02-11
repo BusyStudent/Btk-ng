@@ -354,6 +354,10 @@ void ListBox::insert_item(size_t idx, const ListItem &item) {
 
     items_changed();
 }
+void ListBox::set_flat(bool value) {
+    _flat = value;
+    repaint();
+}
 void ListBox::add_item(const ListItem &item) {
     auto &ref = _items.emplace_back(item);
     if (ref.font.empty()) {
@@ -382,7 +386,10 @@ bool ListBox::paint_event(PaintEvent &event) {
     else {
         p.set_brush(palette().border());
     }
-    p.draw_rect(r);
+
+    if (!_flat) {
+        p.draw_rect(r);
+    }
 
     p.set_text_align(AlignLeft + AlignTop);
 
@@ -409,6 +416,13 @@ bool ListBox::paint_event(PaintEvent &event) {
                 p.fill_rect(client);
 
                 p.set_brush(palette().hightlighted_text());
+            }
+            else if (_hovered == idx) {
+                // Is Hovered
+                p.set_brush(palette().light());
+                p.fill_rect(client);
+                
+                p.set_brush(palette().text());
             }
             else {
                 p.set_brush(palette().text());
@@ -443,13 +457,16 @@ bool ListBox::mouse_press(MouseEvent &event) {
 bool ListBox::mouse_wheel(WheelEvent &event) {
     if (_vslider->visible()) {
         // ENABLED 
-        return _vslider->handle(event);
+        bool v = _vslider->handle(event);
+        set_mouse_hover(mouse_position());
+        return v;
     }
     return false;
 }
 bool ListBox::mouse_motion(MotionEvent &event) {
     // TODO : Handle Mosue motion to tigger _item_enter
     // Maybe we need cache here
+    set_mouse_hover(event.position());
     return true;
 }
 bool ListBox::focus_gained(FocusEvent &event) {
@@ -523,6 +540,18 @@ void ListBox::set_current_item(ListItem *item) {
     _current = now;
     repaint();
     _current_item_changed.emit();
+}
+void ListBox::set_mouse_hover(Point where) {
+    auto item = item_at(where.x, where.y);
+    auto new_hovered = index_of(item);
+    if (new_hovered != _hovered) {
+        _hovered = new_hovered;
+        repaint();
+
+        if (item) {
+            _item_enter.emit(item);
+        }
+    }
 }
 
 int  ListBox::index_of(const ListItem *item) const {

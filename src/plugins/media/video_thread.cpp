@@ -8,9 +8,28 @@ extern "C" {
 
 BTK_NS_BEGIN2(BTK_NAMESPACE::FFmpeg)
 
+namespace {
+    AVPixelFormat find_fmt_by_hw_type(AVHWDeviceType type) {
+        switch (type) {
+            case AV_HWDEVICE_TYPE_VAAPI:
+                return AV_PIX_FMT_VAAPI;
+            case AV_HWDEVICE_TYPE_DXVA2:
+                return AV_PIX_FMT_DXVA2_VLD;
+            case AV_HWDEVICE_TYPE_D3D11VA:
+                return AV_PIX_FMT_D3D11;
+            case AV_HWDEVICE_TYPE_VDPAU:
+                return AV_PIX_FMT_VDPAU;
+            case AV_HWDEVICE_TYPE_VIDEOTOOLBOX:
+                return AV_PIX_FMT_VIDEOTOOLBOX;
+            default : 
+                return AV_PIX_FMT_NONE;
+        }
+    }
+}
+
+
 VideoThread::VideoThread(Demuxer *demuxer, AVStream *stream, AVCodecContext *ctxt) : demuxer(demuxer), stream(stream), ctxt(ctxt) {
-    // Try hardware decode
-    BTK_LOG("%p\n", ctxt->hwaccel);
+    // TODO : Try hardware decode
     
     surface = demuxer->video_output();
 
@@ -149,6 +168,7 @@ void VideoThread::video_surface_ui_callback() {
     surface->write(PixFormat::RGBA32, dst_frame->data[0], dst_frame->linesize[0], ctxt->width, ctxt->height);
 }
 bool VideoThread::video_decode_frame(AVPacket *packet) {
+    AVFrame *cvt_source = src_frame.get();
     int ret;
     ret = avcodec_send_packet(ctxt, packet);
     if (ret < 0) {
@@ -159,12 +179,20 @@ bool VideoThread::video_decode_frame(AVPacket *packet) {
         // Need more packet
         return false;
     }
+    if (src_frame->format == hw_pix_fmt) {
+        // Hardware decode
+        ret = av_hwframe_transfer_data(sw_frame.get(), src_frame.get(), 0);
+        if (ret < 0) {
+            return false;
+        }
+        cvt_source = sw_frame.get();
+    }
     // Convert it
     std::lock_guard locker(dst_frame_mtx);
     ret = sws_scale(
         sws_ctxt.get(),
-        src_frame->data,
-        src_frame->linesize,
+        cvt_source->data,
+        cvt_source->linesize,
         0,
         ctxt->height,
         dst_frame->data,

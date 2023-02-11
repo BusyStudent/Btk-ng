@@ -139,8 +139,10 @@ class BTKAPI MediaPlayer : public Object {
         void set_media(const MediaContent &content);
         void set_url(u8string_view url);
 
-        void set_position(double ms);
+        void set_position(double second);
 
+        auto seekable() const -> bool;
+        auto buffered() const -> double;
         auto duration() const -> double;
         auto position() const -> double;
         auto error_string() const -> u8string;
@@ -149,6 +151,9 @@ class BTKAPI MediaPlayer : public Object {
         auto signal_error()            -> Signal<void()>       &;
         auto signal_duration_changed() -> Signal<void(double)> &;
         auto signal_position_changed() -> Signal<void(double)> &;
+        auto signal_buffer_status_changed() -> Signal<void(float)>       &;
+        auto signal_media_status_changed()  -> Signal<void(MediaStatus)> &;
+        auto signal_state_changed()         -> Signal<void(State)>       &;
     private:
         MediaPlayerImpl *priv;
 };

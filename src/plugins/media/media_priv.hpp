@@ -26,8 +26,8 @@ inline constexpr auto AVSyncThreshold = 0.01;
 inline constexpr auto AVNoSyncThreshold = 1.0;
 inline constexpr auto AudioDiffAvgNB = 20;
 
-inline constexpr auto MaxAudioPacketSize = 200;
-inline constexpr auto MaxVideoPacketSize = 200;
+// inline constexpr auto MaxAudioPacketSize = 200;
+// inline constexpr auto MaxVideoPacketSize = 200;
 
 // Special packet
 inline constexpr auto EofPacket = nullptr;
@@ -122,6 +122,7 @@ class VideoThread : public Object {
         std::mutex dst_frame_mtx;
 
         // Hardware
+        AVPtr<AVFrame> sw_frame {av_frame_alloc()};
         AVPixelFormat hw_pix_fmt = AV_PIX_FMT_NONE;
 
         // Sync 
@@ -223,8 +224,15 @@ class Demuxer : public Object {
         void set_url(u8string_view url);
         void set_position(double pos);
 
+        bool seekable();
         double duration();
         double position();
+
+        // Get buffered, in seconds
+        double buffered();
+
+        // Get ffmpeg error code
+        int    error_code();
 
         double master_clock();
         SyncType master_sync_type();
@@ -242,8 +250,10 @@ class Demuxer : public Object {
             audio_device = a;
         }
 
+        BTK_EXPOSE_SIGNAL(_media_status_changed);
         BTK_EXPOSE_SIGNAL(_duration_changed);
         BTK_EXPOSE_SIGNAL(_position_changed);
+        BTK_EXPOSE_SIGNAL(_state_changed);
         BTK_EXPOSE_SIGNAL(_error);
     private:
         void thread_main();
@@ -258,6 +268,8 @@ class Demuxer : public Object {
         bool demuxer_wait_state_change(std::chrono::microseconds ms);
         void clock_update();
         void clock_pause(bool v);
+        void set_state(State state);
+        void set_status(MediaStatus status);
         /**
          * @brief Internal ffmpeg read callback
          * 
@@ -279,10 +291,16 @@ class Demuxer : public Object {
         bool             clock_paused = false;
         SyncType         sync_type = SyncType::AudioMaster;
 
+        // Status 
         u8string         url;
         int              av_code = 0;
         MediaStatus      status = MediaStatus::NoMedia;
         State            state = State::Stopped;
+
+        // Buffering     
+        int              buffered_packets_limit = 1000;
+        double           buffered_user_hint     = 0.0; //< hint to buffer in user_hint seconds
+
 
         // Seek 
         bool             seek_req = false;
@@ -302,6 +320,8 @@ class Demuxer : public Object {
         Signal<void(double)> _duration_changed;
         Signal<void(double)> _position_changed;
         Signal<void()>       _error;
+        Signal<void(State)>  _state_changed;
+        Signal<void(MediaStatus)> _media_status_changed;
 };
 
 

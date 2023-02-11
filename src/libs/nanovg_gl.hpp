@@ -78,7 +78,7 @@ GLuint nvglImageHandleGL3(NVGcontext* ctx, int image);
 
 #if defined NANOVG_GLES2
 
-NVGcontext* nvgCreateGLES2(int flags, GLFunctions *fns);
+NVGcontext* nvgCreateGLES2(int flags, BTK_NAMESPACE::OpenGLES2Function *fns);
 void nvgDeleteGLES2(NVGcontext* ctx);
 
 int nvglCreateImageFromHandleGLES2(NVGcontext* ctx, GLuint textureId, int w, int h, int flags);
@@ -88,7 +88,7 @@ GLuint nvglImageHandleGLES2(NVGcontext* ctx, int image);
 
 #if defined NANOVG_GLES3
 
-NVGcontext* nvgCreateGLES3(int flags, GLFunctions *fns);
+NVGcontext* nvgCreateGLES3(int flags, BTK_NAMESPACE::OpenGLES3Function *fns);
 void nvgDeleteGLES3(NVGcontext* ctx);
 
 int nvglCreateImageFromHandleGLES3(NVGcontext* ctx, GLuint textureId, int w, int h, int flags);
@@ -274,11 +274,11 @@ struct GLNVGcontext {
 	int dummyTex;
 
 	#if defined NANOVG_GLES2
-	GLFunctions *vtbl;
+	BTK_NAMESPACE::OpenGLES2Function *vtbl;
 	#endif
 
 	#if defined NANOVG_GLES3
-	GLFunctions *vtbl;
+	BTK_NAMESPACE::OpenGLES3Function *vtbl;
 	#endif
 };
 typedef struct GLNVGcontext GLNVGcontext;
@@ -1575,9 +1575,9 @@ NVGcontext* nvgCreateGL2(int flags)
 #elif defined NANOVG_GL3
 NVGcontext* nvgCreateGL3(int flags)
 #elif defined NANOVG_GLES2
-NVGcontext* nvgCreateGLES2(int flags, GLFunctions *fns)
+NVGcontext* nvgCreateGLES2(int flags, BTK_NAMESPACE::OpenGLES3Function *fns)
 #elif defined NANOVG_GLES3
-NVGcontext* nvgCreateGLES3(int flags, GLFunctions *fns)
+NVGcontext* nvgCreateGLES3(int flags, BTK_NAMESPACE::OpenGLES3Function *fns)
 #endif
 {
 	NVGparams params;

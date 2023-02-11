@@ -12,6 +12,7 @@ class BTKAPI TextEdit : public Widget {
         TextEdit(u8string_view text) : TextEdit(nullptr, text) {}
         ~TextEdit();
 
+        void set_flat(bool flat);
         void set_text(u8string_view text);
         void set_placeholder(u8string_view text);
 
@@ -84,6 +85,7 @@ class BTKAPI TextEdit : public Widget {
         bool     _has_focus = false; //< Has focus ?
         bool     _show_cursor = false; //< Show cursor ?
         bool     _multi    = false; //< Multi line mode ?
+        bool     _flat     = false; //< Is the edit flat
         timerid_t _timerid = 0;
 
         Signal<void()> _text_changed;

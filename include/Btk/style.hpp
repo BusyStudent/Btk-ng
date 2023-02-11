@@ -34,6 +34,8 @@ class BTKAPI Palette {
             HightlightedText, //< Hightlighted text
 
             Shadow, //< Shadow
+            Light, //< Light
+
 
             MaxRole, //< Maximum
         };
@@ -93,7 +95,9 @@ class BTKAPI Palette {
         auto shadow() const -> const Brush & {
             return brush_at(group, Shadow);
         }
-        
+        auto light() const -> const Brush & {
+            return brush_at(group, Light);
+        }
     private:
         void begin_mut();
 

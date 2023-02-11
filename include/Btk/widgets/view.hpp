@@ -132,6 +132,12 @@ class ListBox : public Widget {
          */
         void scroll_to(ListItem *item);
         /**
+         * @brief Hide the border
+         * 
+         * @param v True on hide
+         */
+        void set_flat(bool v);
+        /**
          * @brief Clear all items
          * 
          */
@@ -179,6 +185,12 @@ class ListBox : public Widget {
         bool focus_lost(FocusEvent &event) override;
     private:        
         void set_current_item(ListItem *item);
+        /**
+         * @brief Set the mouse hover object by position we gived
+         * 
+         * @param where 
+         */
+        void set_mouse_hover(Point where);
         void items_changed(); //< Items changed, need calc bounds
         /**
          * @brief Calc the slider should hide or not
@@ -196,6 +208,8 @@ class ListBox : public Widget {
 
         float                 _ytranslate = 0.0f;
         float                 _xtranslate = 0.0f;
+
+        bool                  _flat = false;
 
         Signal<void()>           _current_item_changed;
         Signal<void(ListItem *)> _item_clicked;

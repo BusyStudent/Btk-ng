@@ -12,6 +12,8 @@ using namespace BTK_NAMESPACE;
 class Player : public Widget {
     public:
         Player() {
+            edit.set_flat(true);
+
             auto sub = new BoxLayout;
             lay.attach(this);
             lay.add_layout(sub);
@@ -63,7 +65,7 @@ class Player : public Widget {
 
             slider.signal_slider_moved().connect([&]() {
                 auto value = slider.value();
-                printf("Ready seek to %ld\n", value);
+                printf("Ready seek to %lf\n", value);
                 player.set_position(slider.value());
             });
 
