@@ -399,8 +399,8 @@ auto bounds_from_ellipse(float x, float y, float xr, float yr) -> FRect {
     return FRect(
         x - xr,
         y - yr,
-        xr,
-        yr
+        xr * 2,
+        yr * 2
     );
 }
 auto bounds_from_line(float x1, float y1, float x2, float y2) -> FRect {
@@ -1103,7 +1103,7 @@ bool D2DTexture::query_value(PaintDeviceValue value, void *out) {
             break;
         }
         case PaintDeviceValue::LogicalSize : {
-            auto fs = static_cast<Size*>(out);
+            auto fs = static_cast<FSize*>(out);
             auto [w, h] = bitmap->GetSize();
             fs->w = w;
             fs->h = h;
@@ -1259,7 +1259,7 @@ bool D2DPaintDevice::query_value(PaintDeviceValue value, void *out) {
             break;
         }
         case PaintDeviceValue::LogicalSize : {
-            auto fs = static_cast<Size*>(out);
+            auto fs = static_cast<FSize*>(out);
             auto [w, h] = target->GetSize();
             fs->w = w;
             fs->h = h;

@@ -28,6 +28,23 @@ class MotionEvent;
 class TextEditEvent;
 class TextInputEvent;
 
+// SDL Capicity SystemCursor enums
+enum class SystemCursor : uint32_t {
+    Arrow,    
+    Ibeam,    
+    Wait,      
+    Crosshair, 
+    WaitArrow, 
+    SizeNwse,  
+    SizeNesw, 
+    SizeWe,    
+    SizeNs,    
+    SizeAll,   
+    No,        
+    Hand,      
+    NumOf
+};
+
 // Enum for window flags
 enum class WindowFlags : uint32_t {
     None = 0,
@@ -96,6 +113,26 @@ BTK_FLAGS_OPERATOR(SizePolicy::Policy, uint8_t);
 BTK_FLAGS_OPERATOR(WindowFlags, uint32_t);
 BTK_FLAGS_OPERATOR(FocusPolicy, uint8_t);
 BTK_FLAGS_OPERATOR(WidgetAttrs, uint8_t);
+
+/**
+ * @brief Mouse cursor interface
+ * 
+ */
+class BTKAPI Cursor {
+    public:
+        Cursor();
+        Cursor(SystemCursor syscursor);
+        Cursor(const PixBuffer &image, int hot_x, int hot_y);
+        Cursor(const Cursor &);
+        ~Cursor();
+
+        Cursor &operator =(const Cursor &);
+
+        void set() const;
+        bool empty() const;
+    private:
+        AbstractCursor *cursor = nullptr;
+};
 
 /**
  * @brief Widget base class
@@ -263,6 +300,12 @@ class BTKAPI Widget : public Object {
          */
         auto    font() const -> const Font &;
         /**
+         * @brief Get the cursor of the widget
+         * 
+         * @return const Cursor& 
+         */
+        auto    cursor() const -> const Cursor &;
+        /**
          * @brief Get color patette of the widget
          * 
          * @return const Palette& 
@@ -366,31 +409,6 @@ class BTKAPI Widget : public Object {
          * @return false On unprocessed
          */
         virtual bool handle       (Event &event) override;
-        virtual bool key_press    (KeyEvent &) { return false; }
-        virtual bool key_release  (KeyEvent &) { return false; }
-
-        virtual bool mouse_press  (MouseEvent &) { return false; }
-        virtual bool mouse_release(MouseEvent &) { return false; }
-        virtual bool mouse_wheel  (WheelEvent &)  { return false; }
-        virtual bool mouse_enter  (MotionEvent &) { return false; }
-        virtual bool mouse_leave  (MotionEvent &) { return false; }
-        virtual bool mouse_motion (MotionEvent &) { return false; }
-
-        virtual bool drag_begin   (DragEvent &) { return false; }
-        virtual bool drag_end     (DragEvent &) { return false; }
-        virtual bool drag_motion  (DragEvent &) { return false; }
-
-        virtual bool focus_gained (FocusEvent &) { return false; }
-        virtual bool focus_lost   (FocusEvent &) { return false; }
-
-        virtual bool textinput_event(TextInputEvent &) { return false; }
-        virtual bool resize_event   (ResizeEvent &)    { return false; }
-        virtual bool move_event     (MoveEvent  &)     { return false; }
-        virtual bool paint_event    (PaintEvent &)     { return false; }
-        virtual bool close_event    (CloseEvent &)     { return false; }
-        virtual bool change_event   (ChangeEvent &)    { return false; }
-        // virtual bool drop_event   (DropEvent &) { return false; }
-
         /**
          * @brief Get window associated with widget
          * 
@@ -479,6 +497,32 @@ class BTKAPI Widget : public Object {
         void set_minimum_size(Size size);
         void set_style(Style *style);
         void set_font(const Font &font);
+        void set_cursor(const Cursor &cursor);
+    protected:
+        virtual bool key_press    (KeyEvent &) { return false; }
+        virtual bool key_release  (KeyEvent &) { return false; }
+
+        virtual bool mouse_press  (MouseEvent &) { return false; }
+        virtual bool mouse_release(MouseEvent &) { return false; }
+        virtual bool mouse_wheel  (WheelEvent &)  { return false; }
+        virtual bool mouse_enter  (MotionEvent &) { return false; }
+        virtual bool mouse_leave  (MotionEvent &) { return false; }
+        virtual bool mouse_motion (MotionEvent &) { return false; }
+
+        virtual bool drag_begin   (DragEvent &) { return false; }
+        virtual bool drag_end     (DragEvent &) { return false; }
+        virtual bool drag_motion  (DragEvent &) { return false; }
+
+        virtual bool focus_gained (FocusEvent &) { return false; }
+        virtual bool focus_lost   (FocusEvent &) { return false; }
+
+        virtual bool textinput_event(TextInputEvent &) { return false; }
+        virtual bool resize_event   (ResizeEvent &)    { return false; }
+        virtual bool move_event     (MoveEvent  &)     { return false; }
+        virtual bool paint_event    (PaintEvent &)     { return false; }
+        virtual bool close_event    (CloseEvent &)     { return false; }
+        virtual bool change_event   (ChangeEvent &)    { return false; }
+        // virtual bool drop_event   (DropEvent &) { return false; }
     private:
         void window_init(); //< Create window if not created yet.
         void window_destroy(); //< Destroy window if created.
@@ -500,6 +544,7 @@ class BTKAPI Widget : public Object {
         Size        _minimum_size = {0, 0}; //< Minimum size
         Rect        _rect = {0, 0, 0, 0}; //< Rectangle
         Font        _font    = {}; //< Font
+        Cursor      _cursor  = {SystemCursor::Arrow}; //< Cursor
 
         window_t    _win     = {}; //< Window handle
         Painter     _painter = {}; //< Painter

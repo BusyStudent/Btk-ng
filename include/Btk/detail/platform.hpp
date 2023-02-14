@@ -32,6 +32,9 @@ class GraphicsDriver : public Any {
             Metal, //< Supports Metal
             MultiWindow, //< Supports create more than one window
         };
+        enum Service {
+            Desktop, //< Support desktop service  
+        };
         enum Query {
             SystemDpi,   //< System dpi (*FPoint)
             NumOfScreen, //< Number of screen (*int)
@@ -39,33 +42,41 @@ class GraphicsDriver : public Any {
 
 
         // Window management
-        virtual window_t window_create(const char_t * title, int width, int height, WindowFlags flags) = 0;
+        virtual window_t window_create(u8string_view title, int width, int height, WindowFlags flags) = 0;
 
         // Clipboard
-        virtual void     clipboard_set(const char_t * text) = 0;
+        virtual void     clipboard_set(u8string_view text) = 0;
         virtual u8string clipboard_get() = 0;
 
         // Cursor
+        /**
+         * @brief Create cursor from pixel buffer (you will take it's ownship, call unref to release it)
+         * 
+         * @param pixbuf 
+         * @param hot_x 
+         * @param hot_y 
+         * @return cursor_t 
+         */
         virtual cursor_t cursor_create(const PixBuffer &pixbuf, int hot_x, int hot_y) = 0;
+        virtual cursor_t cursor_create(SystemCursor syscursor) = 0;
 
         // Dynamic factory
         virtual any_t    instance_create(const char_t *what, ...) = 0;
 
         // Query
         virtual bool     query_value(int query, ...) = 0;
+
+        // Get service interface
+        virtual pointer_t service_of(int what) = 0;
+
+        // Template helper
+        template <typename T>
+        inline T *service_of();
 };
-
-// Provide more details of desktop
-class DesktopDriver : public GraphicsDriver {
-    public:
-        // TODO : 
-        virtual pointer_t menu_create() = 0;
-
-        // Extend of clipboard
-        virtual void      clipboard_set_image(const PixBuffer &) = 0;
-        virtual PixBuffer clipboard_get_image() = 0;
-};
-
+/**
+ * @brief Window abstraction
+ * 
+ */
 class AbstractWindow : public Any {
     public:
         enum ShowFlag : int {
@@ -88,19 +99,83 @@ class AbstractWindow : public Any {
             MinimumSize, //< args (*Size)
         };
 
+        /**
+         * @brief Get the size of the window, in dpi indepent units
+         * 
+         * @return Size 
+         */
         virtual Size       size() const = 0;
+        /**
+         * @brief Get the position of the window, in dpi indepent units
+         * 
+         * @return Point 
+         */
         virtual Point      position() const = 0;
+        /**
+         * @brief Raise the window to the top of it
+         * 
+         */
         virtual void       raise() = 0;
         // virtual void       grab() = 0;
-        virtual void       close() = 0; //< Send close event to window
+        /**
+         * @brief Send a close event to the window
+         * 
+         */
+        virtual void       close() = 0;
+        /**
+         * @brief Send a repaint event to the window
+         * 
+         */
         virtual void       repaint() = 0;
+        /**
+         * @brief Show the window by flag
+         * 
+         * @param show_flag 
+         */
         virtual void       show(int show_flag) = 0;
+        /**
+         * @brief Move window to x, y (in dpi indepent units)
+         * 
+         * @param x 
+         * @param y 
+         */
         virtual void       move  (int x, int y) = 0;
+        /**
+         * @brief Resize window to x, y (in dpi indepent units)
+         * 
+         * @param width 
+         * @param height 
+         */
         virtual void       resize(int width, int height) = 0;
-        virtual void       set_title(const char_t * title) = 0;
+        /**
+         * @brief Set the title object
+         * 
+         * @param title 
+         */
+        virtual void       set_title(u8string_view title) = 0;
+        /**
+         * @brief Set the icon object
+         * 
+         * @param buffer 
+         */
         virtual void       set_icon(const PixBuffer &buffer) = 0;
+        /**
+         * @brief Set the textinput rect object (ime rect hit)
+         * 
+         * @param rect 
+         */
         virtual void       set_textinput_rect(const Rect &rect) = 0;
+        /**
+         * @brief capture the mouse
+         * 
+         * @param capture 
+         */
         virtual void       capture_mouse(bool capture) = 0;
+        /**
+         * @brief Set the status of the ime
+         * 
+         * @param start 
+         */
         virtual void       start_textinput(bool start) = 0;
 
         // Flags control
@@ -108,10 +183,20 @@ class AbstractWindow : public Any {
         virtual bool       set_value(int conf, ...) = 0;
         virtual bool       query_value(int query, ...) = 0;
 
-        virtual widget_t   bind_widget(widget_t widget) = 0;
+        /**
+         * @brief Bind a object to receive events from Window System
+         * 
+         * @param object The pointer of object
+         * @return widget_t The previous object pointer
+         */
+        virtual widget_t   bind_widget(widget_t object) = 0;
+        /**
+         * @brief Create a Graphics context from type
+         * 
+         * @param type 
+         * @return any_t 
+         */
         virtual any_t      gc_create(const char_t *type) = 0;
-        // [[deprecated("Use Painter::FromWindow()")]]
-        // virtual Painter    painter_create() = 0;
 };
 
 class AbstractCursor : public Any {
@@ -178,5 +263,11 @@ extern GraphicsDriverInfo XcbDriverInfo;
 
 BTKAPI auto RegisterDriver(GraphicsDriverInfo &) -> void;
 BTKAPI auto CreateDriver()                       -> GraphicsDriver *;
+
+// Impl helper
+template <>
+inline DesktopService *GraphicsDriver::service_of<DesktopService>() {
+    return static_cast<DesktopService*>(service_of(Desktop));
+}
 
 BTK_NS_END

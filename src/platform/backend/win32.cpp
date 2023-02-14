@@ -3,6 +3,7 @@
 #include "common/win32/dialog.hpp"
 #include "common/dlloader.hpp"
 
+#include <Btk/service/desktop.hpp>
 #include <Btk/detail/platform.hpp>
 #include <Btk/detail/device.hpp>
 #include <Btk/context.hpp>
@@ -105,7 +106,7 @@ class Win32Timer  {
         Object *object = nullptr;
 };
 
-class Win32Window : public AbstractWindow {
+class Win32Window final : public AbstractWindow {
     public:
         Win32Window(HWND h, Win32Driver *d);
         ~Win32Window();
@@ -118,7 +119,7 @@ class Win32Window : public AbstractWindow {
         void       resize(int w, int h) override;
         void       show(int v) override;
         void       move(int x, int y) override;
-        void       set_title(const char_t *title) override;
+        void       set_title(u8string_view title) override;
         void       set_icon(const PixBuffer &buffer) override;
         void       repaint() override;
         void       capture_mouse(bool v) override;
@@ -173,7 +174,22 @@ class Win32Window : public AbstractWindow {
         WINDOWPLACEMENT prev_placement;
 };
 
-class Win32Dispatcher : public EventDispatcher {
+class Win32Cursor final : public AbstractCursor {
+    public:
+        Win32Cursor(const PixBuffer &buffer, int hot_x, int hot_y);
+        Win32Cursor(SystemCursor system_id);
+        ~Win32Cursor();
+
+        void ref();
+        void unref();
+        void set();
+    private:
+        HCURSOR cursor = nullptr;
+        bool owned = false;
+        int  refcount = 1;
+};
+
+class Win32Dispatcher final : public EventDispatcher {
     public:
         Win32Dispatcher();
         ~Win32Dispatcher();
@@ -201,23 +217,33 @@ class Win32Dispatcher : public EventDispatcher {
     friend class Win32Driver;
 };
 
-class Win32Driver     : public GraphicsDriver, public Win32User32 {
+class Win32Service final : public DesktopService {
+    public:
+        bool     reparent_native_window(window_t parent, void *native_window, const Rect &placement) override;
+        bool     openurl(u8string_view url) override;
+
+};
+
+class Win32Driver final  : public GraphicsDriver, public Win32User32 {
     public:
         Win32Driver();
         ~Win32Driver();
 
-        window_t window_create(const char_t *title, int width, int height, WindowFlags flags) override;
+        window_t window_create(u8string_view title, int width, int height, WindowFlags flags) override;
         void     window_add(Win32Window *w);
         void     window_del(Win32Window *w);
 
         any_t    instance_create(const char_t *what, ...) override;
 
-        void     clipboard_set(const char_t *text) override;
+        void     clipboard_set(u8string_view text) override;
         u8string clipboard_get() override;
 
         cursor_t cursor_create(const PixBuffer &buf, int hot_x, int hot_y) override;
+        cursor_t cursor_create(SystemCursor syscursor) override;
 
         bool      query_value(int query, ...) override;
+
+        pointer_t service_of(int what) override;
 
         LRESULT   wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam);
 
@@ -226,9 +252,24 @@ class Win32Driver     : public GraphicsDriver, public Win32User32 {
         // Platform data
         Win32Dispatcher dispatcher;
         DWORD           working_thread_id = GetCurrentThreadId();
+    private:
+        Win32Cursor     syscursor[int(SystemCursor::NumOf)] {
+            SystemCursor::Arrow,    
+            SystemCursor::Ibeam,    
+            SystemCursor::Wait,      
+            SystemCursor::Crosshair, 
+            SystemCursor::WaitArrow, 
+            SystemCursor::SizeNwse,  
+            SystemCursor::SizeNesw, 
+            SystemCursor::SizeWe,    
+            SystemCursor::SizeNs,    
+            SystemCursor::SizeAll,   
+            SystemCursor::No,        
+            SystemCursor::Hand
+        };
 };
 
-class Win32GLContext : public GLContext {
+class Win32GLContext final : public GLContext {
     public:
         Win32GLContext(HWND hwnd);
         ~Win32GLContext();
@@ -606,9 +647,9 @@ Win32Driver::Win32Driver() {
         return win32_driver->wnd_proc(w, m, wp, lp);
     };
     wc.hInstance = GetModuleHandle(nullptr);
-    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    // msdn says system will set the cursor when mouse move
+    // wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.lpszClassName = BTK_WINDOW_CLASS;
-    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.hbrBackground = (HBRUSH)0;
     wc.hIcon = LoadIcon(nullptr, IDI_APPLICATION);
     wc.hIconSm = LoadIcon(nullptr, IDI_APPLICATION);
@@ -1024,7 +1065,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     }
     return 0;
 }
-window_t Win32Driver::window_create(const char_t *title, int width, int height, WindowFlags flags) {
+window_t Win32Driver::window_create(u8string_view title, int width, int height, WindowFlags flags) {
     if (working_thread_id != GetCurrentThreadId()) {
         return gui_thread_call([&, this](){
             return window_create(title, width, height, flags);
@@ -1033,13 +1074,8 @@ window_t Win32Driver::window_create(const char_t *title, int width, int height, 
 
 
     // Alloc tmp space for the title.
-    wchar_t *wtitle = nullptr;
-    
-    if (title) {
-        size_t len = strlen(title);
-        wtitle = (wchar_t *)_malloca(sizeof(wchar_t) * (len + 1));
-        utf8_to_utf16(title, len, wtitle, len + 1);
-    }
+    auto u16 = title.to_utf16();
+    auto wtitle = reinterpret_cast<const wchar_t*>(u16.c_str());
 
     // Check args if
     DWORD style = WS_OVERLAPPEDWINDOW;
@@ -1075,8 +1111,6 @@ window_t Win32Driver::window_create(const char_t *title, int width, int height, 
         nullptr
     );
 
-    _freea(wtitle);
-
     if (!hwnd) {
         return nullptr;
     }
@@ -1100,20 +1134,17 @@ void  Win32Driver::window_add(Win32Window *win) {
 void  Win32Driver::window_del(Win32Window *win) {
     windows.erase(win->hwnd);
 }
-void  Win32Driver::clipboard_set(const char_t *text) {
+void  Win32Driver::clipboard_set(u8string_view text) {
     if (!OpenClipboard(win32_dispatcher->helper_hwnd)) {
         return;
     }
-    if (!text) {
-        return;
-    }
-    size_t len = strlen(text);
+    size_t len = text.size();
     HGLOBAL hmem = GlobalAlloc(GMEM_MOVEABLE, sizeof(wchar_t) * (len + 1));
     if (!hmem) {
         return;
     }
     wchar_t *mem = (wchar_t *)GlobalLock(hmem);
-    utf8_to_utf16(text, len, mem, len + 1);
+    utf8_to_utf16(text.data(), len, mem, len + 1);
     GlobalUnlock(hmem);
     SetClipboardData(CF_UNICODETEXT, hmem);
 
@@ -1168,7 +1199,12 @@ any_t Win32Driver::instance_create(const char_t *what, ...) {
     return ret;
 }
 cursor_t Win32Driver::cursor_create(const PixBuffer &buf, int hot_x, int hot_y) {
-    // TODO :
+    return new Win32Cursor(buf, hot_x, hot_y);
+}
+cursor_t Win32Driver::cursor_create(SystemCursor sys) {
+    return &syscursor[int(sys)];
+}
+pointer_t Win32Driver::service_of(int what) {
     return nullptr;
 }
 
@@ -1273,15 +1309,10 @@ void Win32Window::show(int v) {
 
     ShowWindow(hwnd, cmd);
 }
-void Win32Window::set_title(const char_t * title) {
-    wchar_t *wtitle = nullptr;
-    if (title) {
-        size_t len = strlen(title);
-        wtitle = (wchar_t *)_malloca(sizeof(wchar_t) * (len + 1));
-        utf8_to_utf16(title, len, wtitle, len + 1);
-    }
+void Win32Window::set_title(u8string_view title) {
+    auto u16 = title.to_utf16();
+    auto wtitle = reinterpret_cast<const wchar_t*>(u16.c_str());
     SetWindowTextW(hwnd, wtitle);
-    _freea(wtitle);
 }
 void Win32Window::set_icon(const PixBuffer &pixbuf) {
     // Get pixbuf format first
@@ -1863,6 +1894,69 @@ void *Win32GLContext::get_proc_address(const char_t *name) {
         // Possible normal OpenGL function
     }
     return reinterpret_cast<void*>(GetProcAddress(library, name));
+}
+
+Win32Cursor::Win32Cursor(const PixBuffer &pixbuf, int hot_x, int hot_y) {
+    ICONINFO info = {};
+    info.fIcon    = FALSE;
+    info.xHotspot = hot_x;
+    info.yHotspot = hot_y;
+    info.hbmColor = buffer_to_hbitmap(pixbuf);
+    info.hbmMask  = CreateBitmap(pixbuf.width(), pixbuf.height(), 1, 1, nullptr);
+
+    auto icon = CreateIconIndirect(&info);
+
+    DeleteObject(info.hbmColor);
+    DeleteObject(info.hbmMask);
+
+    cursor = (HCURSOR)CopyImage(icon, IMAGE_CURSOR, pixbuf.width(), pixbuf.height(), 0);
+    DestroyIcon(icon);
+
+    owned = true;
+}
+Win32Cursor::Win32Cursor(SystemCursor sys) {
+    auto def = IDC_ARROW;
+    switch (sys) {
+        case SystemCursor::Arrow : def = IDC_ARROW; break;
+        case SystemCursor::Crosshair : def = IDC_CROSS; break;
+        case SystemCursor::Wait : def = IDC_WAIT; break;
+        case SystemCursor::Ibeam : def = IDC_IBEAM; break;
+        case SystemCursor::SizeNwse : def = IDC_SIZENWSE; break;
+        case SystemCursor::SizeNesw : def = IDC_SIZENESW; break;
+        case SystemCursor::SizeWe : def = IDC_SIZEWE; break;
+        case SystemCursor::SizeNs : def = IDC_SIZENS; break;
+        case SystemCursor::SizeAll : def = IDC_SIZEALL; break;
+        case SystemCursor::No : def = IDC_NO; break;
+        case SystemCursor::Hand : def = IDC_HAND; break;
+    }
+    refcount = std::numeric_limits<int>::min();
+    owned = false;
+    cursor = LoadCursor(nullptr, def);
+}
+Win32Cursor::~Win32Cursor() {
+    if (owned) {
+        DestroyCursor(cursor);
+    }
+}
+void Win32Cursor::ref() {
+    // Unwork for SystemCursor
+    if (refcount == std::numeric_limits<int>::min()) {
+        return;
+    }
+
+    ++refcount;
+}
+void Win32Cursor::unref() {
+    // Unwork for SystemCursor
+    if (refcount == std::numeric_limits<int>::min()){
+        return;
+    }
+    if (--refcount <= 0) {
+        delete this;
+    }
+}
+void Win32Cursor::set() {
+    SetCursor(cursor);
 }
 
 BTK_PRIV_END

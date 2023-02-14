@@ -26,7 +26,8 @@ option_end()
 
 -- Painter check
 if has_config("nanovg_painter") then
-    add_requires("freetype")
+    -- add_requires("freetype")
+    native_painter = false
 end 
 
 -- Driver check
@@ -65,7 +66,6 @@ target("btk_platform")
     -- Painter
     if     win32_plat and native_painter then
         -- Add Direct2D
-        -- add_files("painter/d2d_painter.cpp")
         add_files("painter/d2d_device.cpp")
 
         -- Register it
@@ -81,7 +81,10 @@ target("btk_platform")
         add_packages("pango", "pangocairo", "cairo")
     else
         -- Add nanovg
-        add_files("painter/nvg_painter.cpp")
+        add_files("painter/nvg_device.cpp")
+
+        -- Register it
+        add_defines("BTK_NANOVG_PAINTER")
     end 
 
     -- Add extra sources

@@ -75,7 +75,7 @@ class SDLTimer {
         Object     *object = nullptr;
 };
 
-class SDLWindow : public AbstractWindow {
+class SDLWindow final : public AbstractWindow {
     public:
         SDLWindow(SDL_Window *w, SDLDriver *dr, WindowFlags f);
         ~SDLWindow();
@@ -88,7 +88,7 @@ class SDLWindow : public AbstractWindow {
         void       resize(int w, int h) override;
         void       show(int v) override;
         void       move(int x, int y) override;
-        void       set_title(const char_t *title) override;
+        void       set_title(u8string_view title) override;
         void       set_icon(const PixBuffer &buffer) override;
         void       repaint() override;
 
@@ -134,7 +134,7 @@ class SDLWindow : public AbstractWindow {
     friend class SDLDriver;
 };
 
-class SDLDispatcher : public EventDispatcher {
+class SDLDispatcher final : public EventDispatcher {
     public:
         SDLDispatcher(SDLDriver *driver);
         ~SDLDispatcher();
@@ -161,22 +161,25 @@ class SDLDispatcher : public EventDispatcher {
         Uint32    interrupt_event = alloc_events + 1;
 };
 
-class SDLDriver : public GraphicsDriver {
+class SDLDriver final : public GraphicsDriver {
     public:
         SDLDriver();
         ~SDLDriver();
 
         // Overrides from GraphicsDriver
-        window_t window_create(const char_t * title, int width, int height,WindowFlags flags) override;
+        window_t window_create(u8string_view title, int width, int height,WindowFlags flags) override;
         void     window_add(SDLWindow *win);
         void     window_del(SDLWindow *win);
 
-        void     clipboard_set(const char_t *str) override;
+        void     clipboard_set(u8string_view str) override;
         u8string clipboard_get() override;
 
         cursor_t cursor_create(const PixBuffer &buf, int hot_x, int hot_y) override;
+        cursor_t cursor_create(SystemCursor syscur) override;
 
         any_t    instance_create(const char_t *what, ...) override;
+
+        pointer_t service_of(int what) override;
 
         bool      query_value(int what, ...) override;
     private:
@@ -192,7 +195,7 @@ class SDLDriver : public GraphicsDriver {
     friend class SDLDispatcher;
 };
 
-class SDLGLContext : public GLContext {
+class SDLGLContext final : public GLContext {
     public:
         SDLGLContext(SDL_Window *win);
         ~SDLGLContext();
@@ -602,7 +605,7 @@ SDLDriver::SDLDriver() {
 SDLDriver::~SDLDriver() {
     SDL_Quit();
 }
-window_t SDLDriver::window_create(const char_t * title, int width, int height, WindowFlags flags) {
+window_t SDLDriver::window_create(u8string_view title, int width, int height, WindowFlags flags) {
     // Translate flags to SDL flags
     uint32_t sdl_flags = SDL_WINDOW_ALLOW_HIGHDPI;
     if ((flags & WindowFlags::Resizable) == WindowFlags::Resizable) {
@@ -612,12 +615,12 @@ window_t SDLDriver::window_create(const char_t * title, int width, int height, W
         sdl_flags |= SDL_WINDOW_OPENGL;
     }
 
-#if defined(__gnu_linux__)
+#if defined(__gnu_linux__) || defined(BTK_NANOVG_PAINTER)
     sdl_flags |= SDL_WINDOW_OPENGL;
 #endif
 
     SDL_Window *win = SDL_CreateWindow(
-        title,
+        u8string(title).c_str(),
         SDL_WINDOWPOS_UNDEFINED,
         SDL_WINDOWPOS_UNDEFINED,
         width,
@@ -649,8 +652,8 @@ u8string SDLDriver::clipboard_get() {
     SDL_free(str);
     return ret;
 }
-void SDLDriver::clipboard_set(const char_t *str) {
-    SDL_SetClipboardText(str);
+void SDLDriver::clipboard_set(u8string_view str) {
+    SDL_SetClipboardText(u8string(str).c_str());
 }
 bool   SDLDriver::query_value(int what, ...) {
     va_list varg;
@@ -693,6 +696,12 @@ any_t SDLDriver::instance_create(const char_t *what, ...) {
     return ret;
 }
 cursor_t SDLDriver::cursor_create(const PixBuffer &buf, int hot_x, int hot_y) {
+    return nullptr;
+}
+cursor_t SDLDriver::cursor_create(SystemCursor syscur) {
+    return nullptr;
+}
+pointer_t SDLDriver::service_of(int what) {
     return nullptr;
 }
 
@@ -779,8 +788,8 @@ void SDLWindow::repaint() {
     SDL_PushEvent(&event);
 #endif
 }
-void SDLWindow::set_title(const char_t *title) {
-    SDL_SetWindowTitle(win, title);
+void SDLWindow::set_title(u8string_view title) {
+    SDL_SetWindowTitle(win, u8string(title).c_str());
 }
 void SDLWindow::set_icon(const PixBuffer &buf) {
     SDL_Surface *ref = SDL_CreateRGBSurfaceWithFormatFrom(

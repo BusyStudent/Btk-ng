@@ -239,6 +239,8 @@ inline void PainterImpl::begin() {
     if (state.size() != 1) {
         state.pop();
     }
+    // Sync state
+    mark_all_dirty();
 }
 inline void PainterImpl::end() {
     ctxt->end();

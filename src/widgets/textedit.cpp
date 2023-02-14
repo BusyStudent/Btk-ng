@@ -11,6 +11,7 @@ BTK_NS_BEGIN
 // TextEdit
 TextEdit::TextEdit(Widget *parent,u8string_view s) : Widget(parent) {
     set_focus_policy(FocusPolicy::Mouse);
+    set_cursor(SystemCursor::Ibeam);
     _text = s;
     _margin = 2.0f;
     _offset = {0.0f, 0.0f};

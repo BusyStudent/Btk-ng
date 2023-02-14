@@ -110,6 +110,9 @@ class AbstractWindow;
 class AbstractCursor;
 class AbstractScreen;
 
+// Service
+class DesktopService;
+
 // Painting
 class GraphicsDriverInfo;
 class GraphicsContext;
@@ -136,7 +139,8 @@ enum class Key      : uint32_t;
 enum class Modifier : uint16_t;
 
 // Mouse
-enum class MouseButton : uint32_t;
+enum class SystemCursor : uint32_t;
+enum class MouseButton  : uint32_t;
 
 // PixFormat
 enum class PixFormat   : uint32_t;
@@ -147,6 +151,7 @@ class Signal;
 
 // Alias
 using  any_t      = Any *;
+using  object_t   = Object *;
 using  widget_t   = Widget *;
 using  context_t  = UIContext *;
 using  cursor_t   = AbstractCursor *;

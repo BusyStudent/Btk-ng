@@ -1,4 +1,5 @@
 #include "build.hpp"
+#include "common/utils.hpp"
 
 #include <Btk/detail/platform.hpp>
 #include <Btk/painter.hpp>
@@ -327,6 +328,12 @@ bool Widget::handle(Event &event) {
             return mouse_leave(event.as<MotionEvent>());
         }
         case Event::MouseMotion : {
+            // TODO : We should improve it by restore / save
+            // Set cursor if
+            if (!_cursor.empty()) {
+                _cursor.set();
+            }
+
             // Get current mouse widget
             auto &motion = event.as<MotionEvent>();
 
@@ -712,7 +719,7 @@ void Widget::set_window_title(u8string_view title) {
         if (!_win) {
             window_init();
         }
-        _win->set_title(title.data());
+        _win->set_title(title);
     }
 }
 void Widget::set_window_size(int w, int h) {
@@ -870,6 +877,9 @@ void Widget::set_minimum_size(int w, int h) {
         _win->set_value(AbstractWindow::MinimumSize, &s);
     }
 }
+void Widget::set_cursor(const Cursor &cursor) {
+    _cursor = cursor;
+}
 void Widget::set_font(const Font &font) {
     _font = font;
     Event event(Event::FontChanged);
@@ -899,7 +909,7 @@ void Widget::window_init() {
     _rect.h = size.h;
 
     _win = driver()->window_create(
-        nullptr,
+        u8string_view(),
         size.w,
         size.h,
         _flags
@@ -978,6 +988,43 @@ void Widget::debug_draw() {
     auto &p = painter();
     p.set_color(Color::Red);
     p.draw_rect(_rect);
+}
+
+// Cursor
+Cursor::Cursor() {
+    cursor = nullptr;
+}
+Cursor::Cursor(SystemCursor sys) {
+    auto driver = GetDriver();
+    BTK_ASSERT(driver);
+    cursor = driver->cursor_create(sys);
+}
+Cursor::Cursor(const PixBuffer &pixbuf, int hot_x, int hot_y) {
+    auto driver = GetDriver();
+    BTK_ASSERT(driver);
+    cursor = driver->cursor_create(pixbuf, hot_x, hot_y);
+}
+Cursor::Cursor(const Cursor &c) {
+    cursor = COW_REFERENCE(c.cursor);
+}
+Cursor::~Cursor() {
+    COW_RELEASE(cursor);
+}
+bool Cursor::empty() const {
+    return !cursor;
+}
+void Cursor::set() const {
+    if (cursor) {
+        cursor->set();
+    }
+}
+Cursor &Cursor::operator =(const Cursor &c) {
+    if (this == &c) {
+        return *this;
+    }
+    COW_RELEASE(cursor);
+    cursor = COW_REFERENCE(c.cursor);
+    return *this;
 }
 
 BTK_NS_END
