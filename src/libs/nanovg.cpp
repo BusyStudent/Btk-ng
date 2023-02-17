@@ -2454,11 +2454,11 @@ static float nvg__getFontScale(NVGstate* state)
 // 	ctx->textTriCount += nverts/3;
 // }
 
-// static int nvg__isTransformFlipped(const float *xform)
-// {
-// 	float det = xform[0] * xform[3] - xform[2] * xform[1];
-// 	return( det < 0);
-// }
+static int nvg__isTransformFlipped(const float *xform)
+{
+	float det = xform[0] * xform[3] - xform[2] * xform[1];
+	return( det < 0);
+}
 
 // float nvgText(NVGcontext* ctx, float x, float y, const char* string, const char* end)
 // {

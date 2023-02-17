@@ -27,6 +27,7 @@ template <typename T>
 class _Ref<T, false> : public std::shared_ptr<T> {
     public:
         static_assert(!_IsRefable<T>, "Should never has ref method");
+        static_assert(sizeof(T) >= 0, "Should be a compelete type");
 
         using std::shared_ptr<T>::shared_ptr;
 };
@@ -35,6 +36,7 @@ template <typename T>
 class _Ref<T, true> {
     public:
         static_assert(_IsRefable<T>, "Should have ref method");
+        static_assert(sizeof(T) >= 0, "Should be a compelete type");
 
         constexpr _Ref() noexcept = default;
         constexpr _Ref(std::nullptr_t) noexcept { };

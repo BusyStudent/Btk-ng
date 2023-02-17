@@ -47,6 +47,7 @@ enum class PaintContextState  : uint8_t {
 };
 enum class PaintContextHandle : uint8_t {
     ID2D1RenderTarget,
+    GLContext
 };
 enum class PaintDeviceValue   : uint8_t {
     LogicalSize, //< Logical pixel size of the drawable (FSize)

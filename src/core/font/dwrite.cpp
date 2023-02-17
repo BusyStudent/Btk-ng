@@ -1,6 +1,7 @@
 #include "build.hpp"
 #include "dwrite_outline.hpp"
 #include "common/utils.hpp"
+#include "common/device_resource.hpp"
 #include "common/win32/dwrite.hpp"
 #include "common/win32/direct2d.hpp"
 
@@ -17,7 +18,7 @@ BTK_NS_BEGIN
 using Microsoft::WRL::ComPtr;
 using Win32::DWrite;
 
-class FontImpl : public Refable <FontImpl> {
+class FontImpl : public PaintResourceManager, public Refable <FontImpl> {
     public:
         IDWriteTextFormat *lazy_eval();
 
@@ -28,7 +29,7 @@ class FontImpl : public Refable <FontImpl> {
         DWRITE_FONT_STYLE         style   = DWRITE_FONT_STYLE_NORMAL;
         DWRITE_FONT_STRETCH       stretch = DWRITE_FONT_STRETCH_NORMAL;
 };
-class TextLayoutImpl : public Refable <TextLayoutImpl> {
+class TextLayoutImpl : public PaintResourceManager, public Refable <TextLayoutImpl> {
     public:
         IDWriteTextLayout *lazy_eval();
         PainterPath        outline(float dpi);
@@ -106,7 +107,7 @@ inline auto TextLayoutImpl::lazy_eval() -> IDWriteTextLayout * {
 }
 
 // Font
-COW_IMPL(Font);
+COW_BASIC_IMPL(Font);
 
 Font::Font() {
     priv = nullptr;
@@ -161,6 +162,10 @@ void  Font::set_family(u8string_view family) {
     // Clear done
 
     priv->name = family;
+}
+void  Font::begin_mut() {
+    COW_MUT(priv);
+    priv->reset_manager();
 }
 bool  Font::empty() const {
     return priv == nullptr;
@@ -238,6 +243,21 @@ bool Font::native_handle(FontHandle what, void *out) const {
     *static_cast<IDWriteTextFormat **>(out) = ft;
     return true;
 }
+void Font::bind_device_resource(void *key, PaintResource *res) const {
+    if (priv) {
+        priv->add_resource(key, res);
+        return;
+    }
+    // No priv, try take it ownship and release it
+    Ref<PaintResource> guard(res);
+    return;
+}
+auto Font::query_device_resource(void *key) const -> PaintResource* {
+    if (priv) {
+        return priv->get_resource(key);
+    }
+    return nullptr;
+}
 // TextLayout
 COW_BASIC_IMPL(TextLayout);
 
@@ -259,6 +279,7 @@ void TextLayout::begin_mut() {
     priv->cached_path_dpi = 0.0f;
     priv->cached_path.clear();
     priv->cached_size = {-1.0f, -1.0f};
+    priv->reset_manager();
 }
 FSize TextLayout::size() const {
     if (priv) {
@@ -308,6 +329,16 @@ PainterPath   TextLayout::outline(float dpi) const {
         return { };
     }
     return priv->outline(dpi);
+}
+bool TextLayout::rasterize(float dpi, std::vector<PixBuffer> *bitmaps, std::vector<Rect> *rect) const {
+    if (!priv)  {
+        return false;
+    }
+    auto lay = priv->lazy_eval();
+    if (!lay) {
+        return false;
+    }
+    return SUCCEEDED(DWriteGetTextLayoutBitmap(lay, dpi, bitmaps, rect));
 }
 bool TextLayout::hit_test(float x, float y, TextHitResult *res) const {
     if (priv) {
@@ -458,6 +489,21 @@ bool TextLayout::native_handle(TextLayoutHandle what, void *out) const {
     }
     *static_cast<IDWriteTextLayout **>(out) = lay;
     return true;
+}
+void TextLayout::bind_device_resource(void *key, PaintResource *res) const {
+    if (priv) {
+        priv->add_resource(key, res);
+        return;
+    }
+    // No priv, try take it ownship and release it
+    Ref<PaintResource> guard(res);
+    return;
+}
+auto TextLayout::query_device_resource(void *key) const -> PaintResource* {
+    if (priv) {
+        return priv->get_resource(key);
+    }
+    return nullptr;
 }
 
 BTK_NS_END

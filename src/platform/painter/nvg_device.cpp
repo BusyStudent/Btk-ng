@@ -1,5 +1,6 @@
 #include "build.hpp"
 
+#include <Btk/detail/reference.hpp>
 #include <Btk/detail/platform.hpp>
 #include <Btk/detail/device.hpp>
 #include <Btk/opengl/opengl.hpp>
@@ -59,6 +60,7 @@ class NanoVGContext final : public PaintContext, PainterPathSink, OpenGLES3Funct
         void ref() { }
         void unref() { }
         auto signal_destroyed() -> Signal<void()> & { return signal; }
+        auto signal_text_cache_destroyed() -> Signal<void()> & { return signal_txt_cache; }
 
         // Inherit from GraphicsContext
         void begin() override;
@@ -91,7 +93,7 @@ class NanoVGContext final : public PaintContext, PainterPathSink, OpenGLES3Funct
 
         // Extra
         bool has_feature(PaintContextFeature f) override { return true; }
-        bool native_handle(PaintContextHandle h, void *out) override { return false; }
+        bool native_handle(PaintContextHandle h, void *out) override;
 
         // Texture
         auto create_texture(PixFormat fmt, int w, int h, float xdpi, float ydpi) -> AbstractTexture * override;
@@ -106,6 +108,8 @@ class NanoVGContext final : public PaintContext, PainterPathSink, OpenGLES3Funct
         void arc_to(float x1, float y1, float x2, float y2, float radius) override;
         void close_path() override;
         void set_winding(PathWinding winding) override;
+
+        auto current_transform() -> FMatrix *;
     private:
         void apply_brush(float x, float y, float w, float h);
         void apply_brush(const FRect &rect);
@@ -115,6 +119,7 @@ class NanoVGContext final : public PaintContext, PainterPathSink, OpenGLES3Funct
         NVGcontext *nvgctxt;
 
         Signal<void()> signal; //< Signal for cleanup resource
+        Signal<void()> signal_txt_cache; //< Signal for cleanup text cache
 
         // Brush
         bool need_apply_brush = false;
@@ -122,7 +127,15 @@ class NanoVGContext final : public PaintContext, PainterPathSink, OpenGLES3Funct
 
         // Sink
         PathWinding winding;
+
+        // Texture
+        Size max_texture_size;
+
+        // TextCache
+        int numof_cache = 0;
+        int max_cache_size = 100;
     friend class NanoVGTexture;
+    friend class NanoVGTextCache;
 };
 class NanoVGTexture final : public AbstractTexture {
     public:
@@ -148,7 +161,27 @@ class NanoVGTexture final : public AbstractTexture {
         NanoVGContext *ctxt;
         int            id;
     friend class NanoVGContext;
+    friend class NanoVGTextCache;
 };
+class NanoVGTextCache final : public PaintResource {
+    public:
+        BTK_MAKE_PAINT_RESOURCE
+
+        NanoVGTextCache(NanoVGContext *ctxt, const TextLayout &layout);
+        ~NanoVGTextCache() = default;
+
+        // Inhertied from PaintResource
+        auto signal_destroyed() -> Signal<void()> & override {
+            return ctxt->signal_text_cache_destroyed();
+        }
+
+        void draw(NVGcontext *ctxt, float x, float y);
+    private:
+        NanoVGContext *ctxt;
+        Ref<NanoVGTexture> bitmap; //< Bitmap hold the data
+        std::vector<Rect>  bounds;
+};
+
 class GLGuard {
     public:
         GLGuard(GLContext *ctxt) : ctxt(ctxt) {
@@ -161,6 +194,26 @@ class GLGuard {
         GLContext *ctxt;
 };
 
+// Helper for NVG
+static void nvgRenderText(NVGcontext* ctx, int id, NVGvertex* verts, int nverts)
+{
+	NVGstate* state = nvg__getState(ctx);
+	NVGpaint paint = state->fill;
+
+	// Render triangles.
+	paint.image = id;
+
+	// Apply global alpha
+	paint.innerColor.a *= state->alpha;
+	paint.outerColor.a *= state->alpha;
+
+	ctx->params.renderTriangles(ctx->params.userPtr, &paint, state->compositeOperation, &state->scissor, verts, nverts, ctx->fringeWidth);
+
+	ctx->drawCallCount++;
+	ctx->textTriCount += nverts/3;
+}
+
+
 
 NanoVGContext::NanoVGContext(NanoVGWindowDevice *dev) : device(dev), glctxt(dev->glctxt) {
     GLGuard guard(glctxt);
@@ -169,12 +222,31 @@ NanoVGContext::NanoVGContext(NanoVGWindowDevice *dev) : device(dev), glctxt(dev-
         return glctxt->get_proc_address(name);
     });
 
-    nvgctxt = nvgCreateGLES3(NVG_STENCIL_STROKES | NVG_ANTIALIAS | NVG_DEBUG, this);
+    // Query env
+    GLint size[2];
+    glGetIntegerv(GL_MAX_TEXTURE_SIZE, size);
+    max_texture_size.w = size[0];
+    max_texture_size.h = size[1];
+
+    int flags = NVG_STENCIL_STROKES | NVG_ANTIALIAS;
+
+#if !defined(NDEBUG)
+    flags |= NVG_DEBUG;
+
+    // Debug
+    BTK_LOG("[NanoVG::OpenGL] Version %s\n", glGetString(GL_VERSION));
+    BTK_LOG("[NanoVG::OpenGL] Renderer %s\n", glGetString(GL_RENDERER));
+    BTK_LOG("[NanoVG::OpenGL] Vendor %s\n", glGetString(GL_VENDOR));
+    BTK_LOG("[NanoVG::OpenGL] Max Texture Size %d x %d\n", max_texture_size.w, max_texture_size.h);
+#endif
+
+    nvgctxt = nvgCreateGLES3(flags, this);
 }
 NanoVGContext::~NanoVGContext() {
     // Release 
     GLGuard guard(glctxt);
 
+    signal_txt_cache.emit();
     signal.emit();
 
     nvgDeleteGLES3(nvgctxt);
@@ -191,6 +263,15 @@ void NanoVGContext::begin() {
 }
 void NanoVGContext::end() {
     nvgEndFrame(nvgctxt);
+
+    if (numof_cache > max_cache_size) {
+        BTK_LOG("[NanoVG::Text] Too much cache, cleaning\n");
+        numof_cache = 0;
+
+        // Destroy this cache
+        signal_txt_cache.emit();
+    }
+
     glctxt->end();
 }
 void NanoVGContext::swap_buffers() {
@@ -240,6 +321,10 @@ bool NanoVGContext::draw_line(float x1, float y1, float x2, float y2) {
     return true;
 }
 bool NanoVGContext::draw_rect(float x, float y, float w, float h) {
+    if (w <= 0 || h <= 0) {
+        return true;
+    }
+
     apply_brush(x, y, w, h);
 
     nvgBeginPath(nvgctxt);
@@ -332,9 +417,6 @@ bool NanoVGContext::draw_text(Alignment align, Font &font, u8string_view text, f
     layout.set_font(font);
     layout.set_text(text);
 
-    return draw_text(align, layout, x, y);
-}
-bool NanoVGContext::draw_text(Alignment align, const TextLayout &layout      , float x, float y) {
     auto [xdpi, ydpi] = device->dpi();
     auto [width, height] = layout.size();
 
@@ -363,6 +445,41 @@ bool NanoVGContext::draw_text(Alignment align, const TextLayout &layout      , f
 
     return true;
 }
+bool NanoVGContext::draw_text(Alignment align, const TextLayout &layout      , float x, float y) {
+    auto [xdpi, ydpi] = device->dpi();
+    auto [width, height] = layout.size();
+
+    auto path = layout.outline(xdpi);
+    
+    if ((align & Alignment::Right) == Alignment::Right) {
+        x -= width;
+    }
+    if ((align & Alignment::Bottom) == Alignment::Bottom) {
+        y -= height;
+    }
+    if ((align & Alignment::Center) == Alignment::Center) {
+        x -= width / 2;
+    }
+    if ((align & Alignment::Middle) == Alignment::Middle) {
+        y -= height / 2;
+    }
+
+    apply_brush(x, y, width, height);
+
+    nvgBeginPath(nvgctxt);
+    auto resource = layout.query_device_resource(nvgctxt);
+    if (!resource) {
+        resource = new NanoVGTextCache(this, layout);
+        layout.bind_device_resource(nvgctxt, resource);
+
+        numof_cache += 1;
+    }
+    auto cache = static_cast<NanoVGTextCache*>(resource);
+    cache->draw(nvgctxt, x, y);
+
+    nvgFill(nvgctxt);
+    return true;
+}
 
 // Fill
 bool NanoVGContext::fill_path(const PainterPath &path) {
@@ -373,6 +490,10 @@ bool NanoVGContext::fill_path(const PainterPath &path) {
     return false;
 }
 bool NanoVGContext::fill_rect(float x, float y, float w, float h) {
+    if (w <= 0 || h <= 0) {
+        return true;
+    }
+
     apply_brush(x, y, w, h);
 
     nvgBeginPath(nvgctxt);
@@ -474,11 +595,7 @@ bool NanoVGContext::set_state(PaintContextState state, const void *in) {
         case PaintContextState::Transform : {
             nvgResetTransform(nvgctxt);
             if (in) {
-                auto mat = *static_cast<const FMatrix*>(in);
-                NVGstate* s = nvg__getState(nvgctxt);
-
-                static_assert(sizeof(s->xform) == sizeof(mat));
-                Btk_memcpy(s->xform, &mat, sizeof(mat));
+                *current_transform() = *static_cast<const FMatrix*>(in);
             }
             break;
         }
@@ -537,6 +654,13 @@ bool NanoVGContext::set_state(PaintContextState state, const void *in) {
         default : return false;
     }
     return true;
+}
+bool NanoVGContext::native_handle(PaintContextHandle what, void *out) {
+    if (what == PaintContextHandle::GLContext) {
+        *static_cast<GLContext**>(out) = glctxt;
+        return true;
+    }
+    return false;
 }
 void NanoVGContext::apply_brush(const FRect &object) {
     if (!need_apply_brush) {
@@ -629,7 +753,12 @@ void NanoVGContext::apply_brush(const FRect &object) {
 void NanoVGContext::apply_brush(float x, float y, float w, float h) {
     apply_brush(FRect(x, y, w, h));
 }
+auto NanoVGContext::current_transform() -> FMatrix * {
+    NVGstate* s = nvg__getState(nvgctxt);
 
+    static_assert(sizeof(s->xform) == sizeof(FMatrix));
+    return reinterpret_cast<FMatrix*>(s->xform);
+}
 
 NanoVGTexture::~NanoVGTexture() {
     auto glctxt = ctxt->gl_context();
@@ -687,6 +816,115 @@ bool NanoVGTexture::query_value(PaintDeviceValue value, void *out) {
         }
     }
     return true;
+}
+
+// NanoVG Text cache
+NanoVGTextCache::NanoVGTextCache(NanoVGContext *ctxt, const TextLayout &layout) : ctxt(ctxt) {
+    std::vector<PixBuffer> bitmaps;
+
+    auto [xdpi, ydpi] = ctxt->device->dpi();
+    layout.rasterize(xdpi, &bitmaps, &bounds);
+
+    int width = 0, height = 0;
+    for (auto &rect : bounds) {
+        // BTK_ASSERT(rect.x >= 0);
+        // BTK_ASSERT(rect.h >= 0);
+
+        width = max(width, rect.x + rect.w);
+        height = max(height, rect.y + rect.h);
+    }
+
+    // Make Bitmap on it
+    bitmap = static_cast<NanoVGTexture *>(ctxt->create_texture(PixFormat::Gray8, width, height, 96, 96));
+
+    // Because nanovg use a big texture to update a part of it, So we also like it
+    PixBuffer hole_texture(PixFormat::Gray8, width, height);
+    auto pixels = hole_texture.pixels<uint8_t>();
+
+    Btk_memset(pixels, 0, width * height);
+
+    int i = 0;
+    for (auto &buf : bitmaps) {
+        // Copy part of it 
+        auto &rect = bounds[i];
+        auto src = buf.pixels<uint8_t>();
+        auto dst = pixels;
+
+        for (int y = 0; y < rect.h; y++) {
+            for (int x = 0; x < rect.w; x++) {
+                dst[(y + rect.y) * width + (x + rect.x)] = src[y * buf.pitch() + x];
+            }
+        }
+
+        i += 1;
+    }
+
+    bitmap->update(nullptr, hole_texture.pixels(), hole_texture.pitch());
+}
+
+void NanoVGTextCache::draw(NVGcontext *nvgctxt, float x, float y) {
+    // TODO : Better cache way
+    class Quad {
+        public:
+            float x0,y0,s0,t0;
+            float x1,y1,s1,t1;
+            // X Y Is 
+    };
+
+    int cverts = bounds.size() * 6;
+    int nverts = 0;
+    NVGvertex *verts = nvg__allocTempVerts(nvgctxt, cverts);
+    NVGstate *state = nvg__getState(nvgctxt);
+
+    float invscale = 1.0f;
+
+    auto [tex_w, tex_h] = bitmap->pixel_size();
+    float itw = 1.0f / tex_w;
+    float ith = 1.0f / tex_h;
+
+	int isFlipped = nvg__isTransformFlipped(state->xform);
+
+    // Render each glyph
+    for (auto &rect : bounds) {
+        float c[4*2];
+
+        // Make Quad
+        Quad q;
+        q.x0 = x + rect.x;
+        q.x1 = x + rect.x + rect.w;
+        q.y0 = y + rect.y;
+        q.y1 = y + rect.y + rect.h;
+
+        // Calc in texture
+        q.s0 = rect.x * itw;
+        q.s1 = (rect.x + rect.w) * itw;
+        q.t0 = rect.y * ith;
+        q.t1 = (rect.y + rect.h) * ith;
+
+		if(isFlipped) {
+			float tmp;
+
+			tmp = q.y0; q.y0 = q.y1; q.y1 = tmp;
+			tmp = q.t0; q.t0 = q.t1; q.t1 = tmp;
+		}
+
+		// Transform corners.
+		nvgTransformPoint(&c[0],&c[1], state->xform, q.x0*invscale, q.y0*invscale);
+		nvgTransformPoint(&c[2],&c[3], state->xform, q.x1*invscale, q.y0*invscale);
+		nvgTransformPoint(&c[4],&c[5], state->xform, q.x1*invscale, q.y1*invscale);
+		nvgTransformPoint(&c[6],&c[7], state->xform, q.x0*invscale, q.y1*invscale);
+		// Create triangles
+		if (nverts+6 <= cverts) {
+			nvg__vset(&verts[nverts], c[0], c[1], q.s0, q.t0); nverts++;
+			nvg__vset(&verts[nverts], c[4], c[5], q.s1, q.t1); nverts++;
+			nvg__vset(&verts[nverts], c[2], c[3], q.s1, q.t0); nverts++;
+			nvg__vset(&verts[nverts], c[0], c[1], q.s0, q.t0); nverts++;
+			nvg__vset(&verts[nverts], c[6], c[7], q.s0, q.t1); nverts++;
+			nvg__vset(&verts[nverts], c[4], c[5], q.s1, q.t1); nverts++;
+		}
+
+    }
+    nvgRenderText(nvgctxt, bitmap->id, verts, nverts);
 }
 
 // NanoVG Device

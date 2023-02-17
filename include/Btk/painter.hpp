@@ -384,7 +384,7 @@ class BTKAPI Brush {
          * @param key The key of the resource
          * @param resource The device resource (could not be nullptr)
          */
-        void      bind_device_resource(void *key, PaintResource *resource);
+        void      bind_device_resource(void *key, PaintResource *resource) const;
         /**
          * @brief Get the deviced depended resources
          * @note Is is provided for backend
@@ -392,7 +392,7 @@ class BTKAPI Brush {
          * @param key The key of the resource
          * @return PaintResource * The resource, nullptr on not found
          */
-        auto      query_device_resource(void *key) -> PaintResource *;
+        auto      query_device_resource(void *key) const -> PaintResource *;
     private:
         void begin_mut();
 
@@ -552,6 +552,16 @@ class BTKAPI TextLayout {
          */
         PainterPath outline(float dpi = 96.0f) const;
         /**
+         * @brief Rasterize glyphruns into grayscale image
+         * 
+         * @param dpi The dpi of output image
+         * @param bitmaps The output pointer of glyph run image
+         * @param rect The output pointer of image rect
+         * @return true OK
+         * @return false FAILURE
+         */
+        bool rasterize(float dpi, std::vector<PixBuffer> *bitmaps, std::vector<Rect> *rect) const;
+        /**
          * @brief Hit test by mouse position
          * 
          * @param x logical x pos (begin at 0)
@@ -603,6 +613,23 @@ class BTKAPI TextLayout {
          * @return false 
          */
         bool native_handle(TextLayoutHandle what, void *out) const;
+    public:
+        /**
+         * @brief Bind the deviced depended resource
+         * @note Is is provided for backend
+         * 
+         * @param key The key of the resource
+         * @param resource The device resource (could not be nullptr)
+         */
+        void      bind_device_resource(void *key, PaintResource *resource) const;
+        /**
+         * @brief Get the deviced depended resources
+         * @note Is is provided for backend
+         * 
+         * @param key The key of the resource
+         * @return PaintResource * The resource, nullptr on not found
+         */
+        auto      query_device_resource(void *key) const -> PaintResource *;
     private:
         void begin_mut();
 
@@ -762,7 +789,7 @@ class BTKAPI PainterPath final : public PainterPathSink {
          * @param key The key of the resource
          * @param resource The device resource (could not be nullptr)
          */
-        void      bind_device_resource(void *key, PaintResource *resource);
+        void      bind_device_resource(void *key, PaintResource *resource) const;
         /**
          * @brief Get the deviced depended resources
          * @note Is is provided for backend
@@ -770,7 +797,7 @@ class BTKAPI PainterPath final : public PainterPathSink {
          * @param key The key of the resource
          * @return PaintResource * The resource, nullptr on not found
          */
-        auto      query_device_resource(void *key) -> PaintResource *;
+        auto      query_device_resource(void *key) const -> PaintResource *;
     private:
         void begin_mut();
 
@@ -859,6 +886,23 @@ class BTKAPI Font {
 
         static void Init();
         static void Shutdown();
+    public:
+        /**
+         * @brief Bind the deviced depended resource
+         * @note Is is provided for backend
+         * 
+         * @param key The key of the resource
+         * @param resource The device resource (could not be nullptr)
+         */
+        void      bind_device_resource(void *key, PaintResource *resource) const;
+        /**
+         * @brief Get the deviced depended resources
+         * @note Is is provided for backend
+         * 
+         * @param key The key of the resource
+         * @return PaintResource * The resource, nullptr on not found
+         */
+        auto      query_device_resource(void *key) const -> PaintResource *;
     private:
         void begin_mut();
 
@@ -957,7 +1001,7 @@ class BTKAPI Pen {
          * @param key The key of the resource
          * @param resource The device resource (could not be nullptr)
          */
-        void      bind_device_resource(void *key, PaintResource *resource);
+        void      bind_device_resource(void *key, PaintResource *resource) const;
         /**
          * @brief Get the deviced depended resources
          * @note Is is provided for backend
@@ -965,7 +1009,7 @@ class BTKAPI Pen {
          * @param key The key of the resource
          * @return PaintResource * The resource, nullptr on not found
          */
-        auto      query_device_resource(void *key) -> PaintResource *;
+        auto      query_device_resource(void *key) const -> PaintResource *;
     private:
         void begin_mut();
 
