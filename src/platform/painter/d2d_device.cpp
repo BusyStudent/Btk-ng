@@ -1069,10 +1069,20 @@ bool D2DRenderTarget::set_state(PaintContextState state, const void *data) {
             if (data) {
                 has_scissor = true;
                 // Has scissor
+                auto scissor = static_cast<const PaintScissor*>(data);
+                D2D1::Matrix3x2F prev_mat;
+
+                // Apply scissor transform
+                target->GetTransform(&prev_mat);
+                target->SetTransform(reinterpret_cast<const D2D1::Matrix3x2F&>(scissor->matrix));
+
                 target->PushAxisAlignedClip(
-                    D2DRectFrom(*static_cast<const FRect*>(data)),
+                    D2DRectFrom(scissor->rect),
                     target->GetAntialiasMode()
                 );
+
+                // Restore
+                target->SetTransform(prev_mat);
             }
             else {
                 has_scissor = false;

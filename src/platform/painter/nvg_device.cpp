@@ -605,8 +605,23 @@ bool NanoVGContext::set_state(PaintContextState state, const void *in) {
                 nvgResetScissor(nvgctxt);
             }
             else {
-                auto [x, y, w, h] = *static_cast<const FRect*>(in);
-                nvgScissor(nvgctxt, x, y, w, h);
+                auto *scissor = static_cast<const PaintScissor*>(in);
+                auto &matrix = scissor->matrix;
+                auto [x, y, w, h] = scissor->rect;
+
+                // Content of nanovg scissor
+                NVGstate* state = nvg__getState(nvgctxt);
+
+                w = nvg__maxf(0.0f, w);
+                h = nvg__maxf(0.0f, h);
+
+                nvgTransformIdentity(state->scissor.xform);
+                state->scissor.xform[4] = x+w*0.5f;
+                state->scissor.xform[5] = y+h*0.5f;
+                nvgTransformMultiply(state->scissor.xform, reinterpret_cast<const float*>(&matrix));
+
+                state->scissor.extent[0] = w*0.5f;
+                state->scissor.extent[1] = h*0.5f;
             }
             break;
         }
@@ -876,13 +891,18 @@ void NanoVGTextCache::draw(NVGcontext *nvgctxt, float x, float y) {
     NVGvertex *verts = nvg__allocTempVerts(nvgctxt, cverts);
     NVGstate *state = nvg__getState(nvgctxt);
 
-    float invscale = 1.0f;
+    float invscale = 1.0f / nvgctxt->devicePxRatio;
 
     auto [tex_w, tex_h] = bitmap->pixel_size();
     float itw = 1.0f / tex_w;
     float ith = 1.0f / tex_h;
 
 	int isFlipped = nvg__isTransformFlipped(state->xform);
+
+    // X & Y Is In DiP, so convert it back
+    x /= invscale;
+    y /= invscale;
+
 
     // Render each glyph
     for (auto &rect : bounds) {

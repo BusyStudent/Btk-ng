@@ -391,8 +391,16 @@ class Matrix3x2Impl {
             return det != 0;
         }
 
-        Matrix3x2Impl operator *(const Matrix3x2Impl &m) const {
-            Matrix3x2Impl ret;
+        template <typename Elem>
+        PointImpl<Elem> transform_point(const PointImpl<Elem> &p) const {
+            return PointImpl<Elem>(
+                p.x * m[0][0] + p.y * m[1][0] + m[2][0],
+                p.x * m[0][1] + p.y * m[1][1] + m[2][1]
+            );
+        }
+        template <typename Elem>
+        Matrix3x2Impl<Elem> multipy(const Matrix3x2Impl<Elem> &m) const {
+            Matrix3x2Impl<Elem> ret;
             ret.m[0][0] = m.m[0][0] * this->m[0][0] + m.m[0][1] * this->m[1][0];
             ret.m[0][1] = m.m[0][0] * this->m[0][1] + m.m[0][1] * this->m[1][1];
             ret.m[1][0] = m.m[1][0] * this->m[0][0] + m.m[1][1] * this->m[1][0];
@@ -403,11 +411,8 @@ class Matrix3x2Impl {
         }
 
         template <typename Elem>
-        PointImpl<Elem> operator *(const PointImpl<Elem> &p) const {
-            return PointImpl<Elem>(
-                p.x * m[0][0] + p.y * m[1][0] + m[2][0],
-                p.x * m[0][1] + p.y * m[1][1] + m[2][1]
-            );
+        Matrix3x2Impl<Elem> operator *(const Matrix3x2Impl<Elem> &m) const {
+            return multipy(m);
         }
 
         template <typename Elem>
@@ -422,19 +427,24 @@ class Matrix3x2Impl {
             );
         }
 
+        Matrix3x2Impl &operator *=(const Matrix3x2Impl &mat) noexcept {
+            *this = multipy(mat);
+            return *this;
+        }
+
         // Compare
-        bool compare(const Matrix3x2Impl &m) const {
+        bool compare(const Matrix3x2Impl &m) const noexcept {
             return Btk_memcmp(this, &m, sizeof(m)) == 0;
         }
-        bool operator ==(const Matrix3x2Impl &m) const {
+        bool operator ==(const Matrix3x2Impl &m) const noexcept {
             return compare(m);
         }
-        bool operator !=(const Matrix3x2Impl &m) const {
+        bool operator !=(const Matrix3x2Impl &m) const noexcept {
             return !compare(m);
         }
 
         // Helper
-        static Matrix3x2Impl<T> Identity() {
+        static Matrix3x2Impl<T> Identity() noexcept {
             return {};
         }
 
@@ -453,6 +463,14 @@ using Margin  = MarginImpl<int>;
 using FMargin = MarginImpl<float>;
 
 using FMatrix = Matrix3x2Impl<float>;
+
+// Calc templates
+
+template <typename T>
+PointImpl<T> operator *(const PointImpl<T> &p, const FMatrix &m) {
+    return m.transform_point(p);
+}
+
 
 // Output templates
 

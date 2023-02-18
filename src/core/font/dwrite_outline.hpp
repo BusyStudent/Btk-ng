@@ -279,7 +279,12 @@ class IDWritePathRenderer final : public IDWriteTextRenderer {
 // For Raster Bitmap
 class IDWriteBitmapRenderer final : public IDWriteTextRenderer {
     public:
-        IDWriteBitmapRenderer(float dpi) : dpi(dpi) { }
+        IDWriteBitmapRenderer(float dpi) : dpi(dpi) { 
+            transform = D2D1::Matrix3x2F::Scale(
+                dpi / 96.0f,
+                dpi / 96.0f
+            );
+        }
 
         // Inherit from IUnknown
         ULONG AddRef() noexcept override {
@@ -316,7 +321,8 @@ class IDWriteBitmapRenderer final : public IDWriteTextRenderer {
             DWRITE_MATRIX* transform
         ) noexcept override {
             static_assert(sizeof(DWRITE_MATRIX) == sizeof(D2D1_MATRIX_3X2_F));
-            auto mat = D2D1::Matrix3x2F::Identity();
+            // auto mat = D2D1::Matrix3x2F::Identity();
+            auto mat = transform;
 
             Btk_memcpy(transform, &mat, sizeof(mat));
             return S_OK;
@@ -358,16 +364,16 @@ class IDWriteBitmapRenderer final : public IDWriteTextRenderer {
                 count += m.length;
             }
 
-            auto mat = D2D1::Matrix3x2F::Translation(
-                baselineOriginX,
-                baseline
-            );
+            // auto mat = D2D1::Matrix3x2F::Translation(
+            //     baselineOriginX,
+            //     baseline
+            // );
 
             ComPtr<IDWriteGlyphRunAnalysis> analysis;
             auto hr = Win32::DWrite::GetInstance()->CreateGlyphRunAnalysis(
                 glyphRun,
                 1,
-                nullptr,
+                reinterpret_cast<DWRITE_MATRIX*>(&transform),
                 DWRITE_RENDERING_MODE_ALIASED,
                 DWRITE_MEASURING_MODE_NATURAL,
                 baselineOriginX,
@@ -484,6 +490,7 @@ class IDWriteBitmapRenderer final : public IDWriteTextRenderer {
         IDWriteTextLayout *textlayout = nullptr;
 
         FLOAT dpi = 96.0f;
+        D2D1::Matrix3x2F transform = D2D1::Matrix3x2F::Identity();
 };
 
 

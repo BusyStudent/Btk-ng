@@ -107,6 +107,7 @@ class PainterState {
 
         bool           has_scissor = false;   //< Does has the scissor
         FRect          scissor     = { };     //< The current scissor
+        FMatrix        scissor_mat = FMatrix::Identity(); //< The transform matrix of scissor
 
         FMatrix        matrix = FMatrix::Identity(); //< Current transform matrix
 
@@ -207,9 +208,16 @@ inline void PainterImpl::check_dirty() {
         ctxt->set_transform(&state.top().matrix);
     }
     if (dirty.scissor) {
-        ctxt->set_scissor(
-            state.top().has_scissor ? &state.top().scissor : nullptr
-        );
+        if (!state.top().has_scissor) {
+            ctxt->set_scissor(nullptr);
+        }
+        else {
+            PaintScissor scissor;
+            scissor.rect = state.top().scissor;
+            scissor.matrix = state.top().scissor_mat;
+
+            ctxt->set_scissor(&scissor);
+        }
         dirty.scissor = false;
     }
     if (dirty.brush) {
@@ -245,7 +253,7 @@ inline void PainterImpl::mark_dirty_from(const PainterState &self, const Painter
     }
     if (self.has_scissor) {
         // Has sicssor, compare the rectangle
-        dirty.scissor = (self.scissor == other.scissor);
+        dirty.scissor = (self.scissor == other.scissor) && (self.scissor_mat == other.scissor_mat);
     }
 
     // Alpha
@@ -463,19 +471,45 @@ void Painter::reset_transform() {
 // Scissor
 void Painter::set_scissor(float x, float y, float w, float h) {
     auto &state = priv->state.top();
+
+    // Record scissor info
     state.scissor = FRect(x, y, w, h);
+    state.scissor_mat = state.matrix;
+    
     state.has_scissor = true;
 
     priv->dirty.scissor = true;
 }
 void Painter::scissor(float x, float y, float w, float h) {
     auto &state = priv->state.top();
-    if (state.has_scissor) {
-        state.scissor = state.scissor.intersected(FRect(x, y, w, h));
+    if (!state.has_scissor) {
+        return set_scissor(x, y, w, h);
     }
-    else {
-        state.scissor = FRect(x, y, w, h);
-    }
+    BTK_ONCE(BTK_LOG("Painter intersect scissor is experiemental\n"));
+
+    // TODO : We need to transform prev into target space
+    auto scissor_mat = state.scissor_mat;
+    auto invmatrix = state.matrix;
+    invmatrix.invert();
+
+    scissor_mat *= invmatrix;
+
+    // Get transformed rect
+    auto start = FPoint(state.scissor.x, state.scissor.y) * scissor_mat;
+    auto end = FPoint(state.scissor.x + state.scissor.w, state.scissor.y + state.scissor.h) * scissor_mat;
+
+    FRect rect(
+        start.x, start.y,
+        end.x - start.x, end.y - start.y
+    );
+    rect = rect.intersected(FRect(x, y, w, h));
+
+    state.scissor = rect;
+    state.scissor_mat = state.matrix;
+
+    // state.scissor = state.scissor.intersected(FRect(x, y, w, h));
+    // state.scissor_mat = state.matrix;
+
     state.has_scissor = true;
     priv->dirty.scissor = true;
 }
@@ -875,17 +909,6 @@ void   Texture::set_interpolation_mode(InterpolationMode mode) {
         priv->texture->set_interpolation_mode(mode);
     }
 }
-// void Texture::set_interpolation_mode(InterpolationMode m) {
-//     D2D1_BITMAP_INTERPOLATION_MODE mode;
-//     switch (m) {
-//         case InterpolationMode::Nearest : mode = D2D1_BITMAP_INTERPOLATION_MODE_NEAREST_NEIGHBOR; break;
-//         case InterpolationMode::Linear : mode = D2D1_BITMAP_INTERPOLATION_MODE_LINEAR; break;
-//     }
-
-//     if (!empty()) {
-//         priv->mode = mode;
-//     }
-// }
 
 Texture &Texture::operator =(Texture &&t) {
     delete priv;

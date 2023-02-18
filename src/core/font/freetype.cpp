@@ -7,6 +7,9 @@ BTK_PRIV_BEGIN
 
 class PhyFontSource : public Refable<PhyFontSource> {
     public:
+        PhyFontSource();
+    private:
+        u8string path; //< Path
 
 };
 

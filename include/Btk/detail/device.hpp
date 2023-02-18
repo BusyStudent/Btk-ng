@@ -109,6 +109,15 @@ class PaintDevice {
         }
 };
 /**
+ * @brief Scissor Information
+ * 
+ */
+class PaintScissor {
+    public:
+        FMatrix matrix; //< Scissor Transform
+        FRect   rect;   //< Scissor Rect
+};
+/**
  * @brief Interface for managing resource lifetime
  * 
  */
@@ -217,12 +226,12 @@ class PaintContext : public PaintResource, public GraphicsContext {
         /**
          * @brief Set the scissor object
          * 
-         * @param rect The scissor rectangle, nullptr on no scissor
+         * @param scissor The PainScissor object
          * @return true 
          * @return false 
          */
-        inline  bool set_scissor(const FRect *rect) {
-            return set_state(PaintContextState::Scissor, rect);
+        inline  bool set_scissor(const PaintScissor *scissor) {
+            return set_state(PaintContextState::Scissor, scissor);
         }
 
         inline  bool set_alpha(float alpha) {
