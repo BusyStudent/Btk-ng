@@ -10,6 +10,7 @@
 # Clangd
 /compile_commands.json
 /.clangd
+/.cache
 
 # Doxygen doc
 /doc
