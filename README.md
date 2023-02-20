@@ -79,6 +79,14 @@ add_packages("btk")
 | Cairo    |  X11 (Xlib)     | Unix painter                            |
 | Nanovg   |  OpenGL         | Cross platform painter (imcompeleted)   |
 
+## Font backend
+
+| Name     | Platform        | Description                             |
+| ---      | ---             | ---                                     |
+| DWrite   |  Windows        | Native font backend on windows          |
+| Freetype |  Any            | In Progress                             |
+
+
 ## Window system backend
 
 | Name     | Platform        | Description              |

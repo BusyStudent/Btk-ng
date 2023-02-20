@@ -399,7 +399,7 @@ class Matrix3x2Impl {
             );
         }
         template <typename Elem>
-        Matrix3x2Impl<Elem> multipy(const Matrix3x2Impl<Elem> &m) const {
+        Matrix3x2Impl<Elem> multiply(const Matrix3x2Impl<Elem> &m) const {
             Matrix3x2Impl<Elem> ret;
             ret.m[0][0] = m.m[0][0] * this->m[0][0] + m.m[0][1] * this->m[1][0];
             ret.m[0][1] = m.m[0][0] * this->m[0][1] + m.m[0][1] * this->m[1][1];
@@ -412,7 +412,7 @@ class Matrix3x2Impl {
 
         template <typename Elem>
         Matrix3x2Impl<Elem> operator *(const Matrix3x2Impl<Elem> &m) const {
-            return multipy(m);
+            return multiply(m);
         }
 
         template <typename Elem>
@@ -428,7 +428,7 @@ class Matrix3x2Impl {
         }
 
         Matrix3x2Impl &operator *=(const Matrix3x2Impl &mat) noexcept {
-            *this = multipy(mat);
+            *this = multiply(mat);
             return *this;
         }
 

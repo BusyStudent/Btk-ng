@@ -563,7 +563,8 @@ bool D2DRenderTarget::draw_text(Alignment align, Font &font, u8string_view text,
             u16.length(),
             fmt,
             &client,
-            solid_brush.Get()
+            solid_brush.Get(),
+            D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT
         );
         return true;
     }
@@ -632,7 +633,8 @@ void D2DRenderTarget::draw_text_layout(Alignment align, IDWriteTextLayout *layou
     target->DrawTextLayout(
         D2D1::Point2F(x, y),
         layout,
-        get_brush(area)
+        get_brush(area),
+        D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT
     );
 }
 

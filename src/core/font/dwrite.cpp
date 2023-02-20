@@ -324,7 +324,6 @@ u8string_view TextLayout::text() const {
     return { };
 }
 PainterPath   TextLayout::outline(float dpi) const {
-    // TODO : Bug here
     if (!priv) {
         return { };
     }

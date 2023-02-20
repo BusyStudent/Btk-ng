@@ -415,7 +415,7 @@ int main () {
     Label       label(&widget);
 
     Timer            timer;
-    w.set_text("Increment😀");
+    w.set_text("Increment😅");
 
     widget.show();
     widget.resize(640, 480);
