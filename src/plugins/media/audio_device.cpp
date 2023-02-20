@@ -4,7 +4,6 @@
 #include <mutex>
 
 extern "C" {
-// #define BTK_MINIAUDIO
 #if defined(BTK_MINIAUDIO)
     #define  MA_IMPLEMENTATION
     #define  MA_USE_STDINT
@@ -54,7 +53,7 @@ inline bool AudioDeviceImpl::open(AudioSampleFormat format, int sample_rate, int
 #if defined(BTK_MINIAUDIO)
     // Convert to miniaudio format
     ma_format fmt;
-    switch (fmt) {
+    switch (format) {
         case AudioSampleFormat::Uint8 : fmt = ma_format_u8; break;
         case AudioSampleFormat::Sint16 : fmt = ma_format_s16; break;
         case AudioSampleFormat::Sint32 : fmt = ma_format_s32; break;
@@ -77,7 +76,7 @@ inline bool AudioDeviceImpl::open(AudioSampleFormat format, int sample_rate, int
     conf.playback.channels = channels;
     conf.sampleRate = sample_rate;
 
-    if (ma_device_init(nullptr, &conf, &audio_device) != MA_SUCCESS) {
+    if (ma_device_init(nullptr, &conf, &device) != MA_SUCCESS) {
         return false;
     }
     device_inited = true;

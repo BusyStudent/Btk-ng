@@ -23,6 +23,13 @@ if has_config("tests") then
         add_deps("btk")
     target_end()
 
+    target("paint")
+        set_kind("binary")
+        add_files("paint.cpp")
+
+        add_deps("btk")
+    target_end()
+
     target("pixproc")
         set_kind("binary")
         add_files("pixproc.cpp")

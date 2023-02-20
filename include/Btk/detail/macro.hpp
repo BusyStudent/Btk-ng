@@ -102,11 +102,11 @@
 
 // Stack alloc type macros
 #define Btk_stack_new(type)    new (Btk_alloca(sizeof(type))) type
-#define Btk_stack_delete(p)    do { \
+#define Btk_stack_delete(p)    do {                                            \
                                     using _ptype = std::decay_t<decltype(*p)>; \
-                                    if (p) { \
-                                        p->~_ptype(); \
-                                    } \
+                                    if (p) {                                   \
+                                        p->~_ptype();                          \
+                                    }                                          \
                                } while (0)
 
 // Assert / Debug macros
@@ -134,54 +134,63 @@
 // C++ Version
 #define BTK_CXX20 (__cplusplus > 201703L)
 
+// C++ Function name
+#if   defined(__GNUC__)
+#define BTK_FUNCTION __PRETTY_FUNCTION__
+#elif defined(_MSC_VER)
+#define BTK_FUNCTION __FUNCSIG__
+#else
+#define BTK_FUNCTION __FUNCTION__
+#endif
+
 
 // Simple Once call 
-#define BTK_ONCE(...) \
-    {\
-        static bool __once = false;\
-        if (!__once) {\
-            __once = true;\
-            __VA_ARGS__;\
-        }\
+#define BTK_ONCE(...)               \
+    {                               \
+        static bool __once = false; \
+        if (!__once) {              \
+            __once = true;          \
+            __VA_ARGS__;            \
+        }                           \
     }
 
 // Macro for enum class to flag
 
-#define BTK_ENUM_OPERATOR(en, base, op) \
-    constexpr inline en operator op(en a1, en a2) noexcept{\
-        return static_cast<en>(\
-            static_cast<base>(a1) op static_cast<base>(a2)\
-        );\
+#define BTK_ENUM_OPERATOR(en, base, op)                      \
+    constexpr inline en operator op(en a1, en a2) noexcept { \
+        return static_cast<en>(                              \
+            static_cast<base>(a1) op static_cast<base>(a2)   \
+        );                                                   \
     }
-#define BTK_ENUM_OPERATOR1(en, base, op) \
-    constexpr inline en operator op(en a) noexcept { \
-        return static_cast<en>( \
-            op static_cast<base>(a) \
-        ); \
+#define BTK_ENUM_OPERATOR1(en, base, op)                     \
+    constexpr inline en operator op(en a) noexcept {         \
+        return static_cast<en>(                              \
+            op static_cast<base>(a)                          \
+        );                                                   \
     }
-#define BTK_ENUM_OPERATOR2(en, base, op) \
-    constexpr inline en operator op##=(en &a1, en a2) noexcept{\
-        a1 = static_cast<en>(\
-            static_cast<base>(a1) op static_cast<base>(a2)\
-        );\
-        return a1;\
+#define BTK_ENUM_OPERATOR2(en, base, op)                        \
+    constexpr inline en operator op##=(en &a1, en a2) noexcept{ \
+        a1 = static_cast<en>(                                   \
+            static_cast<base>(a1) op static_cast<base>(a2)      \
+        );                                                      \
+        return a1;                                              \
     }
-#define BTK_ENUM_ALIAS(en, alias, op) \
-    constexpr inline en operator alias(en a1, en a2) noexcept{\
-        return a1 op a2;\
+#define BTK_ENUM_ALIAS(en, alias, op)                           \
+    constexpr inline en operator alias(en a1, en a2) noexcept{  \
+        return a1 op a2;                                        \
     }
 
 // Make enum class flag
 
-#define BTK_FLAGS_OPERATOR(en, base) \
-    BTK_ENUM_OPERATOR(en, base, &);\
-    BTK_ENUM_OPERATOR(en, base, |);\
-    BTK_ENUM_OPERATOR(en, base, ^);\
-    BTK_ENUM_OPERATOR2(en, base, &);\
-    BTK_ENUM_OPERATOR2(en, base, |);\
-    BTK_ENUM_OPERATOR2(en, base, ^);\
-    BTK_ENUM_OPERATOR1(en, base, ~);\
-    BTK_ENUM_ALIAS(en, +,  |);\
+#define BTK_FLAGS_OPERATOR(en, base)   \
+    BTK_ENUM_OPERATOR(en, base, &);    \
+    BTK_ENUM_OPERATOR(en, base, |);    \
+    BTK_ENUM_OPERATOR(en, base, ^);    \
+    BTK_ENUM_OPERATOR2(en, base, &);   \
+    BTK_ENUM_OPERATOR2(en, base, |);   \
+    BTK_ENUM_OPERATOR2(en, base, ^);   \
+    BTK_ENUM_OPERATOR1(en, base, ~);   \
+    BTK_ENUM_ALIAS(en, +,  |);         \
     BTK_ENUM_ALIAS(en, +=, |=);
 
 #define BTK_DECLARE_FLAGS(en) \

@@ -79,6 +79,14 @@ add_packages("btk")
 | Cairo    |  X11 (Xlib)     | Unix painter                            |
 | Nanovg   |  OpenGL         | Cross platform painter (imcompeleted)   |
 
+## Font backend
+
+| Name     | Platform        | Description                             |
+| ---      | ---             | ---                                     |
+| DWrite   |  Windows        | Native font backend on windows          |
+| Freetype |  Any            | In Progress                             |
+
+
 ## Window system backend
 
 | Name     | Platform        | Description              |
@@ -102,6 +110,7 @@ add_packages("btk")
 | FileDialog    |                 |                          |
 | MenuBar       | Not yet         |                          |
 | GLWidget      |                 | For use OpenGL           |
+| ListBox       |                 | Display string items     |
 | VideoWidget   |                 | Video output for MediaPlayer (multimedia plugin) |
 
 ## Existing bugs
@@ -111,7 +120,6 @@ add_packages("btk")
 - [ ] Compelete PainterEffect, refactorying it
 - [ ] Compelete Nanovg Painter
 - [ ] Improve Style
-- [ ] Improve Way to set context default driver
 
 ## Install
 

@@ -10,10 +10,12 @@ BTK_NS_BEGIN
 class MediaContentImpl;
 class MediaPlayerImpl;
 class AudioDeviceImpl;
+class VideoFrameImpl;
 
 class MediaContent;
 class MediaPlayer;
 class AudioDevice;
+class VideoFrame;
 
 // Enum for audio format
 enum class AudioSampleFormat : uint8_t {
@@ -21,6 +23,29 @@ enum class AudioSampleFormat : uint8_t {
     Sint16,
     Sint32,
     Float32
+};
+enum class AudioChannelLayout : uint8_t {
+
+};
+enum class MediaStatus       : uint8_t {
+    NoMedia,
+    LoadingMedia,
+    LoadedMedia,
+    StalledMedia,
+    BufferingMedia,
+    BufferedMedia,
+    EndOfMedia
+};
+
+/**
+ * @brief Audio format 
+ * 
+ */
+class AudioFormat {
+    public:
+        AudioSampleFormat sample_fmt;
+        int               sample_rate;
+        int               channels;
 };
 
 // Interface, needed for polymorphism, mixed in with other classes
@@ -114,8 +139,10 @@ class BTKAPI MediaPlayer : public Object {
         void set_media(const MediaContent &content);
         void set_url(u8string_view url);
 
-        void set_position(double ms);
+        void set_position(double second);
 
+        auto seekable() const -> bool;
+        auto buffered() const -> double;
         auto duration() const -> double;
         auto position() const -> double;
         auto error_string() const -> u8string;
@@ -124,23 +151,11 @@ class BTKAPI MediaPlayer : public Object {
         auto signal_error()            -> Signal<void()>       &;
         auto signal_duration_changed() -> Signal<void(double)> &;
         auto signal_position_changed() -> Signal<void(double)> &;
+        auto signal_buffer_status_changed() -> Signal<void(float)>       &;
+        auto signal_media_status_changed()  -> Signal<void(MediaStatus)> &;
+        auto signal_state_changed()         -> Signal<void(State)>       &;
     private:
         MediaPlayerImpl *priv;
-};
-
-class BTKAPI MediaContent {
-    public:
-        MediaContent();
-        MediaContent(u8string_view url);
-        MediaContent(const MediaContent *ctxts, size_t n);
-        ~MediaContent();
-
-        pointer_t query_value(int what);
-    private:
-        void begin_mut();
-
-        MediaContentImpl *priv;
-    friend class MediaPlayer;
 };
 
 BTK_NS_END

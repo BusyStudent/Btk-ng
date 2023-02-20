@@ -102,6 +102,8 @@ class BTKAPI UIContext : public Trackable {
             return thread_id;
         }
     private:
+        void initialize(GraphicsDriver *driver);
+
         PainterInitializer painter_init;
         EventDispatcher *_dispatcher = nullptr;
         GraphicsDriver  *_driver = nullptr;

@@ -12,10 +12,14 @@
 #include <windows.h>
 #endif
 
+// From platform module
+extern "C" void __BtkPlatform_Init();
+
 BTK_NS_BEGIN
 
 thread_local
 static EventDispatcher *th_dispatcher = nullptr; //< Thread event dispatcher
+static GraphicsDriverInfo *ui_driver = nullptr; //< Default graphics driver creation information
 static UIContext  *ui_context = nullptr; //< Global UI context
 static EventType   ui_event   = EventType::User; //< Current Registered event
 
@@ -33,18 +37,11 @@ auto SetDispatcher(EventDispatcher *d) -> void {
 }
 
 UIContext::UIContext(GraphicsDriver *driv) {
-    assert(!GetUIContext());
-
-    _dispatcher = GetDispatcher(); 
-    _driver     = driv;
-    PaletteBreeze(&palette);
-    StyleBreeze(&style);
-    SetUIContext(this);
-
-    thread_id = std::this_thread::get_id(); 
+    initialize(driv);
 }
-UIContext::UIContext() : UIContext(PlatformDriverInfo.create()) {
-    
+UIContext::UIContext() {
+    BTK_ONCE(__BtkPlatform_Init());
+    initialize(CreateDriver());
 }
 UIContext::~UIContext() {
     delete _driver;
@@ -53,12 +50,24 @@ UIContext::~UIContext() {
         SetUIContext(nullptr);
     }
 }
-int UIContext::run() {
+int  UIContext::run() {
     if (_dispatcher == nullptr) {
         return EXIT_FAILURE;
     }
     EventLoop loop(_dispatcher);
     return loop.run();
+}
+void UIContext::initialize(GraphicsDriver *driv) {
+    assert(!GetUIContext());
+    assert(driv);
+
+    _dispatcher = GetDispatcher(); 
+    _driver     = driv;
+    PaletteBreeze(&palette);
+    StyleBreeze(&style);
+    SetUIContext(this);
+
+    thread_id = std::this_thread::get_id(); 
 }
 
 EventQueue::EventQueue() {
@@ -166,6 +175,14 @@ EventType RegisterEvent() {
         ui_event = EventType(uint32_t(ui_event) + 1);
     }
     return cur;
+}
+
+auto RegisterDriver(GraphicsDriverInfo &info) -> void{
+    ui_driver = &info;
+}
+auto CreateDriver() -> GraphicsDriver * {
+    assert(ui_driver);
+    return ui_driver->create();
 }
 
 BTK_NS_END

@@ -1,21 +1,29 @@
 #pragma once
 
+#include <Btk/detail/reference.hpp>
 
 // Helper macro for COW
 
+// Make some utility macros
+#define COW_MUT(priv)                              \
+    {                                              \
+        using Type = std::decay_t<decltype(*priv)>;\
+        if (!priv) {                               \
+            priv = new Type();                     \
+            priv->set_refcount(1);                 \
+        }                                          \
+        else if (priv->refcount() != 1) {          \
+            auto n = new Type(*priv);              \
+            priv->unref();                         \
+            priv = n;                              \
+            priv->set_refcount(1);                 \
+        }                                          \
+    } // Copy on write
+
 // Make begin mut fn
-#define COW_MUT_IMPL(type) \
+#define COW_MUT_IMPL(type)   \
     void type::begin_mut() { \
-        if (!priv) {\
-            priv = new type##Impl();\
-            priv->set_refcount(1);\
-        }\
-        else if (priv->refcount() != 1) { \
-            auto n = new type##Impl(*priv);\
-            priv->unref();\
-            priv = n;\
-            priv->set_refcount(1);\
-        }\
+        COW_MUT(priv);       \
     } // Copy on write
 // Make copy constructor
 #define COW_COPY_IMPL(type) \
@@ -193,107 +201,107 @@ class WeakRefable : public Refable<T> {
 };
 
 // Strong reference
-template <typename T>
-class Ref {
-    public:
-        Ref() : ptr(nullptr) {}
-        Ref(T *ptr) : ptr(ptr) {
-            if (ptr) {
-                ptr->ref();
-            }
-        }
-        Ref(const Ref &other) : ptr(other.ptr) {
-            if (ptr) {
-                ptr->ref();
-            }
-        }
-        Ref(Ref &&other) : ptr(other.ptr) {
-            other.ptr = nullptr;
-        }
-        ~Ref() {
-            if (ptr) {
-                ptr->unref();
-            }
-        }
-        Ref &operator =(const Ref &other) {
-            if (ptr != other.ptr) {
-                if (ptr) {
-                    ptr->unref();
-                }
-                ptr = other.ptr;
-                if (ptr) {
-                    ptr->ref();
-                }
-            }
-            return *this;
-        }
-        Ref &operator =(Ref &&other) {
-            if (ptr != other.ptr) {
-                if (ptr) {
-                    ptr->unref();
-                }
-                ptr = other.ptr;
-                other.ptr = nullptr;
-            }
-            return *this;
-        }
-        Ref &operator =(T *other) {
-            if (ptr != other) {
-                if (ptr) {
-                    ptr->unref();
-                }
-                ptr = other;
-                if (ptr) {
-                    ptr->ref();
-                }
-            }
-            return *this;
-        }
-        Ref &operator =(std::nullptr_t) {
-            if (ptr) {
-                ptr->unref();
-            }
-            ptr = nullptr;
-            return *this;
-        }
-        T *operator ->() {
-            return ptr;
-        }
-        const T *operator ->() const {
-            return ptr;
-        }
-        T &operator *() {
-            return *ptr;
-        }
-        const T &operator *() const {
-            return *ptr;
-        }
-        operator bool() const {
-            return ptr != nullptr;
-        }
-        bool operator !() const {
-            return ptr == nullptr;
-        }
-        T *get() {
-            return ptr;
-        }
-        const T *get() const {
-            return ptr;
-        }
-        T *release() {
-            T *tmp = ptr;
-            ptr = nullptr;
-            return tmp;
-        }
-        void reset() {
-            if (ptr) {
-                ptr->unref();
-            }
-            ptr = nullptr;
-        }
-    private:
-        T *ptr = nullptr;
-};
+// template <typename T>
+// class Ref {
+//     public:
+//         Ref() : ptr(nullptr) {}
+//         Ref(T *ptr) : ptr(ptr) {
+//             if (ptr) {
+//                 ptr->ref();
+//             }
+//         }
+//         Ref(const Ref &other) : ptr(other.ptr) {
+//             if (ptr) {
+//                 ptr->ref();
+//             }
+//         }
+//         Ref(Ref &&other) : ptr(other.ptr) {
+//             other.ptr = nullptr;
+//         }
+//         ~Ref() {
+//             if (ptr) {
+//                 ptr->unref();
+//             }
+//         }
+//         Ref &operator =(const Ref &other) {
+//             if (ptr != other.ptr) {
+//                 if (ptr) {
+//                     ptr->unref();
+//                 }
+//                 ptr = other.ptr;
+//                 if (ptr) {
+//                     ptr->ref();
+//                 }
+//             }
+//             return *this;
+//         }
+//         Ref &operator =(Ref &&other) {
+//             if (ptr != other.ptr) {
+//                 if (ptr) {
+//                     ptr->unref();
+//                 }
+//                 ptr = other.ptr;
+//                 other.ptr = nullptr;
+//             }
+//             return *this;
+//         }
+//         Ref &operator =(T *other) {
+//             if (ptr != other) {
+//                 if (ptr) {
+//                     ptr->unref();
+//                 }
+//                 ptr = other;
+//                 if (ptr) {
+//                     ptr->ref();
+//                 }
+//             }
+//             return *this;
+//         }
+//         Ref &operator =(std::nullptr_t) {
+//             if (ptr) {
+//                 ptr->unref();
+//             }
+//             ptr = nullptr;
+//             return *this;
+//         }
+//         T *operator ->() {
+//             return ptr;
+//         }
+//         const T *operator ->() const {
+//             return ptr;
+//         }
+//         T &operator *() {
+//             return *ptr;
+//         }
+//         const T &operator *() const {
+//             return *ptr;
+//         }
+//         operator bool() const {
+//             return ptr != nullptr;
+//         }
+//         bool operator !() const {
+//             return ptr == nullptr;
+//         }
+//         T *get() {
+//             return ptr;
+//         }
+//         const T *get() const {
+//             return ptr;
+//         }
+//         T *release() {
+//             T *tmp = ptr;
+//             ptr = nullptr;
+//             return tmp;
+//         }
+//         void reset() {
+//             if (ptr) {
+//                 ptr->unref();
+//             }
+//             ptr = nullptr;
+//         }
+//     private:
+//         T *ptr = nullptr;
+// };
 
 // Weaks Reference
 template <typename T>

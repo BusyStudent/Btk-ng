@@ -1,3 +1,5 @@
+/*
+#if 0
 #include "build.hpp"
 #include "fallback.hpp"
 #include "common/utils.hpp"
@@ -1914,3 +1916,5 @@ void Pen::set_miter_limit(float limit) {
 BTK_NS_END
 
 #undef FONT_CAST
+#endif
+*/

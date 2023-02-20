@@ -11,6 +11,7 @@ BTK_NS_BEGIN
 // TextEdit
 TextEdit::TextEdit(Widget *parent,u8string_view s) : Widget(parent) {
     set_focus_policy(FocusPolicy::Mouse);
+    set_cursor(SystemCursor::Ibeam);
     _text = s;
     _margin = 2.0f;
     _offset = {0.0f, 0.0f};
@@ -267,6 +268,10 @@ void TextEdit::clear_sel() {
     _sel_begin = 0;
     _sel_end = 0;
 }
+void TextEdit::set_flat(bool flat) {
+    _flat = flat;
+    repaint();
+}
 void TextEdit::set_text(u8string_view txt) {
     _text = txt;
     _lay.set_text(_text);
@@ -296,7 +301,10 @@ bool TextEdit::paint_event(PaintEvent &) {
     else {
         p.set_color(style->border);
     }
-    p.draw_rect(border);
+
+    if (!_flat) {
+        p.draw_rect(border);
+    }
 
     //Draw txt
 

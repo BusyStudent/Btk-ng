@@ -10,7 +10,14 @@
  */
 #pragma once
 
+#if defined(__GNUC__)
+#define WIDL_EXPLICIT_AGGREGATE_RETURNS
+#endif
+
 #include "build.hpp"
+#include <windows.h>
+#undef DrawText
+// Avoid posibility of macro conflict
 #include <d2d1.h>
 
 // Include extensions
@@ -27,6 +34,11 @@
 #if __has_include(<d2d1_3.h>)
 #define BTK_DIRECT2D_EXTENSION3
 #include <d2d1_3.h>
+#endif
+
+#if defined(_MSC_VER)
+#pragma comment(lib, "d2d1.lib")
+#pragma comment(lib, "d3d11.lib")
 #endif
 
 BTK_NS_BEGIN2(BTK_NAMESPACE::Win32)
@@ -72,17 +84,5 @@ class Direct2DInitializer {
             Direct2D::Shutdown();
         }
 };
-
-// Because MinGW has a compiler Bug, so we have to implement GetXXX at asm
-
-inline auto GetD2D1BitmapPixelSize(ID2D1Bitmap *bitmap) -> D2D1_SIZE_U {
-    // Check is GCC
-#if defined(__GNUC__) && !defined(__clang__)
-    // Use asm implementation
-    //
-#else
-    return bitmap->GetPixelSize();
-#endif
-}
 
 BTK_NS_END2(BTK_NAMESPACE::Win32)

@@ -40,11 +40,11 @@ bool PopupWidget::paint_event(PaintEvent &) {
     auto &p = painter();
 
     // Draw shadow
-    p.push_transform();
+    p.save();
     p.translate(2, 2);
     p.set_color(Color::Gray);
     p.fill_rect(rect());
-    p.pop_transform();
+    p.restore();
 
     p.set_brush(palette().window());
     p.fill_rect(rect());

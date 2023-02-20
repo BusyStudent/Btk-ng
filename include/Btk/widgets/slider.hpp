@@ -14,7 +14,7 @@ class BTKAPI AbstractSlider : public Widget {
         
         void set_orientation(Orientation ori);
         void set_page_step(double step);
-        void set_line_step(double step);
+        void set_single_step(double step);
         void set_tracking(bool tracking);
 
         double value() const noexcept {
@@ -25,6 +25,12 @@ class BTKAPI AbstractSlider : public Widget {
         }
         double single_step() const noexcept {
             return _single_step;
+        }
+        double min() const noexcept {
+            return _min;
+        }
+        double max() const noexcept {
+            return _max;
         }
 
         BTK_EXPOSE_SIGNAL(_value_changed);

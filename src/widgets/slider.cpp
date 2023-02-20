@@ -20,6 +20,14 @@ void AbstractSlider::set_range(double min, double max) {
     _value_changed.emit();
     repaint();
 }
+void AbstractSlider::set_single_step(double step) {
+    _single_step = step;
+    repaint();
+}
+void AbstractSlider::set_page_step(double step) {
+    _page_step = step;
+    repaint();
+}
 void AbstractSlider::set_orientation(Orientation ori) {
     _orientation = ori;
     repaint();
@@ -176,13 +184,13 @@ FRect Slider::bar_rect() const {
     if (_orientation == Horizontal) {
         r.w = 7;
         r.h = 18;
-        r.x = r.x + ((prev.w - r.w) * _value) / (_max - _min);
+        r.x = r.x + ((prev.w - r.w) * (_value - _min)) / (_max - _min);
         r.y = r.y - r.h / 2 + prev.h / 2; //< Center the bar
     }
     else {
         r.h = 7;
         r.w = 18;
-        r.y = r.y + ((prev.h - r.h) * _value) / (_max - _min);
+        r.y = r.y + ((prev.h - r.h) * (_value - _min)) / (_max - _min);
         r.x = r.x - r.w / 2 + prev.w / 2; //< Center the bar
     }
     return r;
@@ -346,20 +354,21 @@ FRect ScrollBar::bar_rect() const {
     FRect bar;
     double rng = _max - _min;
 
-    double len_ratio = (rng + _single_step) / (rng + _single_step + _page_step);
+    // 1.0 - works better
+    double len_ratio = 1.0 - (rng + _single_step) / (rng + _single_step + _page_step);
 
     if (_orientation == Horizontal) {
         bar.w = border.w * len_ratio;
         bar.h = border.h;
 
-        bar.x = border.x + ((border.w - bar.w) * _value) / rng;
+        bar.x = border.x + ((border.w - bar.w) * (_value - _min)) / rng;
         bar.y = border.y;
     }
     else {
         bar.h = border.h * len_ratio;
         bar.w = border.w;
 
-        bar.y = border.y + ((border.h - bar.h) * _value) / rng;
+        bar.y = border.y + ((border.h - bar.h) * (_value - _min)) / rng;
         bar.x = border.x;
 
     }
