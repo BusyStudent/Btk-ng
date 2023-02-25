@@ -3,6 +3,7 @@
 
 extern "C" {
     #include <libavutil/time.h>
+    #include <libavutil/dict.h>
 }
 
 
@@ -11,11 +12,13 @@ BTK_NS_BEGIN2(BTK_NAMESPACE::FFmpeg)
 using namespace std::chrono_literals;
 
 Demuxer::Demuxer() {
-
+    // av_log_set_level(AV_LOG_TRACE);
 }
 Demuxer::~Demuxer() {
     stop();
     avformat_close_input(&ctxt);
+
+    av_dict_free(&options);
 }
 
 void Demuxer::stop() {
@@ -67,7 +70,7 @@ void Demuxer::load() {
         &ctxt,
         url.c_str(),
         nullptr,
-        nullptr
+        &options
     );
 
     if (av_code < 0) {
@@ -519,6 +522,10 @@ void Demuxer::set_position(double v) {
     seek_pos = v;
     seek_req = true;
     demuxer_cond.notify_one();
+}
+void Demuxer::set_option(u8string_view key, u8string_view value) {
+    int ret = av_dict_set(&options, u8string(key).c_str(), u8string(value).c_str(), 0);
+    BTK_ASSERT(ret >= 0);
 }
 void Demuxer::set_state(State s) {
     if (state == s) {

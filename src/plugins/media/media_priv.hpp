@@ -223,6 +223,8 @@ class Demuxer : public Object {
 
         void set_url(u8string_view url);
         void set_position(double pos);
+        void set_option(u8string_view key, u8string_view value);
+;
 
         bool seekable();
         double duration();
@@ -279,6 +281,7 @@ class Demuxer : public Object {
 
         // Format Context
         AVFormatContext *ctxt = nullptr;
+        AVDictionary    *options = nullptr;
         bool             quit  = false;
         bool             loaded = false;
         std::thread      demuxer_thread;

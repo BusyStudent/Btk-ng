@@ -136,7 +136,7 @@ class BTKAPI MediaPlayer : public Object {
 
         void set_video_output(AbstractVideoSurface *surf);
         void set_audio_output(AbstractAudioDevice *audio);
-        void set_media(const MediaContent &content);
+        void set_option(u8string_view key, u8string_view value);
         void set_url(u8string_view url);
 
         void set_position(double second);

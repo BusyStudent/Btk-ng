@@ -88,16 +88,16 @@ BTK_NS_BEGIN
 
 // Helper function 
 
-void Utf8Next(const char_t *&p) {
+void Utf8Next(const char_t *&p) BTK_NOEXCEPT {
     utf8::unchecked::next(p);
 }
-void Utf8Prior(const char_t *&p) {
+void Utf8Prior(const char_t *&p) BTK_NOEXCEPT {
     utf8::unchecked::prior(p);
 }
-uchar_t Utf8Peek(const char_t *p) {
+uchar_t Utf8Peek(const char_t *p) BTK_NOEXCEPT {
     return utf8::unchecked::peek_next(p);
 }
-size_t  Utf8Strlen(const char_t *begin, size_t size) {
+size_t  Utf8Strlen(const char_t *begin, size_t size) BTK_NOEXCEPT {
     const char_t *end = begin + size;
     size_t len = 0;
     while (begin != end) {
@@ -106,10 +106,10 @@ size_t  Utf8Strlen(const char_t *begin, size_t size) {
     }
     return len;
 }
-bool    Utf8IsValid(const char_t *p, size_t size) {
+bool    Utf8IsValid(const char_t *p, size_t size) BTK_NOEXCEPT {
     return utf8::is_valid(p, p + size);
 }
-size_t  Utf8Locate(const char_t *str, const char_t *p) {
+size_t  Utf8Locate(const char_t *str, const char_t *p) BTK_NOEXCEPT {
     const char_t *prev = str;
     size_t size = 0;
     while (str != p) {
@@ -124,7 +124,7 @@ size_t  Utf8Locate(const char_t *str, const char_t *p) {
     }
     return size;
 }
-size_t  Utf8Encode(char_t buf[4], uchar_t c) {
+size_t  Utf8Encode(char_t buf[4], uchar_t c) BTK_NOEXCEPT {
     size_t size = 0;
 
     auto cb = [&](uint8_t c) {
@@ -139,7 +139,7 @@ size_t  Utf8Encode(char_t buf[4], uchar_t c) {
     return size;
 }
 // Seek forward / backward 
-void   Utf8Seek(const char_t *str, size_t size, const char_t *&cur, ptrdiff_t dis) {
+void   Utf8Seek(const char_t *str, size_t size, const char_t *&cur, ptrdiff_t dis) BTK_NOEXCEPT {
     auto begin = str;
     auto end   = str + size;
 

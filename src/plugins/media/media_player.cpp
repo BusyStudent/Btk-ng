@@ -37,6 +37,9 @@ void MediaPlayer::set_audio_output(AbstractAudioDevice *a) {
 void MediaPlayer::set_position(double pos) {
     priv->set_position(pos);
 }
+void MediaPlayer::set_option(u8string_view key, u8string_view value) {
+    priv->set_option(key, value);
+}
 
 auto MediaPlayer::signal_media_status_changed() -> Signal<void(MediaStatus)> & {
     return priv->signal_media_status_changed();    
