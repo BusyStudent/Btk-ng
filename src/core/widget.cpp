@@ -34,7 +34,9 @@ Widget::~Widget() {
         parent()->_children.erase(_in_child_iter);
 
         // Notify parent
-        Event event(Event::ChildRemoved);
+        ChildEvent event(Event::ChildRemoved, this);
+        event.set_widget(_parent);
+
         _parent->handle(event);
     }
     // Clear children
@@ -159,6 +161,11 @@ void Widget::set_palette(const Palette &palette) {
     event.set_widget(this);
     handle(event);
 
+    // Let child has palette as parent
+    for (Widget *child : _children) {
+        child->set_palette(palette);
+    }
+
     repaint();
 }
 bool Widget::handle(Event &event) {
@@ -174,12 +181,27 @@ bool Widget::handle(Event &event) {
 
     switch (event.type()) {
         case Event::Paint : {
+            bool restore_state = false;
+
             if (_win) {
-                auto style = _style;
-                auto c     = style->window;
-                _painter.set_color(c.r, c.g, c.b, c.a);
+                _painter.set_brush(_palette.window());
                 _painter.begin();
                 _painter.clear();
+            }
+            if (parent()) {
+                // Not same background, draw it
+                if (parent()->_palette.window() != _palette.window()) {
+                    auto &p = painter();
+                    p.set_brush(_palette.window());
+                    p.fill_rect(_rect);
+                }
+                // Apply opacity not on the root, beacuse the window system should handle it
+                if (_opacity != 1.0f) {
+                    auto &p = painter();
+                    p.save();
+                    p.set_alpha(_opacity * p.alpha());
+                    restore_state = true;
+                }
             }
 
             // Paint current widget first (background)
@@ -187,6 +209,11 @@ bool Widget::handle(Event &event) {
 
             // Paint children second (foreground)
             paint_children(event.as<PaintEvent>());
+
+            // Restore state if
+            if (restore_state) {
+                painter().restore();
+            }
 
             if (_win) {
 
@@ -337,7 +364,7 @@ bool Widget::handle(Event &event) {
             // Get current mouse widget
             auto &motion = event.as<MotionEvent>();
 
-            // TODO : generate Drag here
+            // Generate Drag here on the Root
             if (_pressed && is_root() && !_drag_reject) {
                 if (!_drag_reject && !dragging_widget) {
                     // Try start it
@@ -631,8 +658,8 @@ void Widget::add_child(Widget *w) {
     w->_in_child_iter = _children.begin();
 
     // Notify
-    WidgetEvent event(Event::ChildAdded);
-    event.set_widget(w);
+    ChildEvent event(Event::ChildAdded, w);
+    event.set_widget(this);
     handle(event);
 }
 void Widget::remove_child(Widget *w) {
@@ -650,8 +677,8 @@ void Widget::remove_child(Widget *w) {
     _children.erase(it);
 
     // Notify
-    WidgetEvent event(Event::ChildRemoved);
-    event.set_widget(w);
+    ChildEvent event(Event::ChildRemoved, w);
+    event.set_widget(this);
     handle(event);
 }
 bool Widget::has_child(Widget *w) const {
@@ -770,7 +797,7 @@ bool Widget::set_fullscreen(bool v) {
         _flags |= WindowFlags::Fullscreen;
     }
     else {
-        _flags ^= WindowFlags::Fullscreen;
+        _flags &= ~WindowFlags::Fullscreen;
     }
     return set_window_flags(_flags);
 }
@@ -779,7 +806,7 @@ bool Widget::set_resizable(bool v) {
         _flags |= WindowFlags::Resizable;
     }
     else {
-        _flags ^= WindowFlags::Resizable;
+        _flags &= ~ WindowFlags::Resizable;
     }
     return set_window_flags(_flags);
 }
@@ -788,7 +815,7 @@ void Widget::set_attribute(WidgetAttrs attr, bool on) {
         _attrs |= attr;
     }
     else {
-        _attrs ^= attr;
+        _attrs &= ~ attr;
     }
 }
 
@@ -890,6 +917,18 @@ void Widget::set_style(Style *s) {
     Event event(Event::StyleChanged);
     handle(event);
 }
+void Widget::set_opacity(float op) {
+    op = clamp(op, 0.0f, 1.0f);
+    if (_win) {
+        // Is Window, should apply it
+        if (!_win->set_value(AbstractWindow::Opacity, &op)) {
+            // Failed or unsupport
+            return;
+        }
+    }
+    _opacity = op;
+    repaint();
+}
 
 // Window Internal
 void Widget::window_init() {
@@ -917,6 +956,13 @@ void Widget::window_init() {
     _win->bind_widget(this);
     _painter = Painter::FromWindow(_win);
     _painter_inited = true;
+
+    // Check opacity if had
+    if (_opacity != 1.0f) {
+        if (!_win->set_value(AbstractWindow::Opacity, &_opacity)) {
+            _opacity = 1.0f;
+        }
+    }
 }
 void Widget::window_destroy() {
     if (_win) {

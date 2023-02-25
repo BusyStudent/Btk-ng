@@ -911,6 +911,10 @@ bool     SDLWindow::query_value(int what, ...) {
             p->h = sdl_to_btk(p->h);
             break;
         }
+        case Opacity : {
+            ret = (SDL_GetWindowOpacity(win, va_arg(varg, float*)) == 0);
+            break;
+        }
         default : {
             ret = false;
             break;
@@ -962,6 +966,10 @@ bool    SDLWindow::set_value(int what, ...) {
         case MousePosition : {
             auto [x, y] = *va_arg(varg, Point*);
             SDL_WarpMouseInWindow(win, btk_to_sdl(x), btk_to_sdl(y));
+            break;
+        }
+        case Opacity : {
+            ret = (SDL_SetWindowOpacity(win, *va_arg(varg, float*)) == 0);
             break;
         }
         default : {

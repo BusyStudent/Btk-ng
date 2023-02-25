@@ -155,12 +155,13 @@ void Demuxer::thread_main() {
     clock = 0;
 
     while (!quit) {
-        // Update clock
-        clock_update();
+        // Update clock, Label for break the double for
+        mainloop : clock_update();
 
         // Check seek here
         if (seek_req) {
             handle_seek();
+            eof = false;
         }
 
         // Check pause here
@@ -238,16 +239,22 @@ void Demuxer::thread_main() {
             if (audio_thread) {
                 // Tell we didnot has more packet
                 audio_thread->packet_queue()->put(EofPacket);
-                while (audio_thread->running()) {
-                    demuxer_wait_state_change(10ms);
+                while (audio_thread->running() && !quit) {
+                    if (demuxer_wait_state_change(10ms)) {
+                        // Something changed
+                        goto mainloop;
+                    }
                 }
                 // Finished
             }
             if (video_thread) {
                 // Tell we didnot has more packet
                 video_thread->packet_queue()->put(EofPacket);
-                while (video_thread->running()) {
-                    demuxer_wait_state_change(10ms);
+                while (video_thread->running() && !quit) {
+                    if (demuxer_wait_state_change(10ms)) {
+                        // Something changed
+                        goto mainloop;
+                    }
                 }
                 // Finished
             }

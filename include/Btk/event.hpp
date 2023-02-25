@@ -367,10 +367,23 @@ class ChangeEvent   : public WidgetEvent {
     public:
         using WidgetEvent::WidgetEvent;
 };
-class ReparentEvent : public ChangeEvent {
+
+// Event In child changed, removed or added
+class ChildEvent    : public ChangeEvent {
+    public:
+        ChildEvent(EventType type, Widget *child) : ChangeEvent(type), _child(child) {}
+
+        bool is_added() const {
+            return type() == ChildAdded;
+        }
+        bool is_removed() const {
+            return type() == ChildRemoved;
+        }
+        Widget *child() const  {
+            return _child;
+        }
     private:
-        Widget *_old;
-        Widget *_new;
+        Widget *_child = nullptr;
 };
 
 class TimerEvent : public Event {

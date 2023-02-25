@@ -498,6 +498,7 @@ class BTKAPI Widget : public Object {
         void set_style(Style *style);
         void set_font(const Font &font);
         void set_cursor(const Cursor &cursor);
+        void set_opacity(float opacity);
     protected:
         virtual bool key_press    (KeyEvent &) { return false; }
         virtual bool key_release  (KeyEvent &) { return false; }
@@ -545,6 +546,7 @@ class BTKAPI Widget : public Object {
         Rect        _rect = {0, 0, 0, 0}; //< Rectangle
         Font        _font    = {}; //< Font
         Cursor      _cursor  = {SystemCursor::Arrow}; //< Cursor
+        float       _opacity = 1.0f; //< Opacity
 
         window_t    _win     = {}; //< Window handle
         Painter     _painter = {}; //< Painter

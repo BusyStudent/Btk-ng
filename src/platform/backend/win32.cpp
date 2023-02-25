@@ -1371,7 +1371,7 @@ bool     Win32Window::set_flags(WindowFlags new_flags) {
             style |= (WS_SIZEBOX | WS_MAXIMIZEBOX);
         }
         else {
-            style ^= (WS_SIZEBOX | WS_MAXIMIZEBOX);
+            style &= ~ (WS_SIZEBOX | WS_MAXIMIZEBOX);
         }
         SetWindowLongPtrW(hwnd, GWL_STYLE, style);
     }
@@ -1390,11 +1390,11 @@ bool     Win32Window::set_flags(WindowFlags new_flags) {
                 auto win_style   = style();
 
                 // Change style
-                win_style ^= WS_OVERLAPPEDWINDOW;
+                win_style &= ~WS_OVERLAPPEDWINDOW;
                 SetWindowLongPtrW(hwnd, GWL_STYLE, win_style);
                 SetWindowPos(
                     hwnd,
-                    HWND_TOPMOST,
+                    HWND_NOTOPMOST, //< It works better than HWND_TOPMOST
                     info.rcMonitor.left,
                     info.rcMonitor.top,
                     info.rcMonitor.right  - info.rcMonitor.left,
@@ -1426,7 +1426,7 @@ bool     Win32Window::set_flags(WindowFlags new_flags) {
     //         new_ex_style |= WS_EX_LAYERED;
     //     }
     //     else {
-    //         new_ex_style ^= WS_EX_LAYERED;
+    //         new_ex_style &= ~ WS_EX_LAYERED;
     //     }
 
     //     SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_ex_style);
@@ -1462,6 +1462,25 @@ bool     Win32Window::set_value(int conf, ...) {
             ret = ClientToScreen(hwnd, &p);
             if (ret) {
                 ret = SetCursorPos(p.x, p.y);
+            }
+            break;
+        }
+        case Opacity : {
+            float opacity = *va_arg(varg, float*);
+            if (opacity == 1.0f) {
+                // Cancel the flags
+                SetWindowLongPtrW(hwnd, GWL_EXSTYLE, exstyle() & ~WS_EX_LAYERED);
+            }
+            else {
+                // Apply it
+                auto style = exstyle();
+                if (!(style & WS_EX_LAYERED)) {
+                    // Set ExLayered if not
+                    SetWindowLongPtrW(hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED);
+                }
+                BYTE alpha = BYTE(opacity * 255.0f);
+                SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA);
+                // SetLayeredWindowAttributes(hwnd, 0, 0, LWA_COLORKEY);
             }
             break;
         }

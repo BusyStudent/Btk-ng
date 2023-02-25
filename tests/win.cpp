@@ -413,6 +413,7 @@ int main () {
     Slider      s(&widget);
     RadioButton rb(&widget);
     Label       label(&widget);
+    Slider      ops(&widget);
 
     Timer            timer;
     w.set_text("Increment😅");
@@ -497,6 +498,15 @@ int main () {
     s.signal_value_changed().connect([&]() {
         p.set_value(s.value());
     });
+
+    ops.move(100, 222);
+    ops.resize(200, 20);
+    ops.set_range(1.0, 100.0);
+    ops.set_value(1.0);
+    ops.signal_value_changed().connect([&]() {
+        widget.set_opacity(std::abs(101.0 - ops.value()) / 100.0 );
+    });
+
 
     rb.move(100, 190);
     rb.set_text("This is a radio button");

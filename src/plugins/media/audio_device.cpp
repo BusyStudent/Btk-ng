@@ -11,7 +11,11 @@ extern "C" {
     #define  MA_NO_ENCODING
     #define  MA_NO_GENERATION
     #define  MA_API static
-    #define  MA_DEBUG_OUTPUT
+
+    #if !defined(NDEBUG)
+        #define  MA_DEBUG_OUTPUT
+    #endif
+
     #include <miniaudio.h>
 #else
     #include <SDL2/SDL_audio.h>
@@ -25,7 +29,6 @@ BTK_NS_BEGIN
 class AudioDeviceImpl {
     public:
         AudioDevice::Routinue callback; //< Callback
-        std::vector<uint8_t> mixbuffer; //< Temp buffer for change the volume
 
         bool device_inited = false;
 
@@ -34,6 +37,7 @@ class AudioDeviceImpl {
 #else
         SDL_AudioSpec     spec;
         SDL_AudioDeviceID device;
+        std::vector<uint8_t> mixbuffer; //< Temp buffer for change the volume
 #endif
         float volume = 1.0f;
 
@@ -166,6 +170,13 @@ inline void AudioDeviceImpl::run(void *buffer, uint32_t bytes) {
         Btk_memset(buffer, 0, bytes);
         return;
     }
+
+#if defined(BTK_MINIAUDIO)
+    // Miniaudio 
+    ma_device_set_master_volume(&device, volume);
+    callback(buffer, bytes);
+#else
+    // SDL
     if (volume == 1.0f) {
         // No volume need be applied, 
         callback(buffer, bytes);
@@ -176,10 +187,6 @@ inline void AudioDeviceImpl::run(void *buffer, uint32_t bytes) {
         mixbuffer.resize(bytes);
     }
 
-#if defined(BTK_MINIAUDIO)
-    BTK_LOG("[Miniaudio] Setting volume is currently unsupport\n");
-    abort();
-#else
     // Fill current buffer
     callback(mixbuffer.data(), bytes);
     // Zero out buffer

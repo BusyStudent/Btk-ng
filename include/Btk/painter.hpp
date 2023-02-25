@@ -1129,6 +1129,9 @@ class BTKAPI Painter {
         auto create_texture(PixFormat fmt, int w, int h, float xdpi = 96.0f, float ydpi = 96.0f) -> Texture;
         auto create_texture(const PixBuffer &buf)                                    -> Texture;
 
+        // Get
+        auto alpha() const -> float;
+
         // Interface for painter on window
         void notify_dpi_changed(float xdpi, float ydpi);
         void notify_resize(int w, int h);

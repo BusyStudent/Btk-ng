@@ -438,6 +438,11 @@ void Painter::set_antialias(bool v) {
     priv->dirty.antialias = true;
 }
 
+// Get
+auto Painter::alpha() const -> float {
+    return priv->state.top().alpha;
+}
+
 // Transform
 void Painter::transform(const FMatrix &mat) {
     priv->state.top().matrix = priv->state.top().matrix * mat;

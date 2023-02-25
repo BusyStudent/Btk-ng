@@ -46,12 +46,27 @@ int main() {
         s.start();
     });
 
-    ScrollArea area;
-    ColorRect lg;
-    area.show();
-    
-    lg.set_rect(0, 0, 1000, 1000);
-    area.set_viewport(&lg);
+    Widget op_test;
+    Button op_btn(&op_test);
+
+    op_btn.set_text("Test Op");
+
+    LerpAnimation<float> anim;
+    anim.set_start_value(1.0f);
+    anim.set_end_value(1.0f);
+
+    anim.add_key_value(0.2f, 0.1f);
+    anim.add_key_value(0.5f, 0.4f);
+    anim.add_key_value(0.8f, 0.8f);
+
+    anim.set_duration(5000);
+    anim.bind(&Widget::set_opacity, &op_test);
+
+    op_btn.signal_clicked().connect([&]() {
+        anim.start();
+    });
+
+    op_test.show();
 
     ctxt.run();
 }

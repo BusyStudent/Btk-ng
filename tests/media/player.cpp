@@ -70,6 +70,11 @@ class Player : public Widget {
             });
 
             show();
+
+            auto pal = palette();
+            pal.set_color(Palette::Window, Color::Black);
+
+            set_palette(pal);
         }
         bool key_press(KeyEvent &event) override {
             if (event.key() == Key::F11) {

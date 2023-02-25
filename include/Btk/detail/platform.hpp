@@ -97,6 +97,7 @@ class AbstractWindow : public Any {
             MousePosition, //< MousePosition  (*Point)
             MaximumSize, //< args (*Size)
             MinimumSize, //< args (*Size)
+            Opacity,     //< args (*float)
         };
 
         /**
