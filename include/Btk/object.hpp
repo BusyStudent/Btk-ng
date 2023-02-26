@@ -45,7 +45,7 @@ class BTKAPI Object : public Any, public Trackable {
         bool      del_timer(timerid_t timerid);
         // Deferred call
         template <typename Callable, typename ...Args>
-        void      defer_call(Callable    &&cb, Args && ...args);
+        void      defer_call(Callable    &&cb, Args ...args);
         void      defer_call(DeferRoutinue rt, pointer_t data);
         void      defer_delete();
         // Event filter
@@ -116,7 +116,7 @@ inline timerid_t Object::add_timer(uint32_t interval) {
     return add_timer(TimerType::Precise, interval);
 }
 template <typename Callable, typename ...Args>
-inline void      Object::defer_call(Callable &&cb, Args && ...args) {
+inline void      Object::defer_call(Callable &&cb, Args ...args) {
     using Wrapper = DeferWrapper<Callable, Args...>;
 
     Wrapper *wp = new Wrapper(
