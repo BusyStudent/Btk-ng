@@ -57,6 +57,7 @@ class BTKAPI Object : public Any, public Trackable {
         virtual bool timer_event(TimerEvent &) { return false; }
     private:
         ObjectImpl *implment() const;
+        std::shared_ptr<bool> mark() const;
 
         mutable ObjectImpl *priv = nullptr;
 };
@@ -111,16 +112,93 @@ class BTKAPI Timer : public Object {
         bool           _repeat   = false;
 };
 
+/**
+ * @brief Manager for manage call in event queue (It can cancel it)
+ * 
+ */
+class BTKAPI TaskManager {
+    public:
+        /**
+         * @brief Construct a new Defer Manager object
+         * 
+         * @param dispatcher The dispatcher pointer (nullptr on UIContext's dispatcher)
+         */
+        TaskManager(EventDispatcher *dispatcher = nullptr);
+        TaskManager(const TaskManager &) = delete;
+        ~TaskManager();
+
+        /**
+         * @brief Cancel all task in queue
+         * 
+         */
+        void cancel_task();
+
+        /**
+         * @brief Add a task in the queue, waiting for dispatch
+         * 
+         * @tparam Callable 
+         * @tparam Args 
+         * @param callable 
+         * @param args 
+         */
+        template <typename Callable, typename ...Args>
+        void add_task(Callable &&callable, Args ...args);
+
+        /**
+         * @brief Add a task to call the object's method, 
+         * 
+         * @tparam IClass 
+         * @tparam RetT 
+         * @tparam CArgs 
+         * @tparam Class 
+         * @tparam Args 
+         * @tparam std::enable_if_t<
+         * std::is_base_of_v<Object, IClass>
+         * > 
+         * @param method 
+         * @param obj 
+         * @param args 
+         */
+        template <
+            typename IClass, typename RetT, typename ...CArgs, 
+            typename Class, typename ...Args,
+            typename _Cond = std::enable_if_t<
+                std::is_base_of_v<Object, IClass>
+            >
+        >
+        void add_task(RetT (IClass::*method)(CArgs...), Class *obj, Args...args);
+
+        /**
+         * @brief Add a task to emit this signal
+         * 
+         * @tparam Ret 
+         * @tparam Args 
+         * @param signal 
+         * @param args 
+         */
+        template <typename Ret, typename ...Args>
+        void emit_signal(Signal<Ret (Args...)> &signal, Args ...args);
+
+    private:
+        void send(void (*fn)(void *), void *);
+
+        // When mark on false means canceled
+        std::shared_ptr<bool> mark { std::make_shared<bool>(true) };
+        EventDispatcher *dispatcher;
+};
+
 // Inline functions
 inline timerid_t Object::add_timer(uint32_t interval) {
     return add_timer(TimerType::Precise, interval);
 }
+
 template <typename Callable, typename ...Args>
-inline void      Object::defer_call(Callable &&cb, Args ...args) {
-    using Wrapper = DeferWrapper<Callable, Args...>;
+inline void      Object::defer_call(Callable &&callable, Args ...args) {
+    using Wrapper = CancelableWrapper<Callable, Args...>;
 
     Wrapper *wp = new Wrapper(
-        std::forward<Callable>(cb),
+        mark(), //< Get Cancel mark
+        std::forward<Callable>(callable),
         std::forward<Args>(args)...
     );
 
@@ -128,6 +206,47 @@ inline void      Object::defer_call(Callable &&cb, Args ...args) {
     pointer_t     pr = wp;
 
     defer_call(rt, pr);
+}
+
+template <typename Callable, typename ...Args>
+inline void      TaskManager::add_task(Callable &&callable, Args ...args) {
+    using Wrapper = CancelableWrapper<Callable, Args...>;
+
+    Wrapper *wp = new Wrapper(
+        mark,
+        std::forward<Callable>(callable),
+        std::forward<Args>(args)...
+    );
+
+    DeferRoutinue rt = Wrapper::Call;
+    pointer_t     pr = wp;
+
+    send(rt, pr);
+}
+
+template <
+    typename IClass, typename RetT, typename ...CArgs, 
+    typename Class, typename ...Args,
+    typename _Cond
+>
+inline void      TaskManager::add_task(RetT (IClass::*method)(CArgs...), Class *obj, Args...args) {
+    // using Callable = RetT (IClass::*)(CArgs...);
+    // using Wrapper = CancelableWrapper<Callable, Class*, Args...>;
+
+    // Make a wrapper and send it to object's defer_call
+    obj->defer_call([=, m = mark]() {
+        if (*m) {
+            std::invoke(method, obj, std::forward<Args>(args)...);
+        }
+        else {
+            BTK_LOG("Task was canceled %s\n", BTK_FUNCTION);
+        }
+    });
+}
+
+template <typename Ret, typename ...Args>
+inline void      TaskManager::emit_signal(Signal<Ret (Args...)> &signal, Args ...args) {
+    add_task(&Signal<Ret (Args...)>::emit, &signal, std::forward<Args>(args)...);
 }
 
 BTK_NS_END

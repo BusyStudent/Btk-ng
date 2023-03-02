@@ -71,7 +71,7 @@ int AudioThread::audio_decode_frame() {
             avcodec_flush_buffers(ctxt);
             swr_ctxt.reset();
 
-            BTK_LOG("AudioThread Got flush\n");
+            BTK_LOG(BTK_RED("[AudioThread] ") "Got flush\n");
             continue;
         }
         if (packet == StopPacket) {

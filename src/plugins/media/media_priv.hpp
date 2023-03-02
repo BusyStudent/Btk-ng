@@ -135,6 +135,9 @@ class VideoThread : public Object {
         int64_t video_clock_start = 0.0f; //< Video started time
         double  video_clock = 0.0f;
         bool nothing_to_do = false;
+
+        // Task
+        TaskManager manager;
 };
 
 /**
@@ -199,6 +202,40 @@ class AudioThread {
         double audio_diff_threshold = AVSyncThreshold;
         int    audio_diff_avg_count = 0;
 
+};
+
+/**
+ * @brief Status wrapper 
+ * 
+ */
+class InterruptCB : public AVIOInterruptCB {
+    public:
+        enum Action : int {
+            None, //< No Action
+
+            // av_format_open && avformat_find_stream_info
+            BeginLoad,
+            EndLoad,
+
+            // < Read Frame
+            BeginRead,
+            EndRead
+        };
+
+        InterruptCB(Demuxer *demuxer);
+        ~InterruptCB();
+
+        // Tell callback the status
+        void begin(Action action);
+        void end(Action action);
+    private:
+        int run();
+
+        int64_t begin_time = 0; //< The time user call begin
+        int64_t timeout_dur = 0; //< The IO Timeout 
+
+        Demuxer *demuxer = nullptr;
+        Action action = None;
 };
 
 /**
@@ -272,12 +309,9 @@ class Demuxer : public Object {
         void clock_pause(bool v);
         void set_state(State state);
         void set_status(MediaStatus status);
-        /**
-         * @brief Internal ffmpeg read callback
-         * 
-         * @return int 
-         */
-        int  interrupt_cb();
+
+        // Interrupt cb
+        InterruptCB      interrupt_cb;
 
         // Format Context
         AVFormatContext *ctxt = nullptr;
@@ -325,6 +359,10 @@ class Demuxer : public Object {
         Signal<void()>       _error;
         Signal<void(State)>  _state_changed;
         Signal<void(MediaStatus)> _media_status_changed;
+
+        // Task
+        TaskManager task_manager;
+    friend class InterruptCB;
 };
 
 

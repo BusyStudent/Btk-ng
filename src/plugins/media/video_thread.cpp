@@ -73,7 +73,7 @@ VideoThread::VideoThread(Demuxer *demuxer, AVStream *stream, AVCodecContext *ctx
 }
 VideoThread::~VideoThread() {
     // Tell output we have doned
-    defer_call(&AbstractVideoSurface::end, surface);
+    manager.add_task(&AbstractVideoSurface::end, surface);
 
     pause(false);
     // Wait
@@ -101,7 +101,9 @@ void VideoThread::thread_main() {
         }
         if (packet == FlushPacket) {
             avcodec_flush_buffers(ctxt);
-            BTK_LOG("VideoThread Got flush\n");
+            manager.cancel_task(); // Cancel update task
+            
+            BTK_LOG(BTK_RED("[VideoThread] ") "Got flush\n");
             continue;
         }
         if (packet == StopPacket) {
@@ -137,7 +139,7 @@ void VideoThread::thread_main() {
         }
         else if (diff > 0.3) {
             // We are too slow, drop
-            BTK_LOG("A-V = %lf Too slow, drop\n", diff);
+            BTK_LOG(BTK_RED("[VideoThread] ") "A-V = %lf Too slow, drop\n", diff);
             continue;
         }
         else if (diff < AVSyncThreshold){
@@ -154,7 +156,7 @@ void VideoThread::thread_main() {
             cond.wait_for(lock, std::chrono::milliseconds(int64_t(delay * 1000)));
         }
 
-        defer_call(&VideoThread::video_surface_ui_callback, this);
+        manager.add_task(&VideoThread::video_surface_ui_callback, this);
 
     }
 }

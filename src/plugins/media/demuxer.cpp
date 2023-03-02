@@ -6,13 +6,40 @@ extern "C" {
     #include <libavutil/dict.h>
 }
 
+#define FF_LOG(str, ...) BTK_LOG(BTK_BLUE("[Player] ") str "\n", __VA_ARGS__)
+#define FF_LOG1(str) BTK_LOG(BTK_BLUE("[Player] ") str "\n")
+#define FF_LOG_STATE(state) FF_LOG1("State changed to " BTK_RED(#state))
+#define FF_LOG_STATUS(status) FF_LOG1("Status changed to " BTK_YELLOW(#status))
 
 BTK_NS_BEGIN2(BTK_NAMESPACE::FFmpeg)
 
 using namespace std::chrono_literals;
 
-Demuxer::Demuxer() {
+Demuxer::Demuxer() : interrupt_cb(this) {
     // av_log_set_level(AV_LOG_TRACE);
+
+    // Trace info
+#if !defined(NDEBUG)
+    _state_changed.connect([](State state) {
+        switch (state) {
+            case State::Playing : FF_LOG_STATE(State::Playing); break;
+            case State::Paused : FF_LOG_STATE(State::Paused); break;
+            case State::Stopped : FF_LOG_STATE(State::Stopped); break;
+        }
+    });
+    _media_status_changed.connect([](MediaStatus status) {
+        switch (status) {
+            case MediaStatus::NoMedia : FF_LOG_STATUS(MediaStatus::NoMedia); break;
+            case MediaStatus::LoadedMedia : FF_LOG_STATUS(MediaStatus::LoadedMedia); break;
+            case MediaStatus::LoadingMedia : FF_LOG_STATUS(MediaStatus::LoadingMedia); break;
+            case MediaStatus::BufferedMedia : FF_LOG_STATUS(MediaStatus::BufferedMedia); break;
+            case MediaStatus::BufferingMedia : FF_LOG_STATUS(MediaStatus::BufferingMedia); break;
+            case MediaStatus::EndOfMedia : FF_LOG_STATUS(MediaStatus::EndOfMedia); break;
+            case MediaStatus::StalledMedia : FF_LOG_STATUS(MediaStatus::StalledMedia); break;
+        }
+    });
+#endif
+
 }
 Demuxer::~Demuxer() {
     stop();
@@ -60,26 +87,32 @@ void Demuxer::load() {
         return;
     }
 
-    ctxt->interrupt_callback.opaque = this;
-    ctxt->interrupt_callback.callback = [](void *self) {
-        return static_cast<Demuxer*>(self)->interrupt_cb();
-    };
+    ctxt->interrupt_callback = interrupt_cb;
 
     set_status(MediaStatus::LoadingMedia);
+
+    // Load area
+    interrupt_cb.begin(InterruptCB::BeginLoad);
     av_code = avformat_open_input(
         &ctxt,
         url.c_str(),
         nullptr,
         &options
     );
+    interrupt_cb.end(InterruptCB::EndLoad);
 
     if (av_code < 0) {
         set_status(MediaStatus::NoMedia);
+
         signal_error().emit();
         return;
     }
 
+    interrupt_cb.begin(InterruptCB::BeginLoad);
     av_code = avformat_find_stream_info(ctxt, nullptr);
+    interrupt_cb.end(InterruptCB::EndLoad);
+    // End Load
+
     if (av_code < 0) {
         set_status(MediaStatus::NoMedia);
         signal_error().emit();
@@ -158,14 +191,16 @@ void Demuxer::thread_main() {
     clock = 0;
 
     while (!quit) {
-        // Update clock, Label for break the double for
-        mainloop : clock_update();
+        // Label for break the double for
+        mainloop : 
 
         // Check seek here
         if (seek_req) {
             handle_seek();
             eof = false;
         }
+        // Update clock
+        clock_update();
 
         // Check pause here
         if (state == State::Paused) {
@@ -215,7 +250,9 @@ void Demuxer::thread_main() {
         }
 
         // Begin read
+        interrupt_cb.begin(InterruptCB::BeginRead);
         ret = av_read_frame(ctxt, packet);
+        interrupt_cb.end(InterruptCB::EndRead);
 
         // Process err
         if (ret < 0) {
@@ -290,14 +327,14 @@ void Demuxer::thread_main() {
 
     av_packet_free(&packet);
 
+    // Tell the eof
+    if (eof && !_position_changed.empty()) {
+        task_manager.emit_signal(_position_changed, double(duration()));
+    }
+    
     set_status(MediaStatus::EndOfMedia);
     set_state(State::Stopped);
-}
-
-int  Demuxer::interrupt_cb() {
-
-    // Quit if asked
-    return quit;
+    
 }
 
 bool Demuxer::demuxer_wait_state_change(std::chrono::microseconds ms) {
@@ -377,15 +414,16 @@ void Demuxer::clock_update() {
     int64_t cur  = int64_t(new_position);
 
     if (prev != cur) {
-        BTK_LOG("External clock to %ld\n", cur);
+        FF_LOG(BTK_CYAN("External clock to %ld"), cur);
         if (audio_thread && video_thread) {
             auto audio = audio_thread->clock_time();
             auto video = video_thread->clock_time();
-            BTK_LOG("Current Sync => A %lf V %lf A-V %lf\n", audio, video, audio - video);
-            BTK_LOG("Current buffer %lfs\n", buffered());
+            FF_LOG(BTK_MAGENTA("Current Sync => A %lf V %lf A-V %lf"), audio, video, audio - video);
+            FF_LOG(BTK_YELLOW("Current buffer %lfs"), buffered());
         }
         if (!_position_changed.empty()) {
-            defer_call(&Signal<void(double)>::emit, &_position_changed, double(cur));
+            // defer_call(&Signal<void(double)>::emit, &_position_changed, double(cur));
+            task_manager.emit_signal(_position_changed, double(cur));
         }
     }
 
@@ -539,7 +577,7 @@ void Demuxer::set_state(State s) {
         _state_changed.emit(s);
     }
     else {
-        defer_call(&Signal<void(State)>::emit, &_state_changed, s);
+        task_manager.emit_signal(_state_changed, s);
     }
 }
 void Demuxer::set_status(MediaStatus s) {
@@ -554,12 +592,15 @@ void Demuxer::set_status(MediaStatus s) {
         _media_status_changed.emit(s);
     }
     else {
-        defer_call(&Signal<void(MediaStatus)>::emit, &_media_status_changed, s);
+        task_manager.emit_signal(_media_status_changed, s);
     }
 }
 
 
 void Demuxer::pause(bool v) {
+    if (status == MediaStatus::NoMedia) {
+        return;
+    }
     if (v) {
         set_state(State::Paused);
     }
@@ -567,6 +608,36 @@ void Demuxer::pause(bool v) {
         set_state(State::Playing);
     }
     demuxer_cond.notify_one();
+}
+
+// InterruptCB
+InterruptCB::InterruptCB(Demuxer *d) : demuxer(d) {
+    callback = [](void *c) {
+        return static_cast<InterruptCB*>(c)->run();
+    };
+    opaque = this;
+
+    timeout_dur = std::chrono::microseconds(10ms).count();
+}
+InterruptCB::~InterruptCB() {
+
+}
+int InterruptCB::run() {
+    auto cur = av_gettime_relative();
+    auto diff = cur - begin_time;
+    // Check time out
+    if (diff > timeout_dur) {
+        FF_LOG("InterruptCB timeout %ld cur %ld begin_time %ld!", diff, cur, begin_time);
+    }
+
+    return demuxer->quit;
+}
+void InterruptCB::begin(Action a) {
+    begin_time = av_gettime_relative();
+    action = a;
+}
+void InterruptCB::end(Action a) {
+    action = a;
 }
 
 BTK_NS_END2(BTK_NAMESPACE::FFmpeg)

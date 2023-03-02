@@ -621,7 +621,7 @@ int       Win32Dispatcher::run() {
 }
 void    Win32Dispatcher::interrupt() {
     if (!states.empty()) {
-        states.top().first = true;
+        states.top().first = false;
     }
 }
 BOOL    Win32Dispatcher::post_message(UINT msg, WPARAM wp, LPARAM lp) {

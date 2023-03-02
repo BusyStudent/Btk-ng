@@ -19,26 +19,32 @@
 #endif
 
 // Decl library
-#define LIB_BEGIN(type, dllfile) \
-namespace { \
-    class type { \
-        public: \
-            ~type() { \
-                BTK_DLCLOSE(__library);\
-            }  \
-        private: \
-            [[noreturn, maybe_unused]] \
-            inline bool __abort() { ::abort(); return false; }\
-            BTK_LIBRARY __library = BTK_DLOPEN(dllfile);\
-        public: \
+#define LIB_BEGIN(type, dllfile)                               \
+namespace {                                                    \
+    class type {                                               \
+        public:                                                \
+            ~type() {                                          \
+                BTK_DLCLOSE(__library);                        \
+            }                                                  \
+            void *get_proc_address(const char *name) const {   \
+                return BTK_DLSYM(__library, name);             \
+            }                                                  \
+            void *library_handle() const {                     \
+                return __library;                              \
+            }                                                  \
+        private:                                               \
+            [[noreturn, maybe_unused]]                         \
+            inline bool __abort() { ::abort(); return false; } \
+            BTK_LIBRARY __library = BTK_DLOPEN(dllfile);       \
+        public:                                                \
 
 // Import function
 #define LIB_PROC_RAW(pfn, fn, dlname) \
-    using __Fn_##fn = pfn;\
+    using __Fn_##fn = pfn;            \
     __Fn_##fn fn    = reinterpret_cast<__Fn_##fn>(BTK_DLSYM(__library, dlname));
 #define LIB_PROC4(pfn, fn) \
     LIB_PROC_RAW(pfn, fn, #fn)
-#define LIB_PROC(fn) \
+#define LIB_PROC(fn)       \
     LIB_PROC4(decltype(::fn)*, fn)
 
 // Import var
@@ -65,5 +71,5 @@ namespace { \
 
 // End decl library
 #define LIB_END(type) \
-    };\
+    };                \
 }

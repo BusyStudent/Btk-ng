@@ -193,6 +193,29 @@ TEST(PixelTest, ParseColor) {
     ASSERT_EQ(white3, Color::White);
 }
 
+TEST(EventTest, TestObject) {
+    UIContext ctxt;
+    EventLoop loop(ctxt.dispatcher());
+    Object mainobject;
+
+    bool called = false;
+    mainobject.defer_call([&]() {
+        std::cout << "mainobject" << std::endl;
+        called = true;
+
+        Object subobject;
+        // Test below should never be called
+        subobject.defer_call([]() {
+            assert(false && "Should never be called");
+        });
+        subobject.defer_delete();
+
+        loop.stop();
+    });
+
+    loop.run();
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

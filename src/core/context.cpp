@@ -23,7 +23,7 @@ static GraphicsDriverInfo *ui_driver = nullptr; //< Default graphics driver crea
 static UIContext  *ui_context = nullptr; //< Global UI context
 static EventType   ui_event   = EventType::User; //< Current Registered event
 
-auto SetUIContext(UIContext *context) -> void{
+auto SetUIContext(UIContext *context) -> void {
     ui_context = context;
 }
 auto GetUIContext() -> UIContext *{

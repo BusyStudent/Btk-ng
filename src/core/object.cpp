@@ -26,6 +26,8 @@ struct ObjectImpl {
     UIContext *ctxt = nullptr;
 
     std::set<timerid_t> timers;
+    // Mark for Auto cancel call
+    std::shared_ptr<bool> mark {std::make_shared<bool>(true)};
     
     ~ObjectImpl() {
         // Remove all userdata
@@ -85,8 +87,11 @@ struct ObjectImpl {
 };
 
 Object::~Object() {
-    //Delete timer if needed
+    // Delete timer if needed
     if (priv) {
+        // Cancel mark
+        *(priv->mark) = false;
+
         for (auto timerid : priv->timers) {
             priv->ctxt->dispatcher()->timer_del(this, timerid);
         }
@@ -124,6 +129,9 @@ UIContext  *Object::ui_context() const {
 bool        Object::ui_thread() const {
     return ui_context()->ui_thread_id() == std::this_thread::get_id();
 }
+std::shared_ptr<bool> Object::mark() const {
+    return implment()->mark;
+}
 
 // Timer
 timerid_t  Object::add_timer(timertype_t t,uint32_t ms) {
@@ -142,13 +150,9 @@ bool       Object::del_timer(timerid_t timerid) {
 
 // Deferred call
 void       Object::defer_delete() {
-    auto ctxt = ui_context();
-    CallEvent event;
-    event.set_func([](void *obj){
-        delete static_cast<Object *>(obj);
+    defer_call([this]() {
+        delete this;
     });
-    event.set_user(this);
-    ctxt->dispatcher()->send(event);
 }
 void       Object::defer_call(DeferRoutinue rt, pointer_t user) {
     auto ctxt = ui_context();
@@ -260,6 +264,27 @@ bool Timer::timer_event(TimerEvent &event) {
         stop();
     }
     return true;
+}
+
+// Task Manager
+TaskManager::TaskManager(EventDispatcher *d) : dispatcher(d) {
+    if (!dispatcher) {
+        dispatcher = GetUIDisplatcher();
+    }
+}
+TaskManager::~TaskManager() {
+    cancel_task();
+}
+void TaskManager::send(void (*fn)(void *), void *obj) {
+    CallEvent event;
+    event.set_func(fn);
+    event.set_user(obj);
+
+    dispatcher->send(event);
+}
+void TaskManager::cancel_task() {
+    *mark = false;
+    mark = std::make_shared<bool>(true);
 }
 
 BTK_NS_END
