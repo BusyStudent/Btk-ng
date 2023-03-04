@@ -1126,6 +1126,7 @@ class BTKAPI Painter {
         auto transform_matrix() -> FMatrix;
 
         // Texture
+        auto create_shared_texture(TextureSource source, void *data, int w, int h, float xdpi = 96.0f, float ydpi = 96.0f) -> Texture;
         auto create_texture(PixFormat fmt, int w, int h, float xdpi = 96.0f, float ydpi = 96.0f) -> Texture;
         auto create_texture(const PixBuffer &buf)                                    -> Texture;
 

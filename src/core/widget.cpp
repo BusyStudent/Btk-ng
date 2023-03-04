@@ -149,6 +149,31 @@ void Widget::move(int x, int y) {
 
     repaint();
 }
+void Widget::take_focus() {
+    // Try take focus
+    if (_focus == FocusPolicy::None) {
+        // Give up
+        return;
+    }
+    auto p = parent();
+    if (!p) {
+        return;
+    }
+    if (p->focused_widget) {
+        // Notify prev focus widget
+        FocusEvent event(Event::FocusLost);
+        event.set_widget(p->focused_widget);
+        event.set_timestamp(GetTicks());
+
+        p->focused_widget->handle(event);
+    }
+    // Notify self
+    p->focused_widget = this;
+    FocusEvent event(Event::FocusGained);
+    event.set_widget(this);
+    event.set_timestamp(GetTicks());
+    p->focused_widget->handle(event);
+}
 void Widget::set_rect(int x, int y, int w, int h) {
     resize(w, h);
     move(x, y);
@@ -739,6 +764,22 @@ FPoint Widget::window_dpi() const {
     }
     return dpi;
 }
+Point  Widget::client_to_screen(int x, int y) const {
+    Point p = {x, y};
+    auto win = root()->_win;
+    if (win) {
+        p = win->map_point(p, AbstractWindow::ToScreen);
+    }
+    return p;
+}
+Point  Widget::screen_to_client(int x, int y) const {
+    Point p = {x, y};
+    auto win = root()->_win;
+    if (win) {
+        p = win->map_point(p, AbstractWindow::ToClient);
+    }
+    return p;
+}
 
 // Window configure
 void Widget::set_window_title(u8string_view title) {
@@ -784,12 +825,15 @@ bool Widget::set_window_flags(WindowFlags f) {
     return false;
 }
 bool Widget::set_window_borderless(bool v) {
-    // if (is_window()) {
-    //     if (!_win) {
-    //         window_init();
-    //     }
-    //     _win->set_flags(win, varg_bool_t(v));
-    // }
+    if (is_window()) {
+        if (v) {
+            _flags |= WindowFlags::Borderless;
+        }
+        else {
+            _flags &= ~WindowFlags::Borderless;
+        }
+        return set_window_flags(_flags);
+    }
     return false;
 }
 bool Widget::set_fullscreen(bool v) {

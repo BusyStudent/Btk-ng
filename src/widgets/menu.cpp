@@ -9,33 +9,21 @@ BTK_NS_BEGIN
 Action::Action() {}
 Action::~Action() {}
 
-PopupWidget::PopupWidget() {}
+PopupWidget::PopupWidget() {
+    set_focus_policy(FocusPolicy::Mouse);
+}
 PopupWidget::~PopupWidget() {
-    if (attached_widget) {
-        attached_widget->del_event_filter(Filter, this);
-    }
+
 }
 void PopupWidget::popup(Widget *wi) {
     if (wi) {
         wi->root()->add_child(this);
-        wi->add_event_filter(Filter, this);
-
-        attached_widget = wi;
 
         raise();
+        take_focus();
     }
 }
 
-bool PopupWidget::Filter(Object *, Event &event, void *_self) {
-    // Root window mouse pressed
-    if (event.type() == Event::MousePress) {
-        auto self = static_cast<PopupWidget*>(_self);
-        if (!self->rect().contains(event.as<MouseEvent>().position())) {
-            self->close();
-        }
-    }
-    return false;
-}
 bool PopupWidget::paint_event(PaintEvent &) {
     auto &p = painter();
 
@@ -51,6 +39,10 @@ bool PopupWidget::paint_event(PaintEvent &) {
     p.set_brush(palette().border());
     p.draw_rect(rect());
 
+    return true;
+}
+bool PopupWidget::focus_lost(FocusEvent &) {
+    close();
     return true;
 }
 

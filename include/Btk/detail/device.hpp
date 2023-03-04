@@ -283,10 +283,42 @@ class AbstractTexture : public PaintResource, public PaintDevice {
  */
 class GLContext : public GraphicsContext {
     public:
-        virtual bool      initialize(const GLFormat &) = 0;
+        /**
+         * @brief Init the context
+         * 
+         * @param fmt The OpenGL format
+         * @param share_ctxt The Initialized GLContext to shared with (nullptr on no-op)
+         * @return true 
+         * @return false 
+         */
+        virtual bool      initialize(const GLFormat &fmt, GLContext *shared_ctxt = nullptr) = 0;
+        /**
+         * @brief Make the context to current context
+         * 
+         * @return true 
+         * @return false 
+         */
         virtual bool      make_current() = 0;
+        /**
+         * @brief Set the swap interval object
+         * 
+         * @param v 
+         * @return true 
+         * @return false 
+         */
         virtual bool      set_swap_interval(int v) = 0;
+        /**
+         * @brief Get the drawable size object
+         * 
+         * @return Size 
+         */
         virtual Size      get_drawable_size() = 0;
+        /**
+         * @brief Get the proc address object
+         * 
+         * @param name 
+         * @return pointer_t 
+         */
         virtual pointer_t get_proc_address(const char_t *name) = 0;
 };
 

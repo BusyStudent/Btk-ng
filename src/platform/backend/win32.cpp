@@ -132,6 +132,7 @@ class Win32Window final : public AbstractWindow {
         bool       set_value(int conf, ...)    override;
         bool       query_value(int what, ...)  override;
 
+        Point      map_point(Point p, int type) override;
         widget_t   bind_widget(widget_t w) override;
         any_t      gc_create(const char_t *type) override;
 
@@ -278,7 +279,7 @@ class Win32GLContext final : public GLContext {
         void end() override;
         void swap_buffers() override;
 
-        bool  initialize(const GLFormat &format) override;
+        bool  initialize(const GLFormat &format, GLContext *ctxt) override;
         bool  make_current()              override;
         bool  set_swap_interval(int v)    override;
         Size  get_drawable_size() override;
@@ -1058,6 +1059,12 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             WIN_LOG("[Win32] DPI Changed to %d\n", int(win->win_dpi));
             break;
         }
+        // case WM_MOVE : {
+        //     auto x = LOWORD(lparam);
+        //     auto y = HIWORD(lparam);
+        //     WIN_LOG("[Win32] Window move to %d, %d\n", int(x), int(y));
+        //     break;
+        // }
 
         default : {
             return DefWindowProcW(hwnd, msg, wparam, lparam);
@@ -1277,16 +1284,20 @@ void Win32Window::resize(int w, int h) {
     );
 }
 void Win32Window::move(int x, int y) {
-    auto [w, h] = size();
+    RECT client;
+    GetClientRect(hwnd, &client);
+    int w = client.right - client.left;
+    int h = client.bottom - client.top;
+
     auto rect   = adjust_rect(x, y, w, h);
 
     MoveWindow(
         hwnd,
         rect.left,
         rect.top,
-        w,
-        h,
-        FALSE
+        rect.right - rect.left,
+        rect.bottom - rect.top,
+        TRUE
     );
 }
 void Win32Window::show(int v) {
@@ -1419,6 +1430,19 @@ bool     Win32Window::set_flags(WindowFlags new_flags) {
                 SWP_NOOWNERZORDER | SWP_FRAMECHANGED
             );
         }
+    }
+    if (bit_changed(WindowFlags::Borderless)) {
+        bool borderless = bool(new_flags & WindowFlags::Borderless);
+        auto s = style();
+        if (borderless) {
+            s &= ~WS_SIZEBOX;
+            s &= ~WS_CAPTION;
+        }
+        else {
+            s |= WS_SIZEBOX;
+            s |= WS_CAPTION;
+        }
+        SetWindowLongPtrW(hwnd, GWL_STYLE, s);
     }
     // if (bit_changed(WindowFlags::Transparent)) {
     //     DWORD new_ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
@@ -1572,6 +1596,45 @@ any_t     Win32Window::gc_create(const char_t *name) {
         return new Win32GLContext(hwnd);
     }
     return nullptr;
+}
+Point    Win32Window::map_point(Point p, int type) {
+    switch (type) {
+        case ToScreen : {
+            // First to pixel
+            POINT px;
+            px.x = btk_to_client(p.x);
+            px.y = btk_to_client(p.y);
+
+            ClientToScreen(hwnd, &px);
+
+            return Point(px.x, px.y);
+        }
+        case ToClient : {
+            //
+            POINT px;
+            px.x = p.x;
+            px.y = p.y;
+
+            ScreenToClient(hwnd, &px);
+
+            p.x = client_to_btk(px.x);
+            p.y = client_to_btk(px.y);
+            return p;
+        }
+        case ToPixel : {
+            p.x = btk_to_client(p.x);
+            p.y = btk_to_client(p.y);
+            return p;
+        }
+        case ToDIPS : {
+            p.x = client_to_btk(p.x);
+            p.y = client_to_btk(p.y);
+            return p;
+        }
+        default : {
+            return p;
+        }
+    }
 }
 
 LRESULT Win32Window::proc_keyboard(UINT msg, WPARAM wp, LPARAM lp) {
@@ -1764,6 +1827,7 @@ LRESULT Win32Window::proc_keyboard(UINT msg, WPARAM wp, LPARAM lp) {
     }
 
     KeyEvent event(type, keycode, mod_state);
+    event.set_repeat(repeat_count);
     widget->handle(event);
 
     if (msg == WM_SYSKEYDOWN || msg == WM_SYSKEYUP) {
@@ -1844,7 +1908,23 @@ void Win32GLContext::end() {
 void Win32GLContext::swap_buffers() {
     SwapBuffers(hdc);
 }
-bool Win32GLContext::initialize(const GLFormat &format) {
+bool Win32GLContext::initialize(const GLFormat &format, GLContext *_share) {
+    // Check share ctxt if not null
+    Win32GLContext *share = nullptr;
+    if (_share) {
+#if !defined(BTK_NO_RTTI)
+        // Check 
+        if (!dynamic_cast<Win32GLContext*>(_share)) {
+            return false;
+        }
+#endif
+        share = static_cast<Win32GLContext*>(_share);
+        // Check is inited
+        if (!share->hglrc) {
+            return false;
+        }
+    }
+
     PIXELFORMATDESCRIPTOR d;
     Btk_memset(&d, 0, sizeof(d));
     d.nSize = sizeof(d);
@@ -1881,6 +1961,17 @@ bool Win32GLContext::initialize(const GLFormat &format) {
     // if (hwnd) {
     //     ReleaseDC(hwnd, hdc);
     // }
+
+    // Try share
+    if (share) {
+        if (!wglShareLists(hglrc, share->hglrc)) {
+            // Failed
+            wglDeleteContext(hglrc);
+            hglrc = nullptr;
+            
+            return false;
+        }
+    }
     return true;
 }
 bool Win32GLContext::make_current() {

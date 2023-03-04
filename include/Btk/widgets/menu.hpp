@@ -40,10 +40,8 @@ class BTKAPI PopupWidget : public Widget {
         void popup(Widget *where = nullptr);
         
         bool paint_event(PaintEvent &) override;
+        bool focus_lost(FocusEvent &) override;
     private:
-        static bool Filter(Object *, Event &, void *self);
-
-        Widget *attached_widget = nullptr;
 };
 
 class BTKAPI PopupMenu : public PopupWidget {

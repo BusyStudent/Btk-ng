@@ -101,6 +101,8 @@ class SDLWindow final : public AbstractWindow {
         bool       set_value(int what, ...)   override;
         bool       query_value(int what, ...) override;
 
+        Point      map_point(Point what, int type) override;
+
         widget_t   bind_widget(widget_t w) override;
         any_t      gc_create(const char_t *type) override;
 
@@ -205,7 +207,7 @@ class SDLGLContext final : public GLContext {
         void swap_buffers() override;
 
         bool      make_current() override;
-        bool      initialize(const GLFormat &) override;
+        bool      initialize(const GLFormat &, GLContext *ctxt) override;
         bool      set_swap_interval(int v) override;
         Size      get_drawable_size() override;
         pointer_t get_proc_address(const char_t *name) override;
@@ -329,6 +331,7 @@ bool SDLDispatcher::dispatch_sdl(SDL_Event *event) {
             KeyEvent tr_event(type, keycode, mod);
             tr_event.set_widget(win->widget);
             tr_event.set_timestamp(time);
+            tr_event.set_repeat(event->key.repeat);
 
             win->widget->handle(tr_event);
             break;
@@ -915,6 +918,11 @@ bool     SDLWindow::query_value(int what, ...) {
             ret = (SDL_GetWindowOpacity(win, va_arg(varg, float*)) == 0);
             break;
         }
+        case Value::SDLWindow : {
+            auto p = va_arg(varg, SDL_Window**);
+            *p = win;
+            break;
+        }
         default : {
             ret = false;
             break;
@@ -1006,6 +1014,35 @@ Point   SDLWindow::btk_to_sdl(Point p) const {
     }
     return p;
 }
+Point   SDLWindow::map_point(Point p, int type) {
+    switch (type) {
+        case ToScreen : {
+            // Convert to pixels
+            int wx, wy;
+            SDL_GetWindowPosition(win, &wx, &wy);
+            p = btk_to_sdl(p);
+
+            return Point(p.x + wx, p.y + wy);
+        }
+        case ToClient : {
+            int wx, wy;
+            SDL_GetWindowPosition(win, &wx, &wy);
+            p = btk_to_sdl(p);
+
+            return Point(p.x - wx, p.y - wy);
+        }
+        case ToPixel : {
+            return btk_to_sdl(p);
+        }
+        case ToDIPS : {
+            return sdl_to_btk(p);
+        }
+        default : {
+            // Unsupported
+            return p;
+        }
+    }
+}
 any_t   SDLWindow::gc_create(const char_t *what) {
     // Create GC
     if (SDL_strcasecmp(what, "opengl") == 0) {
@@ -1060,7 +1097,15 @@ SDLGLContext::~SDLGLContext() {
     }
 }
 
-bool SDLGLContext::initialize(const GLFormat &format) {
+bool SDLGLContext::initialize(const GLFormat &format, GLContext *share) {
+    // Share if
+    SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, share != nullptr);
+    if (share) {
+        if (!share->make_current()) {
+            return false;
+        }
+    }
+
     SDL_GL_SetAttribute(SDL_GL_RED_SIZE, format.red_size);
     SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, format.green_size);
     SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, format.blue_size);

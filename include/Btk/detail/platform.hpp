@@ -86,10 +86,17 @@ class AbstractWindow : public Any {
             Maximize,
             Minimize,
         };
+        enum MapPoint : int {
+            ToScreen, //< ClientToScreen
+            ToClient, //< ScreenToClient
+            ToPixel,  //< Map dpi indepent units to pixel unit
+            ToDIPS,   //< Map pixel unit to dpi indepent units
+        };
         enum Value : int {
-            NativeHandle,
+            NativeHandle, //< Native Window Handle (*HWND in Win32, *Window in X11)
             Hwnd,        //< Win32 Window Handle (*HWND)
             Hdc,         //< Win32 Driver Context (*HDC)
+            SDLWindow,   //< SDL Window Handle (*SDL_Window*)
             XConnection, //< Xcb  Connection  (*xcb_connection_t*)
             XDisplay,    //< Xlib Display     (*Display)
             XWindow,     //< Window           (*Window)
@@ -179,11 +186,41 @@ class AbstractWindow : public Any {
          */
         virtual void       start_textinput(bool start) = 0;
 
-        // Flags control
+        /**
+         * @brief Set the flags object
+         * 
+         * @param flags The window flags
+         * @return true 
+         * @return false 
+         */
         virtual bool       set_flags(WindowFlags flags) = 0;
+        /**
+         * @brief Set the value object
+         * 
+         * @param conf 
+         * @param ... 
+         * @return true Ok
+         * @return false Failed or unsupported
+         */
         virtual bool       set_value(int conf, ...) = 0;
+        /**
+         * @brief Query the value
+         * 
+         * @param query 
+         * @param ... 
+         * @return true Ok
+         * @return false Failed or unsupported
+         */
         virtual bool       query_value(int query, ...) = 0;
 
+        /**
+         * @brief Map a point to the target coord system
+         * 
+         * @param p The input point
+         * @param type The type of the convertion
+         * @return Point The result point
+         */
+        virtual Point      map_point(Point p, int type) = 0;
         /**
          * @brief Bind a object to receive events from Window System
          * 

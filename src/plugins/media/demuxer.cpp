@@ -329,7 +329,7 @@ void Demuxer::thread_main() {
 
     // Tell the eof
     if (eof && !_position_changed.empty()) {
-        task_manager.emit_signal(_position_changed, double(duration()));
+        pos_task_manager.emit_signal(_position_changed, double(duration()));
     }
     
     set_status(MediaStatus::EndOfMedia);
@@ -378,7 +378,7 @@ bool Demuxer::open_component(int stream_index) {
             return true;
         }
         BTK_CATCH (std::exception &err) {
-            BTK_LOG("Failed to create audio thread %s\n", err.what());
+            FF_LOG("Failed to create audio thread %s", err.what());
         }
     }
     else if (codectxt->codec_type == AVMEDIA_TYPE_VIDEO) {
@@ -387,7 +387,7 @@ bool Demuxer::open_component(int stream_index) {
             return true;
         }
         BTK_CATCH (std::exception &err) {
-            BTK_LOG("Failed to create video thread %s\n", err.what());
+            FF_LOG("Failed to create video thread %s", err.what());
         }
     }
 
@@ -423,7 +423,7 @@ void Demuxer::clock_update() {
         }
         if (!_position_changed.empty()) {
             // defer_call(&Signal<void(double)>::emit, &_position_changed, double(cur));
-            task_manager.emit_signal(_position_changed, double(cur));
+            pos_task_manager.emit_signal(_position_changed, double(cur));
         }
     }
 
@@ -446,6 +446,9 @@ void Demuxer::clock_pause(bool v) {
     clock_paused = v;
 }
 void Demuxer::handle_seek() {
+    // Cancel position changed
+    pos_task_manager.cancel_task();
+
     // This value tell video rerun
     bool set_video_running = false;
     bool set_audio_running = false;
@@ -513,6 +516,12 @@ double Demuxer::duration() {
     return ctxt->duration / double(AV_TIME_BASE);
 }
 double Demuxer::position() {
+    if (seek_req) {
+        // Require seek ?
+        // Return seek position
+        return seek_pos;
+    }
+
     return clock;
 }
 double Demuxer::master_clock() {

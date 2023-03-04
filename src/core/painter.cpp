@@ -379,6 +379,13 @@ void Painter::fill_path(const PainterPath &path) {
         priv->ctxt->fill_path(path);
     }
 }
+void Painter::fill_mask(const Texture &tex, const FRect *dst, const FRect *src) {
+    if (tex.empty()) {
+        return;
+    }
+    priv->check_dirty();
+    priv->ctxt->fill_mask(tex.priv->texture.get(), dst, src);
+}
 
 // Begin
 void Painter::begin() {

@@ -289,6 +289,13 @@ class Demuxer : public Object {
             audio_device = a;
         }
 
+        State current_state() const {
+            return state;
+        }
+        MediaStatus current_status() const {
+            return status;
+        }
+
         BTK_EXPOSE_SIGNAL(_media_status_changed);
         BTK_EXPOSE_SIGNAL(_duration_changed);
         BTK_EXPOSE_SIGNAL(_position_changed);
@@ -362,6 +369,8 @@ class Demuxer : public Object {
 
         // Task
         TaskManager task_manager;
+        TaskManager pos_task_manager; //< Manager for position changed
+
     friend class InterruptCB;
 };
 

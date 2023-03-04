@@ -141,11 +141,13 @@ class BTKAPI MediaPlayer : public Object {
 
         void set_position(double second);
 
+        auto state() const -> State;
         auto seekable() const -> bool;
         auto buffered() const -> double;
         auto duration() const -> double;
         auto position() const -> double;
         auto error_string() const -> u8string;
+        auto media_status() const -> MediaStatus;
 
         // Signals
         auto signal_error()            -> Signal<void()>       &;

@@ -47,7 +47,7 @@ enum class SystemCursor : uint32_t {
 
 // Enum for window flags
 enum class WindowFlags : uint32_t {
-    None = 0,
+    None       = 0,
     Resizable  = 1 << 0,
     Fullscreen = 1 << 1,
     Borderless = 1 << 2,
@@ -62,12 +62,12 @@ enum class WindowFlags : uint32_t {
 };
 // Enum for widget.
 enum class FocusPolicy : uint8_t {
-    None = 0,       //< Widget does not accept focus.
+    None  = 0,       //< Widget does not accept focus.
     Mouse = 1 << 0, //< Widget accepts focus by mouse click.
 };
 enum class WidgetAttrs : uint8_t {
     None          = 0, //< No attributes
-    Debug         = 1 << 0 , //< Show debug info
+    Debug         = 1 << 0, //< Show debug info
     DeleteOnClose = 1 << 1, //< Widget Delete after closed
 };
 // Class for widget
@@ -388,6 +388,11 @@ class BTKAPI Widget : public Object {
         FocusPolicy focus_policy() const {
             return _focus;
         }
+        /**
+         * @brief Get the size policy
+         * 
+         * @return SizePolicy 
+         */
         SizePolicy  size_policy() const {
             return _size;
         }
@@ -449,20 +454,73 @@ class BTKAPI Widget : public Object {
          * @param child Child pointer (nullptr on no-op)
          */
         void       remove_child(Widget *child);
-
+        /**
+         * @brief Set the parent object
+         * 
+         * @param parent The parent ptr (can be nullptr)
+         */
         void       set_parent(Widget *parent);
-        // Paint child widgets
+        /**
+         * @brief Pain children 
+         * 
+         * @param event PaintEvent
+         * 
+         */
         void       paint_children(PaintEvent &);
 
-        // Locate child widget by point
+        /**
+         * @brief Locate child by position
+         * 
+         * @param x 
+         * @param y 
+         * @return Widget* nullptr on not-founded
+         */
         Widget    *child_at(int x, int y) const;
+        /**
+         * @brief Locate child by position Point-ver
+         * 
+         * @param p 
+         * @return Widget* 
+         */
         Widget    *child_at(const Point &p) const {
             return child_at(p.x, p.y);
         }
+        /**
+         * @brief Locate child by its name
+         * 
+         * @param name 
+         * @return Widget* 
+         */
         Widget    *child_at(u8string_view name) const;
-
-        // Query window
+        /**
+         * @brief Get the window dpi
+         * 
+         * @return FPoint 
+         */
         FPoint     window_dpi() const;
+        /**
+         * @brief Convert screen point to client 
+         * 
+         * @param x 
+         * @param y 
+         * @return Point 
+         */
+        Point      screen_to_client(int x, int y) const;
+        /**
+         * @brief Convert client point to scrren
+         * 
+         * @param x 
+         * @param y 
+         * @return Point 
+         */
+        Point      client_to_screen(int x, int y) const;
+
+        Point      screen_to_client(const Point &p) const {
+            return screen_to_client(p.x, p.y);
+        }
+        Point      client_to_screen(const Point &p) const {
+            return client_to_screen(p.x, p.y);
+        }
 
         // Configure window
         void set_window_title(u8string_view title);
@@ -474,7 +532,7 @@ class BTKAPI Widget : public Object {
         bool set_resizable(bool v);
         bool set_fullscreen(bool v);
 
-        
+        // Attribute
         void set_attribute(WidgetAttrs attr, bool on);
 
         // Mouse

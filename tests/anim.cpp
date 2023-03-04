@@ -27,8 +27,7 @@ class ColorRect : public Widget {
 
 int main() {
     UIContext ctxt;
-    Frame  widget;
-    Button btn(&widget);
+    Button btn;
 
     LerpAnimation<Size> s;
     s.set_start_value(Size(200, 200));
@@ -37,11 +36,15 @@ int main() {
     s.add_key_value(0.8f, Size(600, 600));
 
 
-    s.bind(&Widget::resize, &btn);
+    // s.bind(&Widget::resize, &btn);
+    s.bind([&](Size p) {
+        btn.set_window_position(p.w, p.h);
+        btn.resize(p.w, p.h);
+    });
     s.set_duration(2000);
 
-    widget.show();
-    widget.resize(500, 600);
+    btn.show();
+    btn.resize(500, 600);
     btn.signal_clicked().connect([&]() {
         s.start();
     });

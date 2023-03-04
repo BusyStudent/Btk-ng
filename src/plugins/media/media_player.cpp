@@ -74,6 +74,12 @@ u8string MediaPlayer::error_string() const {
     int errcode = priv->error_code();
     return av_make_error_string(buffer, sizeof(buffer), errcode);
 }
+MediaStatus MediaPlayer::media_status() const {
+    return priv->current_status();
+}
+MediaPlayer::State MediaPlayer::state() const {
+    return priv->current_state();
+}
 
 
 BTK_NS_END
