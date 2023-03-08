@@ -21,7 +21,7 @@ class Wincodec {
             }
             HRESULT hr;
             // Init Com
-            hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+            hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
             BTK_ASSERT(SUCCEEDED(hr));
 
             hr = CoCreateInstance(

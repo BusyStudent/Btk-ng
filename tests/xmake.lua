@@ -72,4 +72,14 @@ if has_config("tests") then
         target_end()
     end
 
+    -- WebView test
+    if has_config("webview") and has_config("tests") then 
+        target("broswer")
+            set_kind("binary")
+            add_deps("btk", "btk_webview")
+
+            add_files("webview/broswer.cpp")
+        target_end()
+    end
+
 end

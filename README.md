@@ -112,14 +112,19 @@ add_packages("btk")
 | GLWidget      |                 | For use OpenGL           |
 | ListBox       |                 | Display string items     |
 | VideoWidget   |                 | Video output for MediaPlayer (multimedia plugin) |
+| WebView       |                 | CoreWebView2 on Win32 (webview plugin)           |
 
 ## Existing bugs
+
+- [ ] IME disappearence when has Win32 child window (SDL backend)
+- [ ] Focus does gained for once mouse click when has Win32 child window (SDL backend)
 
 ## Todo List
 
 - [ ] Compelete PainterEffect, refactorying it
 - [ ] Compelete Nanovg Painter
 - [ ] Improve Style
+- [ ] Focus Conflict for System Window System & Logical Widget System (We used a dirty way to handle it)
 
 ## Install
 

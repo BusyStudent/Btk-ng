@@ -159,6 +159,10 @@ void Widget::take_focus() {
     if (!p) {
         return;
     }
+    if (p->focused_widget == this) {
+        // Same widget, nothing to do
+        return;
+    }
     if (p->focused_widget) {
         // Notify prev focus widget
         FocusEvent event(Event::FocusLost);

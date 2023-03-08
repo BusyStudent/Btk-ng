@@ -12,8 +12,8 @@ BTK_NS_BEGIN2(BTK_NAMESPACE::Win32)
 // Guard for Init Com
 class ComInitializer {
     public:
-        ComInitializer() {
-            inited = SUCCEEDED(::CoInitializeEx(nullptr, COINIT_MULTITHREADED));
+        ComInitializer(DWORD coinit_flags = COINIT_APARTMENTTHREADED) {
+            inited = SUCCEEDED(::CoInitializeEx(nullptr, coinit_flags));
         }
         ~ComInitializer() {
             if (inited) {

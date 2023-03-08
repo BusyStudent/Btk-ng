@@ -6,6 +6,13 @@ option("multimedia")
     set_category("Plugins")
 option_end()
 
+option("webview")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Enable webview support")
+    set_category("Plugins")
+option_end()
+
 option("builder")
     set_default(false)
     set_showmenu(true)
@@ -30,7 +37,7 @@ if has_config("multimedia") then
 
     target("btk_multimedia")
         set_kind("static")
-        add_deps("btk")
+        add_deps("btk_core")
 
         if is_plat("linux") then 
             -- Use ffmpeg from system
@@ -47,4 +54,18 @@ if has_config("multimedia") then
         add_files("media/*.cpp")
     target_end()
 
+end
+
+
+-- Add Webview
+if has_config("webview") then
+
+    target("btk_webview")
+        set_kind("static")
+        add_deps("btk_core")
+
+        if is_plat("windows") then 
+            add_files("webview/webview2.cpp")
+        end
+    target_end()
 end
