@@ -41,14 +41,23 @@ bool VideoWidget::begin(PixFormat *fmt) {
     return true;
 }
 bool VideoWidget::end() {
+    if (!ui_thread()) {
+        defer_call(&VideoWidget::end, this);
+        return true;
+    }
+
     playing = false;
     texture.clear();
     repaint();
     return true;
 }
 bool VideoWidget::write(PixFormat fmt, cpointer_t data, int pitch, int w, int h) {
+    if (!ui_thread()) {
+        defer_call(&VideoWidget::write, this, fmt, data, pitch, w, h);
+        return true;
+    }
+
     assert(fmt == PixFormat::RGBA32);
-    assert(ui_thread());
 
     if (!playing) {
         return false;

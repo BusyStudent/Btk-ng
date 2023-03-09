@@ -104,10 +104,12 @@ class VideoThread : public Object {
         }
     private:
         void thread_main();
-        bool video_decode_frame(AVPacket *packet);
+        bool video_decode_frame(AVPacket *packet, AVFrame **ret);
+        void video_write_frame(AVFrame *source);
 
         void video_surface_ui_callback();
         void video_clock_pause(bool v);
+        void video_try_hw();
 
         Demuxer *demuxer = nullptr;
         AVStream *stream = nullptr;
@@ -132,8 +134,9 @@ class VideoThread : public Object {
         bool paused = false;
 
         // Status
-        int64_t video_clock_start = 0.0f; //< Video started time
+        int64_t video_clock_start = 0; //< Video started time
         double  video_clock = 0.0f;
+        double  sws_scale_duration = 0.0; //< prev Swscale take's time
         bool nothing_to_do = false;
 
         // Task
@@ -258,10 +261,10 @@ class Demuxer : public Object {
 
         bool is_loaded();
 
+        void set_async(bool async);
         void set_url(u8string_view url);
         void set_position(double pos);
         void set_option(u8string_view key, u8string_view value);
-;
 
         bool seekable();
         double duration();
@@ -269,6 +272,8 @@ class Demuxer : public Object {
 
         // Get buffered, in seconds
         double buffered();
+        // Get buffered, in packets count
+        size_t buffered_packets();
 
         // Get ffmpeg error code
         int    error_code();
@@ -296,6 +301,7 @@ class Demuxer : public Object {
             return status;
         }
 
+        BTK_EXPOSE_SIGNAL(_buffer_status_changed);
         BTK_EXPOSE_SIGNAL(_media_status_changed);
         BTK_EXPOSE_SIGNAL(_duration_changed);
         BTK_EXPOSE_SIGNAL(_position_changed);
@@ -316,6 +322,10 @@ class Demuxer : public Object {
         void clock_pause(bool v);
         void set_state(State state);
         void set_status(MediaStatus status);
+        void pause_begin(); //< Do pause, save state
+        void pause_end(); //< Do resume, restore state
+        void internal_load(); //< Do Load
+        void internal_play(); //< Do Play
 
         // Interrupt cb
         InterruptCB      interrupt_cb;
@@ -325,6 +335,7 @@ class Demuxer : public Object {
         AVDictionary    *options = nullptr;
         bool             quit  = false;
         bool             loaded = false;
+        bool             async = true; //< Load / Play is async?
         std::thread      demuxer_thread;
         std::mutex       demuxer_mtx;
         std::condition_variable demuxer_cond; //< Cond for something changed
@@ -342,7 +353,7 @@ class Demuxer : public Object {
         State            state = State::Stopped;
 
         // Buffering     
-        int              buffered_packets_limit = 1000;
+        int              buffered_packets_limit = 4000;
         double           buffered_user_hint     = 0.0; //< hint to buffer in user_hint seconds
 
 
@@ -366,6 +377,7 @@ class Demuxer : public Object {
         Signal<void()>       _error;
         Signal<void(State)>  _state_changed;
         Signal<void(MediaStatus)> _media_status_changed;
+        Signal<void(int)> _buffer_status_changed;
 
         // Task
         TaskManager task_manager;

@@ -48,13 +48,20 @@ class AudioFormat {
         int               channels;
 };
 
-// Interface, needed for polymorphism, mixed in with other classes
+/**
+ * @brief Interface for write video frames 
+ * 
+ */
 class AbstractVideoSurface {
     public:
         virtual bool begin(PixFormat *req) = 0;
         virtual bool write(PixFormat fmt, cpointer_t data, int pitch, int w, int h) = 0;
         virtual bool end() = 0;
 };
+/**
+ * @brief Interface for access audio
+ * 
+ */
 class AbstractAudioDevice {
     public:
         using Routinue = std::function<void(void *buffer, uint32_t bytes)>;
@@ -138,6 +145,7 @@ class BTKAPI MediaPlayer : public Object {
         void set_audio_output(AbstractAudioDevice *audio);
         void set_option(u8string_view key, u8string_view value);
         void set_url(u8string_view url);
+        void set_async(bool async);
 
         void set_position(double second);
 
@@ -153,7 +161,7 @@ class BTKAPI MediaPlayer : public Object {
         auto signal_error()            -> Signal<void()>       &;
         auto signal_duration_changed() -> Signal<void(double)> &;
         auto signal_position_changed() -> Signal<void(double)> &;
-        auto signal_buffer_status_changed() -> Signal<void(float)>       &;
+        auto signal_buffer_status_changed() -> Signal<void(int)>         &;
         auto signal_media_status_changed()  -> Signal<void(MediaStatus)> &;
         auto signal_state_changed()         -> Signal<void(State)>       &;
     private:

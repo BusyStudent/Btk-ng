@@ -36,6 +36,11 @@ class Wincodec {
             if (!factory) {
                 return;
             }
+            if (!::GetModuleHandleA("windowscodecs.dll")) {
+                // Dirty FIX for 
+                // Already Unloaded
+                return;
+            }
             if (factory->Release() == 0) {
                 factory = nullptr;
                 CoUninitialize();

@@ -57,8 +57,10 @@ void Demuxer::stop() {
     quit = true;
     demuxer_cond.notify_one();
 
-    // Waiting
-    demuxer_thread.join();
+    // Waiting if we has
+    if (demuxer_thread.joinable()) {
+        demuxer_thread.join();
+    }
 
     avformat_close_input(&ctxt);
 
@@ -81,59 +83,10 @@ void Demuxer::load() {
     if (loaded) {
         return;
     }
-
-    ctxt = avformat_alloc_context();
-    if (!ctxt) {
-        return;
+    if (!async) {
+        return internal_load();
     }
-
-    ctxt->interrupt_callback = interrupt_cb;
-
-    set_status(MediaStatus::LoadingMedia);
-
-    // Load area
-    interrupt_cb.begin(InterruptCB::BeginLoad);
-    av_code = avformat_open_input(
-        &ctxt,
-        url.c_str(),
-        nullptr,
-        &options
-    );
-    interrupt_cb.end(InterruptCB::EndLoad);
-
-    if (av_code < 0) {
-        set_status(MediaStatus::NoMedia);
-
-        signal_error().emit();
-        return;
-    }
-
-    interrupt_cb.begin(InterruptCB::BeginLoad);
-    av_code = avformat_find_stream_info(ctxt, nullptr);
-    interrupt_cb.end(InterruptCB::EndLoad);
-    // End Load
-
-    if (av_code < 0) {
-        set_status(MediaStatus::NoMedia);
-        signal_error().emit();
-        return;
-    }
-    // Try find stream
-    video_stream = av_find_best_stream(ctxt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
-    audio_stream = av_find_best_stream(ctxt, AVMEDIA_TYPE_AUDIO, -1, video_stream, nullptr, 0);
-
-    // Ok
-    loaded = true;
-
-    set_status(MediaStatus::LoadedMedia);
-
-    // Emit signals
-    signal_duration_changed().emit(ctxt->duration / double(AV_TIME_BASE));
-
-    // Debug
-#if !defined(NDEBUG)
-    av_dump_format(ctxt, 0, url.c_str(), 0);
-#endif
+    std::thread(&Demuxer::internal_load, this).detach();
 }
 void Demuxer::unload() {
     // TODO : 
@@ -141,8 +94,14 @@ void Demuxer::unload() {
 void Demuxer::play() {
     // Clear prev
     stop();
-    load();
 
+    if (!async) {
+        return internal_play();
+    }
+    std::thread(&Demuxer::internal_play, this).detach();
+}
+void Demuxer::internal_play() {
+    internal_load();
     if (!loaded) {
         return;
     }
@@ -171,7 +130,7 @@ void Demuxer::play() {
     if (video_stream < 0 && audio_stream < 0) {
         // No Stream 
         av_code = AVERROR_STREAM_NOT_FOUND;
-        signal_error().emit();
+        task_manager.emit_signal(signal_error());
         return;
     }
 
@@ -179,12 +138,70 @@ void Demuxer::play() {
     set_state(State::Playing);
     demuxer_thread = std::thread(&Demuxer::thread_main, this);
 }
+void Demuxer::internal_load() {
+    ctxt = avformat_alloc_context();
+    if (!ctxt) {
+        return;
+    }
+
+    ctxt->interrupt_callback = interrupt_cb;
+
+    set_status(MediaStatus::LoadingMedia);
+
+    // Load area
+    interrupt_cb.begin(InterruptCB::BeginLoad);
+    av_code = avformat_open_input(
+        &ctxt,
+        url.c_str(),
+        nullptr,
+        &options
+    );
+    interrupt_cb.end(InterruptCB::EndLoad);
+
+    if (av_code < 0) {
+        set_status(MediaStatus::NoMedia);
+
+        task_manager.emit_signal(signal_error());
+        return;
+    }
+
+    interrupt_cb.begin(InterruptCB::BeginLoad);
+    av_code = avformat_find_stream_info(ctxt, nullptr);
+    interrupt_cb.end(InterruptCB::EndLoad);
+    // End Load
+
+    if (av_code < 0) {
+        set_status(MediaStatus::NoMedia);
+        task_manager.emit_signal(signal_error());
+        return;
+    }
+    // Try find stream
+    video_stream = av_find_best_stream(ctxt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+    audio_stream = av_find_best_stream(ctxt, AVMEDIA_TYPE_AUDIO, -1, video_stream, nullptr, 0);
+
+    // Ok
+    loaded = true;
+
+    set_status(MediaStatus::LoadedMedia);
+
+    // Emit signals
+    task_manager.emit_signal(signal_duration_changed(), ctxt->duration / double(AV_TIME_BASE));
+
+    // Debug
+#if !defined(NDEBUG)
+    av_dump_format(ctxt, -1, url.c_str(), 0);
+#endif
+}
 void Demuxer::thread_main() {
     SetThreadDescription("DemuxerThread");
 
     AVPacket *packet = av_packet_alloc();
     int  ret = 0;
     bool eof = false;
+    bool do_paused = false; //< Value for mark didwe actually paused it
+    bool buffer_health = false; //< false on we should pause, and buffering
+    bool buffering = false; //< True on buffering, We has paused it
+    int  prev_percent = -1; //< Percent for update
 
     // Start clock
     clock_start = av_gettime_relative();
@@ -195,7 +212,7 @@ void Demuxer::thread_main() {
         mainloop : 
 
         // Check seek here
-        if (seek_req) {
+        if (seek_req && state == State::Playing) {
             handle_seek();
             eof = false;
         }
@@ -203,35 +220,53 @@ void Demuxer::thread_main() {
         clock_update();
 
         // Check pause here
-        if (state == State::Paused) {
-            if (audio_thread) {
-                audio_thread->pause(true);
-            }
-            if (video_thread) {
-                video_thread->pause(true);
-            }
+        buffer_health = (buffered_packets() > 1000) || eof;
 
-            // Save clock
-            clock_pause(true);
+        if (buffer_health) {
+            if (buffering) {
+                // End of buffering
+                buffering = false;
 
-            // Wait if paused
-            while (state == State::Paused && !quit) {
-                if (demuxer_wait_state_change(1h)) {
-                    continue;
-                }
+                // Notify buffering 
+                prev_percent = -1;
+                task_manager.emit_signal(_buffer_status_changed, 100);
+                set_status(MediaStatus::BufferedMedia);
+
+                // Restore
+                pause_end();
             }
 
-            // End of pause, restore clock
-            clock_pause(false);
+            // Only do pause on health, Because we already pause on unhealth
+            if (state == State::Paused && !do_paused) {
+                pause_begin();
 
-            if (audio_thread) {
-                audio_thread->pause(false);
+                do_paused = true;
             }
-            if (video_thread) {
-                video_thread->pause(false);
+            else if (state != State::Paused && do_paused) {
+                pause_end();
+
+                do_paused = false;
             }
         }
-
+        else {
+            if (!buffering) {
+                // Enter buffering
+                buffering = true;
+                set_status(MediaStatus::BufferingMedia);
+                pause_begin();
+            }
+            // From [0, 100]
+            size_t buffered = buffered_packets();
+            int percent = 0;
+            if (buffered > 0) {
+                percent = buffered / size_t(1000) * 100;
+            }
+            if (prev_percent != percent) {
+                // Do update
+                prev_percent = percent;
+                task_manager.emit_signal(_buffer_status_changed, percent);
+            }
+        }
 
         // Check too much packet
         if (video_thread) {
@@ -257,7 +292,12 @@ void Demuxer::thread_main() {
         // Process err
         if (ret < 0) {
             if (ret == AVERROR_EOF) {
+                FF_LOG1("Read End of file");
                 eof = true;
+                if (buffering) {
+                    // Notify to end buffering
+                    continue;
+                }
             }
             
         }
@@ -280,8 +320,8 @@ void Demuxer::thread_main() {
                 // Tell we didnot has more packet
                 audio_thread->packet_queue()->put(EofPacket);
                 while (audio_thread->running() && !quit) {
-                    if (demuxer_wait_state_change(10ms)) {
-                        // Something changed
+                    if (demuxer_wait_state_change(10ms) || seek_req) {
+                        // Something changed or seek_req
                         goto mainloop;
                     }
                 }
@@ -291,8 +331,8 @@ void Demuxer::thread_main() {
                 // Tell we didnot has more packet
                 video_thread->packet_queue()->put(EofPacket);
                 while (video_thread->running() && !quit) {
-                    if (demuxer_wait_state_change(10ms)) {
-                        // Something changed
+                    if (demuxer_wait_state_change(10ms) || seek_req) {
+                        // Something changed or seek_req
                         goto mainloop;
                     }
                 }
@@ -309,6 +349,7 @@ void Demuxer::thread_main() {
         // STOP
         video_thread->packet_queue()->flush();
         video_thread->packet_queue()->put(StopPacket);
+        video_thread->pause(false);
         delete video_thread;
         video_thread = nullptr;
 
@@ -319,6 +360,7 @@ void Demuxer::thread_main() {
         // STOP
         audio_thread->packet_queue()->flush();
         audio_thread->packet_queue()->put(StopPacket);
+        audio_thread->pause(false);
         delete audio_thread;
         audio_thread = nullptr;
 
@@ -331,8 +373,9 @@ void Demuxer::thread_main() {
     if (eof && !_position_changed.empty()) {
         pos_task_manager.emit_signal(_position_changed, double(duration()));
     }
-    
-    set_status(MediaStatus::EndOfMedia);
+    if (eof) {
+        set_status(MediaStatus::EndOfMedia);
+    }
     set_state(State::Stopped);
     
 }
@@ -549,6 +592,19 @@ double Demuxer::buffered() {
     }
     return seconds;
 }
+size_t Demuxer::buffered_packets() {
+    if (!ctxt) {
+        return 0;
+    }
+    size_t num = std::numeric_limits<size_t>::max();
+    if (audio_thread) {
+        num = min(num, audio_thread->packet_queue()->size());
+    }
+    if (video_thread) {
+        num = min(num, video_thread->packet_queue()->size());
+    }
+    return num;
+}
 int Demuxer::error_code() {
     return av_code;
 }
@@ -561,6 +617,9 @@ void Demuxer::set_url(u8string_view u) {
         unload();
     }
     url = u;
+}
+void Demuxer::set_async(bool as) {
+    async = as;
 }
 void Demuxer::set_position(double v) {
     if (state == State::Stopped) {
@@ -604,6 +663,33 @@ void Demuxer::set_status(MediaStatus s) {
         task_manager.emit_signal(_media_status_changed, s);
     }
 }
+void Demuxer::pause_begin() {
+    // Save the state
+    FF_LOG1("Save state");
+
+    if (audio_thread) {
+        audio_thread->pause(true);
+    }
+    if (video_thread) {
+        video_thread->pause(true);
+    }
+
+    // Save clock
+    clock_pause(true);
+}
+void Demuxer::pause_end() {
+    // End of pause, restore clock
+    FF_LOG1("Restore state");
+
+    clock_pause(false);
+
+    if (audio_thread) {
+        audio_thread->pause(false);
+    }
+    if (video_thread) {
+        video_thread->pause(false);
+    }
+}
 
 
 void Demuxer::pause(bool v) {
@@ -635,9 +721,14 @@ int InterruptCB::run() {
     auto cur = av_gettime_relative();
     auto diff = cur - begin_time;
     // Check time out
-    if (diff > timeout_dur) {
-        FF_LOG("InterruptCB timeout %ld cur %ld begin_time %ld!", diff, cur, begin_time);
-    }
+    // if (diff > timeout_dur && action == BeginRead) {
+    //     // Is reading timeout
+    //     auto buffered = demuxer->buffered();
+    //     if (buffered == 0) {
+    //         FF_LOG("InterruptCB timeout %ld cur %ld begin_time %ld!", diff, cur, begin_time);
+    //     }
+    //     // FF_LOG("InterruptCB timeout %ld cur %ld begin_time %ld!", diff, cur, begin_time);
+    // }
 
     return demuxer->quit;
 }

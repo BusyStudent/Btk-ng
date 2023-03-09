@@ -56,6 +56,9 @@ class Player : public Widget {
                 set_window_title(u8string::format("Player position %lf : %lf volume %f", pos, player.duration(), audio.volume()));
                 slider.set_value(pos);
             });
+            player.signal_buffer_status_changed().connect([&](int percent) {
+                set_window_title(u8string::format("Buffer %d%%", percent));
+            });
             player.signal_duration_changed().connect([&](double dur) {
                 slider.set_range(0, dur);
             });

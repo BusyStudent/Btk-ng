@@ -246,6 +246,9 @@ inline void      TaskManager::add_task(RetT (IClass::*method)(CArgs...), Class *
 
 template <typename Ret, typename ...Args>
 inline void      TaskManager::emit_signal(Signal<Ret (Args...)> &signal, Args ...args) {
+    if (signal.empty()) {
+        return;
+    }
     add_task(&Signal<Ret (Args...)>::emit, &signal, std::forward<Args>(args)...);
 }
 

@@ -40,9 +40,15 @@ void MediaPlayer::set_position(double pos) {
 void MediaPlayer::set_option(u8string_view key, u8string_view value) {
     priv->set_option(key, value);
 }
+void MediaPlayer::set_async(bool async) {
+    priv->set_async(async);
+}
 
 auto MediaPlayer::signal_media_status_changed() -> Signal<void(MediaStatus)> & {
     return priv->signal_media_status_changed();    
+}
+auto MediaPlayer::signal_buffer_status_changed() -> Signal<void(int)> & {
+    return priv->signal_buffer_status_changed();
 }
 auto MediaPlayer::signal_duration_changed() -> Signal<void(double)> & {
     return priv->signal_duration_changed();
