@@ -1,7 +1,7 @@
 #pragma once
 
 #include "build.hpp"
-#include <Btk/context.hpp>
+#include <Btk/widgets/dialog.hpp>
 #include <Btk/string.hpp>
 #include <Btk/event.hpp>
 

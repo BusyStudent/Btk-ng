@@ -23,41 +23,41 @@
 
 BTK_NS_BEGIN
 
-class BTKAPI EventQueue {
-    public:
+// class BTKAPI EventQueue {
+//     public:
     
-        EventQueue();
-        ~EventQueue();
+//         EventQueue();
+//         ~EventQueue();
 
-        void push(Event * event);
-        void pop();
+//         void push(Event * event);
+//         void pop();
 
-        bool empty() const;
-        bool poll(Event **event);
+//         bool empty() const;
+//         bool poll(Event **event);
 
-        Event *peek() const;
+//         Event *peek() const;
 
-        template <typename T>
-        void walk(T &&callback) {
-            for (auto iter = queue.begin(); iter != queue.end();) {
-                auto wlk = callback(**iter);
-                if ((wlk & EventWalk::Drop) == EventWalk::Drop) {
-                    iter = queue.erase(iter);
-                }
-                else if ((wlk & EventWalk::Stop) == EventWalk::Stop) {
-                    break;
-                }
-                else {
-                    ++iter;
-                }
-            }
-        }
-    private:
-        //TODO : Use a lock free queue
-        //TODO : Use Holder to prevent heap allocation
-        mutable SpinLock spin;
-        std::deque<Event *> queue;
-};
+//         template <typename T>
+//         void walk(T &&callback) {
+//             for (auto iter = queue.begin(); iter != queue.end();) {
+//                 auto wlk = callback(**iter);
+//                 if ((wlk & EventWalk::Drop) == EventWalk::Drop) {
+//                     iter = queue.erase(iter);
+//                 }
+//                 else if ((wlk & EventWalk::Stop) == EventWalk::Stop) {
+//                     break;
+//                 }
+//                 else {
+//                     ++iter;
+//                 }
+//             }
+//         }
+//     private:
+//         //TODO : Use a lock free queue
+//         //TODO : Use Holder to prevent heap allocation
+//         mutable SpinLock spin;
+//         std::deque<Event *> queue;
+// };
 
 class BTKAPI EventLoop : public Trackable {
     public:

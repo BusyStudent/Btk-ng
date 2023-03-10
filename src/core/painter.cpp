@@ -1,7 +1,10 @@
 #include "build.hpp"
 #include "common/utils.hpp"
 #include "common/device_resource.hpp"
-#include "common/win32/wincodec.hpp"
+
+#if defined(_WIN32)
+    #include "common/win32/wincodec.hpp"
+#endif
 
 #include <Btk/detail/platform.hpp>
 #include <Btk/detail/reference.hpp>
@@ -586,11 +589,19 @@ void Painter::operator =(Painter && p) {
     p.priv = nullptr;
 }
 void    Painter::Init() {
+
+#if defined(_WIN32)
     Win32::Wincodec::Init();
+#endif
+
     Font::Init();
 }
 void    Painter::Shutdown() {
+
+#if defined(_WIN32)
     Win32::Wincodec::Shutdown();
+#endif
+
     Font::Shutdown();
 }
 

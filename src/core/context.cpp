@@ -3,7 +3,7 @@
 #include <Btk/detail/platform.hpp>
 #include <Btk/context.hpp>
 #include <Btk/painter.hpp>
-#include <bTK/event.hpp>
+#include <Btk/event.hpp>
 #include <Btk/style.hpp>
 #include <thread> //< For std::this_thread::yield()
 #include <chrono>
@@ -70,39 +70,39 @@ void UIContext::initialize(GraphicsDriver *driv) {
     thread_id = std::this_thread::get_id(); 
 }
 
-EventQueue::EventQueue() {
+// EventQueue::EventQueue() {
 
-}
-EventQueue::~EventQueue() {
+// }
+// EventQueue::~EventQueue() {
 
-}
-void EventQueue::push(Event *event) {
-    spin.lock();
-    queue.push_back(event);
-    spin.unlock();
-}
-void EventQueue::pop() {
-    spin.lock();
-    queue.pop_front();
-    spin.unlock();
-}
-Event *EventQueue::peek() const {
-    spin.lock();
-    Event *event = queue.front();
-    spin.unlock();
-    return event;
-}
-bool  EventQueue::poll(Event **event) {
-    spin.lock();
-    Event *ev = nullptr;
-    if (!queue.empty()) {
-        ev = queue.front();
-        queue.pop_front();
-    }
-    *event = ev;
-    spin.unlock();
-    return *event;
-}
+// }
+// void EventQueue::push(Event *event) {
+//     spin.lock();
+//     queue.push_back(event);
+//     spin.unlock();
+// }
+// void EventQueue::pop() {
+//     spin.lock();
+//     queue.pop_front();
+//     spin.unlock();
+// }
+// Event *EventQueue::peek() const {
+//     spin.lock();
+//     Event *event = queue.front();
+//     spin.unlock();
+//     return event;
+// }
+// bool  EventQueue::poll(Event **event) {
+//     spin.lock();
+//     Event *ev = nullptr;
+//     if (!queue.empty()) {
+//         ev = queue.front();
+//         queue.pop_front();
+//     }
+//     *event = ev;
+//     spin.unlock();
+//     return *event;
+// }
 
 void EventLoop::stop() {
     return dispatcher->interrupt();
