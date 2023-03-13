@@ -595,6 +595,9 @@ int main () {
             ltbox.add_item(item);
         }
     });
+    ltbox.signal_item_double_clicked().connect([&](ListItem *item) {
+        ltedit.set_text(item->text);
+    });
     // Test Text input
     TextEdit tedit(&widget);
     tedit.resize(200, 32);

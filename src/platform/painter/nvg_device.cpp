@@ -92,7 +92,6 @@ class NanoVGContext final : public PaintContext, PainterPathSink, OpenGLES3Funct
         bool set_state(PaintContextState state, const void *what) override;
 
         // Extra
-        bool has_feature(PaintContextFeature f) override { return true; }
         bool native_handle(PaintContextHandle h, void *out) override;
 
         // Texture
@@ -816,8 +815,12 @@ bool NanoVGTexture::query_value(PaintDeviceValue value, void *out) {
             break;
         }
         case PaintDeviceValue::LogicalSize : {
-            auto fs = static_cast<Size*>(out);
-            nvgImageSize(ctxt->nvg_context(), id, &fs->w, &fs->h);
+            auto fs = static_cast<FSize*>(out);
+            int w;
+            int h;
+            nvgImageSize(ctxt->nvg_context(), id, &w, &h);
+            fs->w = w;
+            fs->h = h;
             break;
         }
         case PaintDeviceValue::Dpi : {

@@ -65,6 +65,10 @@ enum class PixFormat         : uint32_t {
     BGRA32 = 2,
     BGR24  = 3,
     Gray8  = 4, //< Grayscale
+
+    // < YUV 
+    NV12   = 1001,
+    NV21   = 1002,
 };
 // Blend mode / Bend Factor
 enum class BlendMode         : uint32_t {

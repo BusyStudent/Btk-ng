@@ -8,7 +8,7 @@
 #undef min
 #undef max
 
-#include <Btk/painter.hpp>
+#include <Btk/font.hpp>
 #include <limits>
 
 #include <wrl.h>
@@ -230,6 +230,10 @@ void Font::Shutdown() {
     DWrite::Shutdown();
 }
 bool Font::native_handle(FontHandle what, void *out) const {
+    if (what == FontHandle::IDWriteFactory) {
+        *static_cast<IDWriteFactory **>(out) = DWrite::GetInstance();
+        return true;
+    }
     if (what != FontHandle::IDWriteTextFormat) {
         return false;
     }
@@ -476,6 +480,10 @@ bool TextLayout::line_metrics(TextLineMetricsList *metrics) const {
     return false;
 }
 bool TextLayout::native_handle(TextLayoutHandle what, void *out) const {
+    if (what == TextLayoutHandle::IDWriteFactory) {
+        *static_cast<IDWriteFactory **>(out) = DWrite::GetInstance();
+        return true;
+    }
     if (what != TextLayoutHandle::IDWriteTextLayout) {
         return false;
     }

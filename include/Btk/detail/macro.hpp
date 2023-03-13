@@ -100,6 +100,15 @@
 #define Btk_free(ptr)          ::free(ptr)
 #endif
 
+// Assume
+#if   defined(__clang__)
+#define Btk_assume(cond) __builtin_assume(cond)
+#elif defined(_MSC_VER)
+#define Btk_assume(cond) _assume(cond)
+#else
+#define Btk_assume(cond)
+#endif
+
 // Stack alloc type macros
 #define Btk_stack_new(type)    new (Btk_alloca(sizeof(type))) type
 #define Btk_stack_delete(p)    do {                                            \

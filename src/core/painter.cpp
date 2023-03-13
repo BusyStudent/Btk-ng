@@ -11,6 +11,7 @@
 #include <Btk/detail/device.hpp>
 #include <Btk/detail/types.hpp>
 #include <Btk/painter.hpp>
+#include <Btk/font.hpp>
 #include <variant>
 #include <stack>
 #include <map>
@@ -451,6 +452,9 @@ void Painter::set_antialias(bool v) {
 // Get
 auto Painter::alpha() const -> float {
     return priv->state.top().alpha;
+}
+auto Painter::context() const -> PaintContext * {
+    return priv->ctxt.get();
 }
 
 // Transform

@@ -177,7 +177,7 @@ void Demuxer::internal_load() {
     }
     // Try find stream
     video_stream = av_find_best_stream(ctxt, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
-    audio_stream = av_find_best_stream(ctxt, AVMEDIA_TYPE_AUDIO, -1, video_stream, nullptr, 0);
+    audio_stream = av_find_best_stream(ctxt, AVMEDIA_TYPE_AUDIO, -1, video_stream < 0 ? -1 : video_stream, nullptr, 0);
 
     // Ok
     loaded = true;
@@ -291,6 +291,7 @@ void Demuxer::thread_main() {
 
         // Process err
         if (ret < 0) {
+            FF_LOG("FFmepg av_read_frame ret code %d => %s", ret, av_err2str(ret));
             if (ret == AVERROR_EOF) {
                 FF_LOG1("Read End of file");
                 eof = true;
@@ -440,12 +441,12 @@ bool Demuxer::open_component(int stream_index) {
     return false;
 }
 void Demuxer::clock_update() {
-    if (clock_paused) {
+    if (clock_paused || seek_req) {
         return;
     }
 
     double new_position = 0;
-    if (sync_type == SyncType::ExternalMaster) {
+    if (sync_type == SyncType::ExternalMaster || (sync_type == SyncType::AudioMaster && audio_thread == nullptr)) {
         new_position = (av_gettime_relative() - clock_start) / 1000000.0;
     }
     else {
@@ -625,6 +626,9 @@ void Demuxer::set_position(double v) {
     if (state == State::Stopped) {
         return;
     }
+    // Cancel now 
+    pos_task_manager.cancel_task();
+
     seek_pos = v;
     seek_req = true;
     demuxer_cond.notify_one();

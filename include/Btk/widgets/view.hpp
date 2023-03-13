@@ -14,6 +14,7 @@ class BTKAPI Label : public Widget {
         ~Label();
 
         void set_text(u8string_view txt);
+        void set_text_align(Alignment alig);
 
         bool paint_event(PaintEvent   &event) override;
         bool change_event(ChangeEvent &event) override;
@@ -173,6 +174,7 @@ class ListBox : public Widget {
         int       index_of(const ListItem *item) const;
 
         BTK_EXPOSE_SIGNAL(_current_item_changed);
+        BTK_EXPOSE_SIGNAL(_item_double_clicked);
         BTK_EXPOSE_SIGNAL(_item_clicked);
         BTK_EXPOSE_SIGNAL(_item_enter);
     protected:
@@ -212,6 +214,7 @@ class ListBox : public Widget {
         bool                  _flat = false;
 
         Signal<void()>           _current_item_changed;
+        Signal<void(ListItem *)> _item_double_clicked;
         Signal<void(ListItem *)> _item_clicked;
         Signal<void(ListItem *)> _item_enter;
 };

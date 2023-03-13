@@ -35,8 +35,7 @@ VideoThread::VideoThread(Demuxer *demuxer, AVStream *stream, AVCodecContext *ctx
     
     surface = demuxer->video_output();
 
-    // Clear convertion ctxt
-    sws_ctxt.reset();
+    // Prepare convertion buffer
     size_t n     = av_image_get_buffer_size(AV_PIX_FMT_RGBA, ctxt->width, ctxt->height, 32);
     uint8_t *buf = static_cast<uint8_t*>(av_malloc(n));
 

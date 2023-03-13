@@ -143,6 +143,8 @@ class RectImpl {
 
         RectImpl() = default;
         RectImpl(T x, T y, T w, T h) : x(x), y(y), w(w), h(h) {}
+        RectImpl(T x, T y, const SizeImpl<T> &s) : x(x), y(y), w(s.w), h(s.h) {}
+        RectImpl(const PointImpl<T> &p, const SizeImpl<T> &s) : x(p.x), y(p.y), w(s.w), h(s.h) {}
         RectImpl(const RectImpl &r) : x(r.x), y(r.y), w(r.w), h(r.h) {}
 
         // Calculate
@@ -224,32 +226,34 @@ class RectImpl {
 
         // Align calc
         template <typename Elem>
-        RectImpl<Elem> apply_align(const RectImpl<Elem> &box, Alignment alig) const {
-            RectImpl<Elem> result = box;
+        RectImpl<Elem> align_at(const RectImpl<Elem> &parent_box, Alignment alig) const {
+            RectImpl<Elem> result = *this;
 
             // Horizontal
             if (uint8_t(alig & Alignment::Left)) {
+                result.x = parent_box.x;
                 result.w = w;
             }
             else if (uint8_t(alig & Alignment::Right)) {
-                result.x = result.x + result.w - w;
+                result.x = parent_box.x + parent_box.w - w;
                 result.w = w;
             }
             else if (uint8_t(alig & Alignment::Center)) {
-                result.x = result.x + result.w / 2 - w / 2;
+                result.x = parent_box.x + parent_box.w / 2 - w / 2;
                 result.w = w;
             }
 
             // Vertical
             if (uint8_t(alig & Alignment::Top)) {
+                result.y = parent_box.y;
                 result.h = h;
             }
             else if (uint8_t(alig & Alignment::Bottom)) {
-                result.y = result.y + result.h - h;
+                result.y = parent_box.y + parent_box.h - h;
                 result.h = h;
             }
             else if (uint8_t(alig & Alignment::Middle)) {
-                result.y = result.y + result.h / 2 - h / 2;
+                result.y = parent_box.y + parent_box.h / 2 - h / 2;
                 result.h = h;
             }
 

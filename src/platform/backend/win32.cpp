@@ -168,6 +168,8 @@ class Win32Window final : public AbstractWindow {
 
         SHORT        mouse_last_x = -1; //< Last mouse position
         SHORT        mouse_last_y = -1; //< Last mouse position
+        UINT8        mouse_clicks  = 0; //< Clicks count
+        DWORD        mouse_last_clicked = 0; //< Last mouse clicked
 
         bool         textinput_enabled = false; //< Text input enabled
         HIMC         imcontext = {}; //< Default IME context
@@ -908,11 +910,24 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
             [[fallthrough]];
         }
         case WM_RBUTTONDOWN : {
+            auto current_ticks = GetTickCount();
+            auto diff = current_ticks - win->mouse_last_clicked;
             auto point = win->client_to_btk(MAKEPOINTS(lparam));
+
+            if (diff < GetDoubleClickTime()) {
+                // Double click
+                win->mouse_clicks += 1;
+            }
+            else {
+                win->mouse_clicks = 1;
+            }
+
+            win->mouse_last_clicked = current_ticks;
+
             MouseEvent event(
                 Event::MousePress,
                 point.x, point.y,
-                wparam
+                win->mouse_clicks //< Send clicks
             );
             if (msg == WM_LBUTTONDOWN) {
                 event.set_button(MouseButton::Left);

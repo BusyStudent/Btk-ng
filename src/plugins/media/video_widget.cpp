@@ -53,7 +53,6 @@ bool VideoWidget::end() {
 }
 bool VideoWidget::write(PixFormat fmt, cpointer_t data, int pitch, int w, int h) {
     if (!ui_thread()) {
-        defer_call(&VideoWidget::write, this, fmt, data, pitch, w, h);
         return true;
     }
 
@@ -70,6 +69,12 @@ bool VideoWidget::write(PixFormat fmt, cpointer_t data, int pitch, int w, int h)
     }
     texture.update(nullptr, data, pitch);
     repaint();
+    return true;
+}
+bool VideoWidget::support_format(PixFormat fmt) {
+    if (fmt != PixFormat::RGBA32) {
+        return false;
+    }
     return true;
 }
 

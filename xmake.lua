@@ -1,7 +1,7 @@
 set_project("Btk")
 
 -- Setup the environment
-add_rules("mode.debug","mode.release", "mode.asan")
+add_rules("mode.debug","mode.release", "mode.asan", "mode.releasedbg")
 
 add_includedirs("include")
 add_includedirs("src")

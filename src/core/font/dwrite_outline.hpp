@@ -7,6 +7,7 @@
 #include "common/win32/direct2d.hpp"
 
 #include <Btk/painter.hpp>
+#include <Btk/font.hpp>
 
 #include <wrl.h>
 

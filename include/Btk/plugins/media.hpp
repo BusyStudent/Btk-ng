@@ -55,8 +55,11 @@ class AudioFormat {
 class AbstractVideoSurface {
     public:
         virtual bool begin(PixFormat *req) = 0;
-        virtual bool write(PixFormat fmt, cpointer_t data, int pitch, int w, int h) = 0;
+        virtual bool write(PixFormat fmt, cpointer_t data, int pitch, int w, int h) = 0; //< RGB
         virtual bool end() = 0;
+        
+        virtual bool support_format(PixFormat fmt) = 0;
+ 
 };
 /**
  * @brief Interface for access audio
@@ -77,16 +80,18 @@ class AbstractAudioDevice {
         virtual float volume() = 0;
 };
 
-class BTKAPI VideoWidget : public AbstractVideoSurface, public Widget {
+class BTKAPI VideoWidget     : public AbstractVideoSurface, public Widget {
     public:
         VideoWidget(Widget *parent = nullptr);
         ~VideoWidget();
 
         bool paint_event(PaintEvent &) override;
     private:
+        // AbstractVideoSurface
         bool begin(PixFormat *req) override;
         bool write(PixFormat fmt, cpointer_t data, int pitch, int w, int h) override;
         bool end() override;
+        bool support_format(PixFormat fmt) override;
 
         bool    playing = false;
         Color   background = Color::Black;
@@ -95,7 +100,7 @@ class BTKAPI VideoWidget : public AbstractVideoSurface, public Widget {
 };
 
 // Bultin audio device implementation
-class BTKAPI AudioDevice : public AbstractAudioDevice, public Any {
+class BTKAPI AudioDevice final : public AbstractAudioDevice, public Any {
     public:
         AudioDevice();
         AudioDevice(const AudioDevice &) = delete;

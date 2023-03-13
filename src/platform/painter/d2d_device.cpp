@@ -9,6 +9,7 @@
 #include <Btk/detail/device.hpp>
 #include <Btk/painter.hpp>
 #include <Btk/object.hpp>
+#include <Btk/font.hpp>
 #include <unordered_map>
 #include <windows.h>
 #include <d3d11.h>
@@ -36,10 +37,8 @@ BTK_PRIV_BEGIN
 // Forward declarations
 using Win32::WincodecInitializer;
 using Win32::Direct2DInitializer;
-using Win32::DWriteInitializer;
 using Win32::Wincodec;
 using Win32::Direct2D;
-using Win32::DWrite;
 
 using Microsoft::WRL::ComPtr;
 
@@ -92,7 +91,6 @@ class D2DRenderTarget  : public PaintContext {
         auto create_texture(PixFormat fmt, int w, int h, float xdpi, float ydpi) -> AbstractTexture * override;;
 
         bool set_state(PaintContextState state, const void *data) override;
-        bool has_feature(PaintContextFeature feature) override;
         bool native_handle(PaintContextHandle, void *out) override { return false; }
         
 
@@ -542,7 +540,12 @@ bool D2DRenderTarget::draw_image(AbstractTexture *tex_, const FRect *dst, const 
 bool D2DRenderTarget::draw_text(Alignment align, Font &font, u8string_view text, float x, float y) { 
     // Try Query The TextFormat
     IDWriteTextFormat *fmt;
+    IDWriteFactory *factory;
     if (!font.native_handle(FontHandle::IDWriteTextFormat, &fmt)) {
+        BTK_LOG("[D2DRenderTarget::draw_text] This backend currently only supports dwrite font");
+        return false;
+    }
+    if (!font.native_handle(FontHandle::IDWriteFactory, &factory)) {
         BTK_LOG("[D2DRenderTarget::draw_text] This backend currently only supports dwrite font");
         return false;
     }
@@ -570,7 +573,7 @@ bool D2DRenderTarget::draw_text(Alignment align, Font &font, u8string_view text,
     }
 
     ComPtr<IDWriteTextLayout> layout;
-    HRESULT hr = DWrite::GetInstance()->CreateTextLayout(
+    HRESULT hr = factory->CreateTextLayout(
         reinterpret_cast<const WCHAR *>(u16.c_str()),
         u16.length(),
         fmt,
@@ -1096,9 +1099,6 @@ bool D2DRenderTarget::set_state(PaintContextState state, const void *data) {
         }
     }
     return false;
-}
-bool D2DRenderTarget::has_feature(PaintContextFeature feature) {
-    return true;
 }
 
 // D2DBitmapTarget

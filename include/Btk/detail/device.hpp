@@ -55,6 +55,7 @@ enum class PaintDeviceValue   : uint8_t {
     Dpi,         //< Dpi of the drawable                (FPoint)
     PixelFormat, //< Pixel format of the drawable       (PixFormat)
 };
+enum class TextureSource      : uint8_t;
 
 class GLFormat {
     public:
@@ -183,15 +184,6 @@ class PaintContext : public PaintResource, public GraphicsContext {
          */
         virtual auto create_texture(PixFormat fmt, int w, int h, float xdpi = 96, float ydpi = 96) -> AbstractTexture * = 0;
         
-        /**
-         * @brief Check the context supports given feature
-         * 
-         * @param feature 
-         * @return true 
-         * @return false 
-         */
-        virtual bool has_feature(PaintContextFeature feature) = 0;
-
         /**
          * @brief Get the native_handle of it
          * 

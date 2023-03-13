@@ -2,6 +2,7 @@
 
 #include <Btk/painter.hpp>
 #include <Btk/pixels.hpp>
+#include <Btk/font.hpp>
 #include <Btk/defs.hpp>
 
 BTK_NS_BEGIN

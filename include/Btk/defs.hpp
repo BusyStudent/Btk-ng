@@ -118,6 +118,7 @@ class GraphicsDriverInfo;
 class GraphicsContext;
 class GraphicsDriver;
 class PaintResource;
+class PaintContext;
 class PaintDevice;
 class PainterPath;
 class TextLayout;

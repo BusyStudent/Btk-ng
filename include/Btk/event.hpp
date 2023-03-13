@@ -310,6 +310,9 @@ class MouseEvent : public WidgetEvent {
         int y() const {
             return _y;
         }
+        uint8_t clicks() const {
+            return _clicks;
+        }
         Point position() const {
             return Point(_x, _y);
         }

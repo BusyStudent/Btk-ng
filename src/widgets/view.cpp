@@ -21,21 +21,30 @@ Label::~Label() {}
 
 void Label::set_text(u8string_view txt) {
     _layout.set_text(txt);
+    repaint();
+}
+void Label::set_text_align(Alignment alig) {
+    _align = alig;
+    repaint();
 }
 bool Label::paint_event(PaintEvent &) {
     auto border = this->rect().cast<float>();
-    auto style = this->style();
     auto &painter = this->painter();
 
+    // Get textbox
+    auto size = _layout.size();
+    FRect textbox(0, 0, size.w, size.h);
+    textbox = textbox.align_at(border, _align);
+
     painter.set_font(font());
-    painter.set_text_align(_align);
-    painter.set_color(style->text);
+    painter.set_text_align(AlignLeft + AlignTop);
+    painter.set_brush(palette().text());
 
     painter.push_scissor(border);
     painter.draw_text(
         _layout,
-        border.x,
-        border.y + border.h / 2
+        textbox.x,
+        textbox.y
     );
     painter.pop_scissor();
 
@@ -44,6 +53,7 @@ bool Label::paint_event(PaintEvent &) {
 bool Label::change_event(ChangeEvent &event) {
     if (event.type() == Event::FontChanged) {
         _layout.set_font(font());
+        repaint();
     }
     return true;
 }
@@ -449,8 +459,13 @@ bool ListBox::resize_event(ResizeEvent &event) {
 bool ListBox::mouse_press(MouseEvent &event) {
     auto i = item_at(event.x(), event.y());
     set_current_item(i);
-    if (i) {
+    if (i && event.clicks() == 1) {
+        // Single click
         _item_clicked.emit(i);
+    }
+    if (i && event.clicks() % 2 == 0) {
+        BTK_LOG("Item double clicked\n");
+        _item_double_clicked.emit(i);
     }
     return true;
 }
