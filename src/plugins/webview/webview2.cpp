@@ -17,6 +17,9 @@ using Microsoft::WRL::Callback;
 using Microsoft::WRL::ComPtr;
 
 decltype(CreateCoreWebView2EnvironmentWithOptions) *webview2_CreateCoreWebView2EnvironmentWithOptions = nullptr;
+decltype(DllCanUnloadNow)                          *webview2_DllCanUnloadNow = nullptr;
+static ICoreWebView2Environment                    *webview2_enviroment = nullptr;
+static ULONG                                        webview2_refcount = 0;
 
 HMODULE webview2_dll = nullptr;
 
@@ -108,6 +111,7 @@ class MSWebView2 : public ICoreWebView2CreateCoreWebView2EnvironmentCompletedHan
         HMODULE LoadLoader();
 
         Win32::ComInitializer cominit; //< Helper for init com
+        ComPtr<ICoreWebView2Environment> enviroment;
         ComPtr<ICoreWebView2Controller> controller;
         ComPtr<ICoreWebView2> webview;
 
@@ -166,6 +170,12 @@ MSWebView2::~MSWebView2() {
     if (headless) {
         ::DestroyWindow(hwnd);
     }
+
+    // Deref env
+    webview2_refcount --;
+    if (webview2_refcount == 0) {
+        webview2_enviroment = nullptr;
+    }
 }
 
 // Impl as it
@@ -203,8 +213,15 @@ HRESULT MSWebView2::QueryInterface(REFIID id, void **pobj) {
     return E_NOINTERFACE;
 }
 HRESULT MSWebView2::Initialize(HWND h) {
+    // Has env, Just enter create controler
+    if (webview2_enviroment) {
+        return Invoke(S_OK, webview2_enviroment);
+    }
+    // No Global env, try load one
     if (!webview2_dll) {
         webview2_dll = LoadLibraryA("WebView2Loader.dll");
+        webview2_DllCanUnloadNow = (decltype(::DllCanUnloadNow)*)
+            GetProcAddress(webview2_dll, "DllCanUnloadNow");
     }
     if (!webview2_dll) {
         return E_FAIL;
@@ -212,6 +229,8 @@ HRESULT MSWebView2::Initialize(HWND h) {
     if (!webview2_CreateCoreWebView2EnvironmentWithOptions) {
         webview2_CreateCoreWebView2EnvironmentWithOptions = (decltype(::CreateCoreWebView2EnvironmentWithOptions)*)
             (GetProcAddress(webview2_dll, "CreateCoreWebView2EnvironmentWithOptions"));
+        webview2_DllCanUnloadNow = (decltype(::DllCanUnloadNow)*)
+            (GetProcAddress(webview2_dll, "DllCanUnloadNow"));
     }
     if (!webview2_CreateCoreWebView2EnvironmentWithOptions) {
         return E_FAIL;
@@ -259,14 +278,26 @@ HRESULT MSWebView2::Invoke(HRESULT errorCode, ICoreWebView2Environment *createdE
         BTK_LOG(BTK_BLUE("[MSWebView2] ") "Invoke(ICoreWebView2Environment *) => %ld\n", errorCode);
         return errorCode;
     }
-    if (!hwnd) {
-        // Nullptr, create a new one for Headless
-    }
+
+    // Setup global env & refcount
+    webview2_refcount ++;
+    webview2_enviroment = createdEnvironment;
+    enviroment = createdEnvironment;
 
     // auto hr =  createdEnvironment->CreateCoreWebView2Controller(hwnd, this);
     auto hr = createdEnvironment->CreateCoreWebView2Controller(hwnd, this);
     if (FAILED(hr)) {
         BTK_LOG(BTK_BLUE("[MSWebView2] ") "CreateCoreWebView2Controller() => %ld\n", errorCode);
+    }
+
+    // Ok, Try unload if
+    if (webview2_DllCanUnloadNow) {
+        if (webview2_DllCanUnloadNow()) {
+            FreeLibrary(webview2_dll);
+            webview2_dll = nullptr;
+            webview2_DllCanUnloadNow = nullptr;
+            webview2_CreateCoreWebView2EnvironmentWithOptions = nullptr;
+        }
     }
     return hr;
 }

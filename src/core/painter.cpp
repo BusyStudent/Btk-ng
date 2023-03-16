@@ -1,5 +1,6 @@
 #include "build.hpp"
 #include "common/utils.hpp"
+#include "common/painterpath.hpp"
 #include "common/device_resource.hpp"
 
 #if defined(_WIN32)
@@ -39,10 +40,10 @@ BTK_NS_BEGIN
 class PainterPathImpl : public PaintResourceManager, public Refable<PainterPathImpl> {
     public:
         enum : int {
-            ArcTo,
+            // ArcTo,
             MoveTo, 
             LineTo, 
-            QuadTo, 
+            // QuadTo, 
             BezierTo, 
             ClosePath,
             SetWinding
@@ -58,6 +59,8 @@ class PainterPathImpl : public PaintResourceManager, public Refable<PainterPathI
 
         std::vector<float> paths; //< Path Opcode, Args .... 
         FMatrix            matrix = FMatrix::Identity();
+        float              last_x = 0;
+        float              last_y = 0;
 
         void add_cmds(int cmd, std::initializer_list<float> args = {}) {
             paths.emplace_back(cmd);
@@ -644,18 +647,37 @@ void PainterPath::close() {
 }
 void PainterPath::move_to(float x, float y) {
     priv->add_cmds(PainterPathImpl::MoveTo, {x, y});
+    priv->last_x = x;
+    priv->last_y = y;
 }
 void PainterPath::line_to(float x, float y) {
     priv->add_cmds(PainterPathImpl::LineTo, {x, y});
+    priv->last_x = x;
+    priv->last_y = y;
 }
 void PainterPath::quad_to(float x1, float y1, float x2, float y2) {
-    priv->add_cmds(PainterPathImpl::QuadTo, {x1, y1, x2, y2});
+    fallback_painter_quad_to(
+        this, 
+        priv->last_x,
+        priv->last_y,
+        x1, y1,
+        x2, y2
+    );
 }
 void PainterPath::bezier_to(float x1, float y1, float x2, float y2, float x3, float y3) {
     priv->add_cmds(PainterPathImpl::BezierTo, {x1, y1, x2, y2, x3, y3});
+    priv->last_x = x3;
+    priv->last_y = y3;
 }
 void PainterPath::arc_to(float x1, float y1, float x2, float y2, float radius) {
-    priv->add_cmds(PainterPathImpl::ArcTo, {x1, y1, x2, y2, radius});
+    fallback_painter_arc_to(
+        this, 
+        priv->last_x,
+        priv->last_y,
+        x1, y1,
+        x2, y2,
+        radius
+    );
 }
 void PainterPath::close_path() {
     priv->add_cmds(PainterPathImpl::ClosePath);
@@ -694,21 +716,21 @@ void PainterPath::stream(PainterPathSink *sink) const {
                 iter += 3;
                 break;
             }
-            case PainterPathImpl::QuadTo : {
-                sink->quad_to(iter[1], iter[2], iter[3], iter[4]);
-                iter += 5;
-                break;
-            }
+            // case PainterPathImpl::QuadTo : {
+            //     sink->quad_to(iter[1], iter[2], iter[3], iter[4]);
+            //     iter += 5;
+            //     break;
+            // }
             case PainterPathImpl::BezierTo : {
                 sink->bezier_to(iter[1], iter[2], iter[3], iter[4], iter[5], iter[6]);
                 iter += 7;
                 break;
             }
-            case PainterPathImpl::ArcTo : {
-                sink->arc_to(iter[1], iter[2], iter[3], iter[4], iter[5]);
-                iter += 6;
-                break;
-            }
+            // case PainterPathImpl::ArcTo : {
+            //     sink->arc_to(iter[1], iter[2], iter[3], iter[4], iter[5]);
+            //     iter += 6;
+            //     break;
+            // }
             case PainterPathImpl::ClosePath : {
                 sink->close_path();
                 iter += 1;

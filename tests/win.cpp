@@ -523,6 +523,7 @@ int main () {
     view.set_image(test_image());
     view.set_keep_aspect_ratio(true);
     view.set_window_title("ImageView");
+    view.set_attribute(WidgetAttrs::BackgroundTransparent, true);
     view.show();
     view.add_event_filter([](Object *w, Event &event, void *data) {
         if (event.type() == Event::KeyRelease) {

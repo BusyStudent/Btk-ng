@@ -69,6 +69,8 @@ enum class WidgetAttrs : uint8_t {
     None          = 0, //< No attributes
     Debug         = 1 << 0, //< Show debug info
     DeleteOnClose = 1 << 1, //< Widget Delete after closed
+    ClipRectangle = 1 << 2, //< Clip rect, avoid draw out of there  
+    BackgroundTransparent = 1 << 3, //< Make background transparent
 };
 // Class for widget
 class SizePolicy {

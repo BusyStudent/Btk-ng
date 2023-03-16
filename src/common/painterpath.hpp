@@ -9,6 +9,7 @@
 // Painter Fallback inline function 
 
 BTK_NS_BEGIN
+
 namespace {
 
     //
@@ -41,7 +42,7 @@ namespace {
      * @param radius 
      */
     void fallback_painter_arc_to(
-        PainterPathSink *sink, 
+        PainterPath *sink, 
         float last_x, float last_y, 
         float x1, float y1, float x2, float y2, float radius
     ) {
@@ -216,7 +217,7 @@ namespace {
 
     }
 
-    void fallback_painter_quad_to(PainterPathSink *sink, float last_x, float last_y, float cx, float cy, float x, float y) {
+    void fallback_painter_quad_to(PainterPath *sink, float last_x, float last_y, float cx, float cy, float x, float y) {
         float x0 = last_x;
         float y0 = last_y;
 

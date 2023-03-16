@@ -20,7 +20,7 @@ using Win32::Direct2DInitializer;
 // Helper class for convert direct2d path to
 class IBtkTransformSink final : public ID2D1GeometrySink {
     public:
-        IBtkTransformSink(const D2D1::Matrix3x2F &mat, PainterPathSink *s) : mat(mat), sink(s) { }
+        IBtkTransformSink(const D2D1::Matrix3x2F &mat, PainterPath *s) : mat(mat), sink(s) { }
 
         HRESULT QueryInterface(REFIID riid, void **lp) override {
             if (riid == __uuidof(ID2D1GeometrySink)) {
@@ -119,7 +119,7 @@ class IBtkTransformSink final : public ID2D1GeometrySink {
         }
     private:
         const D2D1::Matrix3x2F &mat;
-        PainterPathSink *sink;
+        PainterPath *sink;
 };
 
 class IDWritePathRenderer final : public IDWriteTextRenderer {

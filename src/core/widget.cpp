@@ -213,7 +213,12 @@ bool Widget::handle(Event &event) {
             bool restore_state = false;
 
             if (_win) {
-                _painter.set_brush(_palette.window());
+                if (uint8_t(_attrs & WidgetAttrs::BackgroundTransparent)) {
+                    _painter.set_color(Color::Transparent);
+                }
+                else {
+                    _painter.set_brush(_palette.window());
+                }
                 _painter.begin();
                 _painter.clear();
             }
@@ -231,6 +236,14 @@ bool Widget::handle(Event &event) {
                     p.set_alpha(_opacity * p.alpha());
                     restore_state = true;
                 }
+            }
+            if (uint8_t(_attrs & WidgetAttrs::ClipRectangle)) {
+                auto &p = painter();
+                if (!restore_state) {
+                    p.save();
+                    restore_state = true;
+                }
+                p.scissor(rect());
             }
 
             // Paint current widget first (background)

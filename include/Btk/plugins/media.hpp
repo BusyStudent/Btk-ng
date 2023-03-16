@@ -85,6 +85,8 @@ class BTKAPI VideoWidget     : public AbstractVideoSurface, public Widget {
         VideoWidget(Widget *parent = nullptr);
         ~VideoWidget();
 
+        void set_background_color(Color color);
+    protected:
         bool paint_event(PaintEvent &) override;
     private:
         // AbstractVideoSurface

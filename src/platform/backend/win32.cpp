@@ -10,6 +10,7 @@
 #include <Btk/event.hpp>
 #include <unordered_map>
 #include <Windows.h>
+#include <dwmapi.h>
 #include <wingdi.h>
 #include <ShlObj.h>
 #include <csignal>
@@ -88,6 +89,14 @@ LIB_BEGIN(Win32User32, "user32.dll")
     LIB_PROC4(UINT(* WINAPI)()    , GetDpiForSystem)
 LIB_END(Win32User32)
 
+// Dwmapi
+LIB_BEGIN(Win32Dwmapi, "dwmapi.dll")
+    LIB_PROC(DwmEnableBlurBehindWindow)
+    LIB_PROC(DwmGetColorizationColor)
+    LIB_PROC(DwmIsCompositionEnabled)
+    LIB_PROC(DwmExtendFrameIntoClientArea)
+LIB_END(Win32Dwmapi)
+
 // Make sure the MSG can be casted to a Win32Callback
 static_assert(sizeof(LPARAM) >= sizeof(void *));
 static_assert(sizeof(WPARAM) >= sizeof(void *));
@@ -136,18 +145,21 @@ class Win32Window final : public AbstractWindow {
         widget_t   bind_widget(widget_t w) override;
         any_t      gc_create(const char_t *type) override;
 
-
+        LRESULT    wnd_proc(UINT msg, WPARAM wparam, LPARAM lparam);
         LRESULT    proc_keyboard(UINT msg, WPARAM wp, LPARAM lp);
 
         RECT       adjust_rect(int x, int y, int w, int h);
         DWORD      exstyle() const;
         DWORD      style() const;
 
-        int      btk_to_client(int v) const;
-        int      client_to_btk(int v) const;
+        int        btk_to_client(int v) const;
+        int        client_to_btk(int v) const;
 
-        POINTS   btk_to_client(POINTS) const;
-        POINTS   client_to_btk(POINTS) const;
+        POINTS     btk_to_client(POINTS) const;
+        POINTS     client_to_btk(POINTS) const;
+
+        // Method borrowed from GLFW
+        BOOL       enable_alpha_blend();
 
         HWND         hwnd   = {};
         WindowFlags  flags  = {};
@@ -227,7 +239,7 @@ class Win32Service final : public DesktopService {
 
 };
 
-class Win32Driver final  : public GraphicsDriver, public Win32User32 {
+class Win32Driver final  : public GraphicsDriver, public Win32User32, public Win32Dwmapi {
     public:
         Win32Driver();
         ~Win32Driver();
@@ -712,380 +724,7 @@ LRESULT Win32Driver::wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
     if (it->second->widget == nullptr) {
         return DefWindowProcW(hwnd, msg, wparam, lparam);
     }
-    Win32Window *win = it->second;
-    Widget *widget   = win->widget;
-    switch (msg) {
-        // case WM_QUIT : {
-        //     context->send_event(QuitEvent(wparam));
-        //     break;
-        // }
-        case WM_CLOSE : {
-            CloseEvent event;
-            event.accept(); //< Default is to accept the close event.
-            event.set_widget(win->widget);
-            event.set_timestamp(GetTicks());
-            
-            widget->handle(event);
-
-            if (event.is_accepted()) {
-                // Remove from the list of windows.
-                // TODO : What should we do next? Destroy the window?
-                windows.erase(it);
-                ShowWindow(hwnd, SW_HIDE);
-
-                if (windows.empty()) {
-                    WIN_LOG("[Win32] All window closed, Quitting\n");
-                    PostQuitMessage(0);
-                    
-                    // Event e(Event::Quit);
-                    // context->send_event(e);
-                }
-            }
-            break;
-        }
-        case WM_PAINT : {
-            PaintEvent event;
-            event.set_widget(win->widget);
-            event.set_timestamp(GetTicks());
-
-            widget->handle(event);
-            // Draw children
-            return DefWindowProcW(hwnd, msg, wparam, lparam);
-        }
-        case WM_ERASEBKGND : {
-            // Default diaable
-            // For avoid flickering, we disable the background erase.
-            // WIN_LOG("WM_ERASEBKGND\n");
-            if (win->erase_background) {
-                return DefWindowProcW(hwnd, msg, wparam, lparam);
-            }
-            return 1;
-        }
-        case WM_SIZE : {
-            ResizeEvent event;
-            event.set_widget(win->widget);
-            event.set_timestamp(GetTicks());
-
-            auto [w, h] = win->size();
-
-            if (w == 0 || h == 0) {
-                // Probably mini, ignore it
-                break;
-            }
-
-            WIN_LOG("[Win32] Window resize to Size(%d, %d)\n", w, h);
-
-            event.set_new_size(
-                // LOWORD(lparam), HIWORD(lparam)
-                w, h
-            );
-
-            widget->handle(event);
-            break;
-        }
-        case WM_GETMINMAXINFO : {
-            MINMAXINFO *mmi = (MINMAXINFO*)lparam;
-            if (win->maximum_size.is_valid()) {
-                auto rect = win->adjust_rect(
-                    0, 
-                    0, 
-                    win->btk_to_client(win->maximum_size.w), 
-                    win->btk_to_client(win->maximum_size.h)
-                );
-                mmi->ptMaxTrackSize.x = rect.right - rect.left;
-                mmi->ptMaxTrackSize.y = rect.bottom - rect.top;
-            }
-            if (win->minimum_size.is_valid()) {
-                auto rect = win->adjust_rect(
-                    0, 
-                    0, 
-                    win->btk_to_client(win->minimum_size.w), 
-                    win->btk_to_client(win->minimum_size.h)
-                );
-                mmi->ptMinTrackSize.x = rect.right - rect.left;
-                mmi->ptMinTrackSize.y = rect.bottom - rect.top;
-            }
-            break;
-        }
-        // case WM_COMMAND : {
-        //     printf("Menu command %d\n", wparam);
-        //     break;
-        // }
-        case WM_SHOWWINDOW : {
-            Event::Type type;
-            if (wparam) {
-                type = Event::Show;
-            }
-            else {
-                type = Event::Hide;
-            }
-            WidgetEvent event(type);
-            event.set_widget(win->widget);
-            event.set_timestamp(GetTicks());
-            widget->handle(event);
-            break;
-        }
-        case WM_MOUSEMOVE : {
-            if (!win->mouse_enter) {
-                // WIN_LOG("Mouse enter\n");
-                win->mouse_enter = true;
-                WidgetEvent event(Event::MouseEnter);
-                event.set_widget(win->widget);
-                event.set_timestamp(GetTicks());
-                widget->handle(event);
-
-                // Track mouse leave
-                TRACKMOUSEEVENT tme;
-                tme.cbSize = sizeof(tme);
-                tme.dwFlags = TME_LEAVE;
-                tme.hwndTrack = hwnd;
-                TrackMouseEvent(&tme);
-            }
-
-            auto point = win->client_to_btk(MAKEPOINTS(lparam));
-
-            MotionEvent event(point.x, point.y);
-            event.set_widget(win->widget);
-            event.set_timestamp(GetTicks());
-
-            if (win->mouse_last_x != -1 && win->mouse_last_y != -1) {
-                event.set_rel(
-                    win->client_to_btk(point.x - win->mouse_last_x),
-                    win->client_to_btk(point.y - win->mouse_last_y)
-                );
-            }
-
-            // Update previous position
-            win->mouse_last_x = point.x;
-            win->mouse_last_y = point.y;
-
-            widget->handle(event);
-            break;
-        }
-        case WM_MOUSELEAVE : {
-            // WIN_LOG("Mouse leave\n");
-            win->mouse_enter = false;
-            win->mouse_last_x = -1;
-            win->mouse_last_y = -1;
-
-            WidgetEvent event(Event::MouseLeave);
-            event.set_widget(win->widget);
-            event.set_timestamp(GetTicks());
-            widget->handle(event);
-
-            // Untrack mouse leave
-            TRACKMOUSEEVENT tme = {};
-            tme.cbSize = sizeof(tme);
-            tme.dwFlags = TME_LEAVE | TME_CANCEL;
-            tme.hwndTrack = hwnd;
-            TrackMouseEvent(&tme);
-
-            break;
-        }
-        case WM_MOUSEWHEEL : {
-            [[fallthrough]];
-        }
-        case WM_MOUSEHWHEEL : {
-            int x = 0;
-            int y = 0;
-
-            if (msg == WM_MOUSEWHEEL) {
-                // WIN_LOG("WM_MOUSEWHEEL\n");
-                y = GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA;
-            }
-            else {
-                // WIN_LOG("WM_HMOUSEWHEEL\n");
-                x = GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA;
-            }
-
-            WIN_LOG("[Win32] Mouse wheel %d, %d\n", x, y);
-
-            WheelEvent event(x, y);
-            event.set_widget(win->widget);
-            event.set_timestamp(GetTicks());
-            widget->handle(event);
-            break;
-        }
-        case WM_LBUTTONDOWN : {
-            [[fallthrough]];
-        }
-        case WM_RBUTTONDOWN : {
-            auto current_ticks = GetTickCount();
-            auto diff = current_ticks - win->mouse_last_clicked;
-            auto point = win->client_to_btk(MAKEPOINTS(lparam));
-
-            if (diff < GetDoubleClickTime()) {
-                // Double click
-                win->mouse_clicks += 1;
-            }
-            else {
-                win->mouse_clicks = 1;
-            }
-
-            win->mouse_last_clicked = current_ticks;
-
-            MouseEvent event(
-                Event::MousePress,
-                point.x, point.y,
-                win->mouse_clicks //< Send clicks
-            );
-            if (msg == WM_LBUTTONDOWN) {
-                event.set_button(MouseButton::Left);
-            }
-            else {
-                event.set_button(MouseButton::Right);
-            }
-            event.set_widget(win->widget);
-            event.set_timestamp(GetTicks());
-            widget->handle(event);
-            break;
-        }
-        case WM_LBUTTONUP : {
-            [[fallthrough]];
-        }
-        case WM_RBUTTONUP : {
-            auto pos = win->client_to_btk(MAKEPOINTS(lparam));
-            MouseEvent event(Event::MouseRelease, pos.x, pos.y, wparam);
-            if (msg == WM_LBUTTONUP) {
-                event.set_button(MouseButton::Left);
-            }
-            else {
-                event.set_button(MouseButton::Right);
-            }
-            event.set_widget(win->widget);
-            event.set_timestamp(GetTicks());
-            widget->handle(event);
-            break;
-        }
-        case WM_SYSKEYDOWN : {
-            [[fallthrough]];
-        }
-        case WM_SYSKEYUP : {
-            [[fallthrough]];
-        }
-        case WM_KEYDOWN : {
-            [[fallthrough]];
-        }
-        case WM_KEYUP : {
-            // Forward to widget
-            return win->proc_keyboard(msg, wparam, lparam);
-        }
-        case WM_SETFOCUS : {
-            WidgetEvent event(Event::FocusGained);
-            event.set_widget(win->widget);
-            event.set_timestamp(GetTicks());
-            widget->handle(event);
-            break;
-        }
-        case WM_KILLFOCUS : {
-            WidgetEvent event(Event::FocusLost);
-            event.set_widget(win->widget);
-            event.set_timestamp(GetTicks());
-            widget->handle(event);
-            break;
-        }
-        case WM_DROPFILES : {
-            auto drop = (HDROP)wparam;
-
-            // Get where the drop happened
-            POINT p;            
-            DragQueryPoint(drop, &p);
-            p.x = win->client_to_btk(p.x);
-            p.y = win->client_to_btk(p.y);
-
-            // Get drop string
-            UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
-            WIN_LOG("[Win32] Drop count: %d\n", count);
-
-            // Begin drop
-            DropEvent event;
-            event.set_timestamp(GetTicks());
-            event.set_position(p.x, p.y);
-            event.set_widget(win->widget);
-            event.set_type(Event::DropBegin);
-
-            widget->handle(event);
-
-            std::wstring drop_string;
-            for (UINT i = 0; i < count; i++) {
-                // Query the file name
-                UINT len = DragQueryFileW(drop, i, nullptr, 0);
-                drop_string.reserve(len);
-
-                DragQueryFileW(drop, i, drop_string.data(), len);
-
-                // Make DropEvent
-                event.set_text(u8string::from(drop_string));
-                event.set_type(Event::DropFile);
-
-                widget->handle(event);
-            }
-
-            // End drop
-            event.set_type(Event::DropEnd);
-            widget->handle(event);
-
-            DragFinish(drop);
-            break;
-        }
-        // IME Here
-        case WM_IME_CHAR : {
-            // WIN_LOG("WM_IME_CHAR char: %d\n", wparam);
-            if (!win->textinput_enabled) {
-                break;
-            }
-
-            uchar_t c = wparam;
-            TextInputEvent event(u8string::from(&c, 1));
-            event.set_widget(win->widget);
-            event.set_timestamp(GetTicks());
-            widget->handle(event);
-            break;
-        }
-        case WM_CHAR : {
-            // if (!win->textinput_enabled) {
-            //     WIN_LOG("Text input disabled, Drop it\n");
-            //     break;
-            // }
-            // Check the range of the char
-            if (!win->textinput_enabled) {
-                // WIN_LOG("TextInput disabled, Drop it\n");
-                break;
-            }
-            if (wparam < 0x20 || wparam > 0x7E) {
-                // WIN_LOG("Drop char: %d\n", wparam);
-                break;
-            }
-            else {
-                // WIN_LOG("WM_CHAR : %d\n", wparam);
-            }
-
-            char16_t c = wparam;
-            TextInputEvent event(u8string::from(&c, 1));
-            event.set_widget(win->widget);
-            event.set_timestamp(GetTicks());
-            widget->handle(event);
-            break;
-        }
-        case WM_DPICHANGED : {
-            RECT *suggested_rect = reinterpret_cast<RECT*>(lparam);
-            win->win_dpi = HIWORD(wparam);
-
-            WIN_LOG("[Win32] DPI Changed to %d\n", int(win->win_dpi));
-            break;
-        }
-        // case WM_MOVE : {
-        //     auto x = LOWORD(lparam);
-        //     auto y = HIWORD(lparam);
-        //     WIN_LOG("[Win32] Window move to %d, %d\n", int(x), int(y));
-        //     break;
-        // }
-
-        default : {
-            return DefWindowProcW(hwnd, msg, wparam, lparam);
-        }
-    }
-    return 0;
+    return it->second->wnd_proc(msg, wparam, lparam);
 }
 window_t Win32Driver::window_create(u8string_view title, int width, int height, WindowFlags flags) {
     if (working_thread_id != GetCurrentThreadId()) {
@@ -1147,6 +786,7 @@ window_t Win32Driver::window_create(u8string_view title, int width, int height, 
     // Check flags
     if ((flags & WindowFlags::NeverShowed) != WindowFlags::NeverShowed) {
         window_add(win);
+        win->enable_alpha_blend();
     }
     return win;
 }
@@ -1652,6 +1292,377 @@ Point    Win32Window::map_point(Point p, int type) {
     }
 }
 
+LRESULT Win32Window::wnd_proc(UINT msg, WPARAM wparam, LPARAM lparam) {
+    switch (msg) {
+        // case WM_QUIT : {
+        //     context->send_event(QuitEvent(wparam));
+        //     break;
+        // }
+        case WM_CLOSE : {
+            CloseEvent event;
+            event.accept(); //< Default is to accept the close event.
+            event.set_widget(widget);
+            event.set_timestamp(GetTicks());
+            
+            widget->handle(event);
+
+            if (event.is_accepted()) {
+                // Remove from the list of windows.
+                // TODO : What should we do next? Destroy the window?
+                driver->windows.erase(hwnd);
+                ShowWindow(hwnd, SW_HIDE);
+
+                if (driver->windows.empty()) {
+                    WIN_LOG("[Win32] All window closed, Quitting\n");
+                    PostQuitMessage(0);
+                }
+            }
+            break;
+        }
+        case WM_PAINT : {
+            PaintEvent event;
+            event.set_widget(widget);
+            event.set_timestamp(GetTicks());
+
+            widget->handle(event);
+            // Draw children
+            return DefWindowProcW(hwnd, msg, wparam, lparam);
+        }
+        case WM_ERASEBKGND : {
+            // Default diaable
+            // For avoid flickering, we disable the background erase.
+            // WIN_LOG("WM_ERASEBKGND\n");
+            if (erase_background) {
+                return DefWindowProcW(hwnd, msg, wparam, lparam);
+            }
+            return 1;
+        }
+        case WM_SIZE : {
+            ResizeEvent event;
+            event.set_widget(widget);
+            event.set_timestamp(GetTicks());
+
+            auto [w, h] = size();
+
+            if (w == 0 || h == 0) {
+                // Probably mini, ignore it
+                break;
+            }
+
+            WIN_LOG("[Win32] Window resize to Size(%d, %d)\n", w, h);
+
+            event.set_new_size(
+                // LOWORD(lparam), HIWORD(lparam)
+                w, h
+            );
+
+            widget->handle(event);
+            break;
+        }
+        case WM_GETMINMAXINFO : {
+            MINMAXINFO *mmi = (MINMAXINFO*)lparam;
+            if (maximum_size.is_valid()) {
+                auto rect = adjust_rect(
+                    0, 
+                    0, 
+                    btk_to_client(maximum_size.w), 
+                    btk_to_client(maximum_size.h)
+                );
+                mmi->ptMaxTrackSize.x = rect.right - rect.left;
+                mmi->ptMaxTrackSize.y = rect.bottom - rect.top;
+            }
+            if (minimum_size.is_valid()) {
+                auto rect = adjust_rect(
+                    0, 
+                    0, 
+                    btk_to_client(minimum_size.w), 
+                    btk_to_client(minimum_size.h)
+                );
+                mmi->ptMinTrackSize.x = rect.right - rect.left;
+                mmi->ptMinTrackSize.y = rect.bottom - rect.top;
+            }
+            break;
+        }
+        // case WM_COMMAND : {
+        //     printf("Menu command %d\n", wparam);
+        //     break;
+        // }
+        case WM_SHOWWINDOW : {
+            Event::Type type;
+            if (wparam) {
+                type = Event::Show;
+            }
+            else {
+                type = Event::Hide;
+            }
+            WidgetEvent event(type);
+            event.set_widget(widget);
+            event.set_timestamp(GetTicks());
+            widget->handle(event);
+            break;
+        }
+        case WM_MOUSEMOVE : {
+            if (!mouse_enter) {
+                // WIN_LOG("Mouse enter\n");
+                mouse_enter = true;
+                WidgetEvent event(Event::MouseEnter);
+                event.set_widget(widget);
+                event.set_timestamp(GetTicks());
+                widget->handle(event);
+
+                // Track mouse leave
+                TRACKMOUSEEVENT tme;
+                tme.cbSize = sizeof(tme);
+                tme.dwFlags = TME_LEAVE;
+                tme.hwndTrack = hwnd;
+                TrackMouseEvent(&tme);
+            }
+
+            auto point = client_to_btk(MAKEPOINTS(lparam));
+
+            MotionEvent event(point.x, point.y);
+            event.set_widget(widget);
+            event.set_timestamp(GetTicks());
+
+            if (mouse_last_x != -1 && mouse_last_y != -1) {
+                event.set_rel(
+                    client_to_btk(point.x - mouse_last_x),
+                    client_to_btk(point.y - mouse_last_y)
+                );
+            }
+
+            // Update previous position
+            mouse_last_x = point.x;
+            mouse_last_y = point.y;
+
+            widget->handle(event);
+            break;
+        }
+        case WM_MOUSELEAVE : {
+            // WIN_LOG("Mouse leave\n");
+            mouse_enter = false;
+            mouse_last_x = -1;
+            mouse_last_y = -1;
+
+            WidgetEvent event(Event::MouseLeave);
+            event.set_widget(widget);
+            event.set_timestamp(GetTicks());
+            widget->handle(event);
+
+            // Untrack mouse leave
+            TRACKMOUSEEVENT tme = {};
+            tme.cbSize = sizeof(tme);
+            tme.dwFlags = TME_LEAVE | TME_CANCEL;
+            tme.hwndTrack = hwnd;
+            TrackMouseEvent(&tme);
+
+            break;
+        }
+        case WM_MOUSEWHEEL : {
+            [[fallthrough]];
+        }
+        case WM_MOUSEHWHEEL : {
+            int x = 0;
+            int y = 0;
+
+            if (msg == WM_MOUSEWHEEL) {
+                // WIN_LOG("WM_MOUSEWHEEL\n");
+                y = GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA;
+            }
+            else {
+                // WIN_LOG("WM_HMOUSEWHEEL\n");
+                x = GET_WHEEL_DELTA_WPARAM(wparam) / WHEEL_DELTA;
+            }
+
+            WIN_LOG("[Win32] Mouse wheel %d, %d\n", x, y);
+
+            WheelEvent event(x, y);
+            event.set_widget(widget);
+            event.set_timestamp(GetTicks());
+            widget->handle(event);
+            break;
+        }
+        case WM_LBUTTONDOWN : {
+            [[fallthrough]];
+        }
+        case WM_RBUTTONDOWN : {
+            auto current_ticks = GetTickCount();
+            auto diff = current_ticks - mouse_last_clicked;
+            auto point = client_to_btk(MAKEPOINTS(lparam));
+
+            if (diff < GetDoubleClickTime()) {
+                // Double click
+                mouse_clicks += 1;
+            }
+            else {
+                mouse_clicks = 1;
+            }
+
+            mouse_last_clicked = current_ticks;
+
+            MouseEvent event(
+                Event::MousePress,
+                point.x, point.y,
+                mouse_clicks //< Send clicks
+            );
+            if (msg == WM_LBUTTONDOWN) {
+                event.set_button(MouseButton::Left);
+            }
+            else {
+                event.set_button(MouseButton::Right);
+            }
+            event.set_widget(widget);
+            event.set_timestamp(GetTicks());
+            widget->handle(event);
+            break;
+        }
+        case WM_LBUTTONUP : {
+            [[fallthrough]];
+        }
+        case WM_RBUTTONUP : {
+            auto pos = client_to_btk(MAKEPOINTS(lparam));
+            MouseEvent event(Event::MouseRelease, pos.x, pos.y, wparam);
+            if (msg == WM_LBUTTONUP) {
+                event.set_button(MouseButton::Left);
+            }
+            else {
+                event.set_button(MouseButton::Right);
+            }
+            event.set_widget(widget);
+            event.set_timestamp(GetTicks());
+            widget->handle(event);
+            break;
+        }
+        case WM_SYSKEYDOWN : {
+            [[fallthrough]];
+        }
+        case WM_SYSKEYUP : {
+            [[fallthrough]];
+        }
+        case WM_KEYDOWN : {
+            [[fallthrough]];
+        }
+        case WM_KEYUP : {
+            // Forward to widget
+            return proc_keyboard(msg, wparam, lparam);
+        }
+        case WM_SETFOCUS : {
+            WidgetEvent event(Event::FocusGained);
+            event.set_widget(widget);
+            event.set_timestamp(GetTicks());
+            widget->handle(event);
+            break;
+        }
+        case WM_KILLFOCUS : {
+            WidgetEvent event(Event::FocusLost);
+            event.set_widget(widget);
+            event.set_timestamp(GetTicks());
+            widget->handle(event);
+            break;
+        }
+        case WM_DROPFILES : {
+            auto drop = (HDROP)wparam;
+
+            // Get where the drop happened
+            POINT p;            
+            DragQueryPoint(drop, &p);
+            p.x = client_to_btk(p.x);
+            p.y = client_to_btk(p.y);
+
+            // Get drop string
+            UINT count = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+            WIN_LOG("[Win32] Drop count: %d\n", count);
+
+            // Begin drop
+            DropEvent event;
+            event.set_timestamp(GetTicks());
+            event.set_position(p.x, p.y);
+            event.set_widget(widget);
+            event.set_type(Event::DropBegin);
+
+            widget->handle(event);
+
+            std::wstring drop_string;
+            for (UINT i = 0; i < count; i++) {
+                // Query the file name
+                UINT len = DragQueryFileW(drop, i, nullptr, 0);
+                drop_string.reserve(len);
+
+                DragQueryFileW(drop, i, drop_string.data(), len);
+
+                // Make DropEvent
+                event.set_text(u8string::from(drop_string));
+                event.set_type(Event::DropFile);
+
+                widget->handle(event);
+            }
+
+            // End drop
+            event.set_type(Event::DropEnd);
+            widget->handle(event);
+
+            DragFinish(drop);
+            break;
+        }
+        // IME Here
+        case WM_IME_CHAR : {
+            // WIN_LOG("WM_IME_CHAR char: %d\n", wparam);
+            if (!textinput_enabled) {
+                break;
+            }
+
+            uchar_t c = wparam;
+            TextInputEvent event(u8string::from(&c, 1));
+            event.set_widget(widget);
+            event.set_timestamp(GetTicks());
+            widget->handle(event);
+            break;
+        }
+        case WM_CHAR : {
+            // if (!textinput_enabled) {
+            //     WIN_LOG("Text input disabled, Drop it\n");
+            //     break;
+            // }
+            // Check the range of the char
+            if (!textinput_enabled) {
+                // WIN_LOG("TextInput disabled, Drop it\n");
+                break;
+            }
+            if (wparam < 0x20 || wparam > 0x7E) {
+                // WIN_LOG("Drop char: %d\n", wparam);
+                break;
+            }
+            else {
+                // WIN_LOG("WM_CHAR : %d\n", wparam);
+            }
+
+            char16_t c = wparam;
+            TextInputEvent event(u8string::from(&c, 1));
+            event.set_widget(widget);
+            event.set_timestamp(GetTicks());
+            widget->handle(event);
+            break;
+        }
+        case WM_DPICHANGED : {
+            RECT *suggested_rect = reinterpret_cast<RECT*>(lparam);
+            win_dpi = HIWORD(wparam);
+
+            WIN_LOG("[Win32] DPI Changed to %d\n", int(win_dpi));
+            break;
+        }
+        // case WM_MOVE : {
+        //     auto x = LOWORD(lparam);
+        //     auto y = HIWORD(lparam);
+        //     WIN_LOG("[Win32] Window move to %d, %d\n", int(x), int(y));
+        //     break;
+        // }
+
+        default : {
+            return DefWindowProcW(hwnd, msg, wparam, lparam);
+        }
+    }
+    return 0;
+}
 LRESULT Win32Window::proc_keyboard(UINT msg, WPARAM wp, LPARAM lp) {
     Event::Type type;
     bool press;
@@ -1881,6 +1892,31 @@ DWORD  Win32Window::style() const {
 }
 DWORD  Win32Window::exstyle() const {
     return GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+}
+
+// Experimental to enable alpha blending
+// Borrowed by from GLFW
+BOOL   Win32Window::enable_alpha_blend() {
+    // Get version
+    BOOL composition = FALSE;
+    if (FAILED(driver->DwmIsCompositionEnabled(&composition)) || !composition) {
+        return FALSE;
+    }
+
+    BOOL opaque;
+    DWORD color;
+
+    if ((SUCCEEDED(driver->DwmGetColorizationColor(&color, &opaque)))) {
+        HRGN region = ::CreateRectRgn(0, 0, -1, -1);
+        DWM_BLURBEHIND bb = {};
+        bb.dwFlags = DWM_BB_ENABLE | DWM_BB_BLURREGION;
+        bb.hRgnBlur = region;
+        bb.fEnable = TRUE;
+        driver->DwmEnableBlurBehindWindow(hwnd, &bb);
+        ::DeleteObject(region);
+        return TRUE;
+    }
+    return FALSE;
 }
 
 // Win32GLContext

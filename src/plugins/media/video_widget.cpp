@@ -10,6 +10,10 @@ VideoWidget::VideoWidget(Widget *p) : Widget(p) {
 VideoWidget::~VideoWidget() {
 
 }
+void VideoWidget::set_background_color(Color c) {
+    background = c;
+    repaint();
+}
 bool VideoWidget::paint_event(PaintEvent &) {
     auto &p = painter();
     p.set_color(background);

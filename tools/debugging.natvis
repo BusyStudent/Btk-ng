@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+
+  <!-- Strinb -->
+  <Type Name="Btk::u8string">
+    <DisplayString>{_str}</DisplayString>
+    <Expand>
+      <!-- <Item Name="[length]">(*this).length()</Item> -->
+      <Item Name="[size]">_str.size()</Item>
+      <Item Name="[c_str]">_str.c_str()</Item>
+      <Item Name="[capacity]">_str.capacity()</Item>
+    </Expand>
+  </Type>
+
+  <Type Name="Btk::u8string_view">
+    <DisplayString>{_str}</DisplayString>
+    <Expand>
+      <!-- <Item Name="[length]">(*this).length()</Item> -->
+      <Item Name="[size]">_str.size()</Item>
+      <Item Name="[data]">_str.data()</Item>
+    </Expand>
+  </Type>
+
+  <!-- PixBuffer -->
+  <Type Name="Btk::PixBuffer">
+    <DisplayString> PixBuffer({_width}, {_height}) </DisplayString>
+    <Expand>
+      <Item Name="[width]"> _width</Item>
+      <Item Name="[height]"> _height</Item>
+      <Item Name="[pitch]"> _pitch</Item>
+      <Item Name="[format]"> _format</Item>
+      <Item Name="[bpp]"> int(_bpp)</Item>
+      <Item Name="[bytes_per_pixel]"> (_bpp + 7) / 8</Item>
+      <Item Name="[refcount]"> *_refcount</Item>
+
+      <!-- Pixels -->
+      <Synthetic Name="[pixels]">
+        <Expand>
+          <ArrayItems IncludeView="_format == Btk::PixFormat::RGBA32">
+            <Size>_width * _height</Size>
+            <ValuePointer> (Btk::Color*)_pixels </ValuePointer>
+          </ArrayItems>
+        </Expand>
+      </Synthetic>
+    </Expand>
+  </Type>
+
+  <Type Name="Btk::Color">
+    <DisplayString> ({int(r)}, {int(g)}, {int(b)}, {int(a)}) </DisplayString>
+    <Expand>
+      <Item Name="[r]"> int(r) </Item>
+      <Item Name="[g]"> int(g) </Item>
+      <Item Name="[b]"> int(b) </Item>
+      <Item Name="[a]"> int(a) </Item>
+    </Expand>
+  </Type> 
+
+
+  <Type Name="Btk::Widget">
+    <DisplayString> Widget </DisplayString>
+    <Expand>
+      <Item Name="[rect]"> _rect</Item>
+      <Item Name="[parent]"> _parent</Item>
+      <Item Name="[children]"> _children</Item>
+      <Item Name="[opacity]"> _opacity</Item>
+    </Expand>
+  </Type>
+  
+</AutoVisualizer>

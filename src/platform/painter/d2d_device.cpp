@@ -1,5 +1,4 @@
 #include "build.hpp"
-#include "fallback.hpp"
 #include "common/win32/direct2d.hpp"
 #include "common/win32/wincodec.hpp"
 #include "common/win32/dwrite.hpp"
@@ -282,9 +281,9 @@ class D2DPath         final : public PaintResource, public PainterPathSink {
 
         void move_to(float x, float y) override;
         void line_to(float x, float y) override;
-        void quad_to(float x1, float y1, float x2, float y2) override;
+        // void quad_to(float x1, float y1, float x2, float y2) override;
         void bezier_to(float x1, float y1, float x2, float y2, float x3, float y3) override;
-        void arc_to(float x1, float y1, float x2, float y2, float radius) override;
+        // void arc_to(float x1, float y1, float x2, float y2, float radius) override;
 
         void close_path() override;
         void set_winding(PathWinding winding) override;
@@ -1203,16 +1202,16 @@ void D2DPath::line_to(float x, float y) {
     last_x = x;
     last_x = y;
 }
-void D2DPath::quad_to(float x1, float y1, float x2, float y2) {
-    sink->AddQuadraticBezier(
-        D2D1::QuadraticBezierSegment(
-            D2D1::Point2F(x1, y1),
-            D2D1::Point2F(x2, y2)
-        )
-    );
-    last_x = x2;
-    last_x = y2;
-}
+// void D2DPath::quad_to(float x1, float y1, float x2, float y2) {
+//     sink->AddQuadraticBezier(
+//         D2D1::QuadraticBezierSegment(
+//             D2D1::Point2F(x1, y1),
+//             D2D1::Point2F(x2, y2)
+//         )
+//     );
+//     last_x = x2;
+//     last_x = y2;
+// }
 void D2DPath::bezier_to(float x1, float y1, float x2, float y2, float x3, float y3) {
     sink->AddBezier(
         D2D1::BezierSegment(
@@ -1224,10 +1223,10 @@ void D2DPath::bezier_to(float x1, float y1, float x2, float y2, float x3, float 
     last_x = x3;
     last_x = y3;
 }
-void D2DPath::arc_to(float x1, float y1, float x2, float y2, float radius) {
-    BTK_ONCE(BTK_LOG("NanoVG impl for arc_to\n"));
-    fallback_painter_arc_to(this, last_x, last_y, x1, y1, x2, y2, radius);
-}
+// void D2DPath::arc_to(float x1, float y1, float x2, float y2, float radius) {
+//     BTK_ONCE(BTK_LOG("NanoVG impl for arc_to\n"));
+//     fallback_painter_arc_to(this, last_x, last_y, x1, y1, x2, y2, radius);
+// }
 void D2DPath::close_path() {
     sink->EndFigure(D2D1_FIGURE_END_CLOSED);
     is_figure_open = false;
@@ -1330,7 +1329,12 @@ auto D2DWicDevice::paint_context() -> PaintContext* {
 D2DHwndDevice::D2DHwndDevice(HWND h) {
     hwnd = h;
     auto hr = Direct2D::GetInstance()->CreateHwndRenderTarget(
-        D2D1::RenderTargetProperties(),
+        D2D1::RenderTargetProperties(
+            D2D1_RENDER_TARGET_TYPE_DEFAULT,
+            D2D1::PixelFormat(
+                DXGI_FORMAT_UNKNOWN, D2D1_ALPHA_MODE_PREMULTIPLIED
+            )
+        ),
         D2D1::HwndRenderTargetProperties(hwnd),
         reinterpret_cast<ID2D1HwndRenderTarget**>(target.GetAddressOf())
     );

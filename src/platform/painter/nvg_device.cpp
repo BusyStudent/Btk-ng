@@ -102,9 +102,7 @@ class NanoVGContext final : public PaintContext, PainterPathSink, OpenGLES3Funct
         void close() override;
         void move_to(float x, float y) override;
         void line_to(float x, float y) override;
-        void quad_to(float x1, float y1, float x2, float y2) override;
         void bezier_to(float x1, float y1, float x2, float y2, float x3, float y3) override;
-        void arc_to(float x1, float y1, float x2, float y2, float radius) override;
         void close_path() override;
         void set_winding(PathWinding winding) override;
 
@@ -537,15 +535,15 @@ void NanoVGContext::move_to(float x, float y) {
 void NanoVGContext::line_to(float x, float y) {
     nvgLineTo(nvgctxt, x, y);
 }
-void NanoVGContext::quad_to(float x1, float y1, float x2, float y2) {
-    nvgQuadTo(nvgctxt, x1, y1, x2, y2);
-}
+// void NanoVGContext::quad_to(float x1, float y1, float x2, float y2) {
+//     nvgQuadTo(nvgctxt, x1, y1, x2, y2);
+// }
 void NanoVGContext::bezier_to(float x1, float y1, float x2, float y2, float x3, float y3) { 
     nvgBezierTo(nvgctxt, x1, y1, x2, y2, x3, y3);
 }
-void NanoVGContext::arc_to(float x1, float y1, float x2, float y2, float radius) {
-    nvgArcTo(nvgctxt, x1, y1, x2, y2, radius);
-}
+// void NanoVGContext::arc_to(float x1, float y1, float x2, float y2, float radius) {
+//     nvgArcTo(nvgctxt, x1, y1, x2, y2, radius);
+// }
 void NanoVGContext::close_path() {
     nvgClosePath(nvgctxt);
 

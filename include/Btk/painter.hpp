@@ -482,9 +482,7 @@ class PainterPathSink {
 
         virtual void move_to(float x, float y) = 0;
         virtual void line_to(float x, float y) = 0;
-        virtual void quad_to(float x1, float y1, float x2, float y2) = 0;
         virtual void bezier_to(float x1, float y1, float x2, float y2, float x3, float y3) = 0;
-        virtual void arc_to(float x1, float y1, float x2, float y2, float radius) = 0;
 
         /**
          * @brief Close the current path
@@ -524,10 +522,10 @@ class BTKAPI PainterPath final : public PainterPathSink {
 
         void move_to(float x, float y) override;
         void line_to(float x, float y) override;
-        void quad_to(float x1, float y1, float x2, float y2) override;
         void bezier_to(float x1, float y1, float x2, float y2, float x3, float y3) override;
-        void arc_to(float x1, float y1, float x2, float y2, float radius) override;
-
+        void arc_to(float x1, float y1, float x2, float y2, float radius);
+        void quad_to(float x1, float y1, float x2, float y2);
+        
         // Point version
         void move_to(const FPoint &point);
         void line_to(const FPoint &point);
