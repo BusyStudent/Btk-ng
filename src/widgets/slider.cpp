@@ -60,13 +60,13 @@ bool Slider::paint_event(PaintEvent &) {
     p.set_antialias(window_dpi().x > 96.0f);
 
     // Fill the content rect
-    p.set_color(s->background);
+    p.set_brush(palette().input());
     p.fill_rect(content);
-    p.set_color(s->border);
+    p.set_brush(palette().border());
     p.draw_rect(content);
 
     // Fill the content rect by the value
-    p.set_color(s->highlight);
+    p.set_brush(palette().hightlight());
     if (_orientation == Horizontal) {
         content.w = ((content.w - bar.w) * _value) / (_max - _min);
     }
@@ -77,18 +77,18 @@ bool Slider::paint_event(PaintEvent &) {
 
     // Draw the bar
     if (_pressed) {
-        p.set_color(s->highlight);
+        p.set_brush(palette().hightlight());
     }
     else {
-        p.set_color(s->background);
+        p.set_brush(palette().input());
     }
     p.fill_rect(bar);
 
     if (_hovered) {
-        p.set_color(s->highlight);
+        p.set_brush(palette().hightlight());
     }
     else {
-        p.set_color(s->border);
+        p.set_brush(palette().border());
     }
     p.draw_rect(bar);
 

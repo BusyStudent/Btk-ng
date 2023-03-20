@@ -82,4 +82,14 @@ if has_config("tests") then
         target_end()
     end
 
+    -- XmlBuilder Test
+    if has_config("builder") and has_config("tests") then 
+        target("xmlhello")
+            set_kind("binary")
+            add_deps("btk", "btk_builder")
+
+            add_files("xml/xmlhello.cpp")
+        target_end()
+    end
+
 end

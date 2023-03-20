@@ -197,6 +197,9 @@ void Widget::set_palette(const Palette &palette) {
 
     repaint();
 }
+void Widget::set_name(u8string_view name) {
+    _name = name;
+}
 bool Widget::handle(Event &event) {
     // printf("Widget::handle(%d)\n", event.type());
     // Do event filters

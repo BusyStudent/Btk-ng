@@ -112,22 +112,6 @@ class BTKAPI Palette {
  */
 class Style {
     public:
-        Color text;
-        Color window;
-        Color background;
-        Color selection;
-        Color highlight;
-        Color border;
-        Color highlight_text;
-
-        // Button
-        // Color button_boarder;
-        // Color button_background;
-        // Color button_hovered_border;
-        // Color button_hovered_background;
-        // Color button_pressed_border;
-        // Color button_pressed_background;
-
         int   button_width; //< Default button width
         int   button_height; //< Default button height
         float button_radius; //< Default button radius

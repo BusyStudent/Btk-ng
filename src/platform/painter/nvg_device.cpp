@@ -289,8 +289,10 @@ void NanoVGContext::clear(Brush &what) {
 // Draw
 bool NanoVGContext::draw_path(const PainterPath &path) {
     // TODO : Need calc position
+    auto rect = path.bounding_box();
     nvgBeginPath(nvgctxt);
     path.stream(this);
+    apply_brush(rect);
     nvgStroke(nvgctxt);
 
     return true;
@@ -481,7 +483,10 @@ bool NanoVGContext::draw_text(Alignment align, const TextLayout &layout      , f
 // Fill
 bool NanoVGContext::fill_path(const PainterPath &path) {
     nvgBeginPath(nvgctxt);
+    auto rect = path.bounding_box();
     path.stream(this);
+
+    apply_brush(rect);
     nvgFill(nvgctxt);
 
     return false;

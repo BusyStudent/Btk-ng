@@ -650,6 +650,7 @@ class BTKAPI u8string_view {
         bool       contains (u8string_view what)                          const;
         bool       ends_with(u8string_view what)                          const;
         bool       starts_with(u8string_view what)                        const;
+        u8string   copy()                                                 const;
 
         // Cast
         std::u16string to_utf16() const;
@@ -725,6 +726,9 @@ inline bool u8string_view::starts_with(u8string_view what) const {
         return false; // Impossible
     }
     return _str.substr(0, what.size()) == what._str;
+}
+inline u8string u8string_view::copy() const {
+    return u8string(*this);
 }
 
 // Impl for Func

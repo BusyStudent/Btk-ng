@@ -22,12 +22,12 @@ class PaintResourceManager : public Trackable {
             auto con = resource->signal_destroyed().connect(
                 Bind(&PaintResourceManager::on_context_destroyed, this, context)
             );
-            BTK_LOG(
-                "[PaintResourceManager::add_resource] add(%p, %p : %s)\n", 
-                context, 
-                resource, 
-                Btk_typename(resource)
-            );
+            // BTK_LOG(
+            //     "[PaintResourceManager::add_resource] add(%p, %p : %s)\n", 
+            //     context, 
+            //     resource, 
+            //     Btk_typename(resource)
+            // );
 
             resources.emplace(context, std::make_pair(con, resource));
         }
@@ -45,12 +45,12 @@ class PaintResourceManager : public Trackable {
             for (auto &p : resources) {
                 // Disconnect all connections
                 p.second.first.disconnect();
-                BTK_LOG(
-                    "[PaintResourceManager::reset_manager] del(%p, %p : %s)\n", 
-                    p.first, 
-                    p.second.second.get(), 
-                    Btk_typename(p.second.second.get())
-                );
+                // BTK_LOG(
+                //     "[PaintResourceManager::reset_manager] del(%p, %p : %s)\n", 
+                //     p.first, 
+                //     p.second.second.get(), 
+                //     Btk_typename(p.second.second.get())
+                // );
             }
             resources.clear();
         }
@@ -58,12 +58,12 @@ class PaintResourceManager : public Trackable {
         void on_context_destroyed(void *ctxt) {
             auto iter = resources.find(ctxt);
             if (iter != resources.end()) {
-                BTK_LOG(
-                    "[PaintResourceManager::on_context_destroyed] del(%p, %p : %s)\n", 
-                    iter->first, 
-                    iter->second.second.get(), 
-                    Btk_typename(iter->second.second.get())
-                );
+                // BTK_LOG(
+                //     "[PaintResourceManager::on_context_destroyed] del(%p, %p : %s)\n", 
+                //     iter->first, 
+                //     iter->second.second.get(), 
+                //     Btk_typename(iter->second.second.get())
+                // );
                 // Disconnect connection from 
                 iter->second.first.disconnect();
                 resources.erase(iter);

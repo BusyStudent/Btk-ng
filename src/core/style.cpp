@@ -102,15 +102,15 @@ void PaletteBreeze(Palette *palette) {
 
 // Style
 void StyleBreeze(Style *style) {
-    style->background = Color(252, 252, 252);
-    style->window     = Color(239, 240, 241);
-    // style->button     = Color(238, 240, 241);
-    style->border     = Color(188, 190, 191);
-    style->highlight  = Color(61 , 174, 233);
-    style->selection  = Color(61 , 174, 233);
+    // style->background = Color(252, 252, 252);
+    // style->window     = Color(239, 240, 241);
+    // // style->button     = Color(238, 240, 241);
+    // style->border     = Color(188, 190, 191);
+    // style->highlight  = Color(61 , 174, 233);
+    // style->selection  = Color(61 , 174, 233);
 
-    style->text           = Color(0, 0, 0);
-    style->highlight_text = Color(255, 255, 255);
+    // style->text           = Color(0, 0, 0);
+    // style->highlight_text = Color(255, 255, 255);
 
     // Button default size
     style->button_width = 88;

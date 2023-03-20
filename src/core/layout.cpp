@@ -171,11 +171,20 @@ void BoxLayout::mark_dirty() {
 }
 void BoxLayout::run_hook(Event &event) {
     switch (event.type()) {
+        // case Event::Moved : {
+        //     _rect.x = event.as<MoveEvent>().x();
+        //     _rect.y = event.as<MoveEvent>().y();
+        //     if (!_except_resize) {
+        //         mark_dirty();
+        //         run_layout(nullptr);
+        //     }
+        //     break;
+        // }
+        case Event::Moved : {
+            [[fallthrough]];
+        }
         case Event::Resized : {
-            _rect.x = 0;
-            _rect.y = 0;
-            _rect.w = event.as<ResizeEvent>().width();
-            _rect.h = event.as<ResizeEvent>().height();
+            _rect = widget()->rect();
             if (!_except_resize) {
                 mark_dirty();
                 run_layout(nullptr);
@@ -186,9 +195,14 @@ void BoxLayout::run_hook(Event &event) {
             if (_layouting) {
                 break;
             }
-            [[fallthrough]];
+            mark_dirty();
+            break;
         }
         case Event::Show : {
+            run_layout(nullptr);
+            break;
+        }
+        case Event::Paint : {
             run_layout(nullptr);
             break;
         }
@@ -236,15 +250,32 @@ void BoxLayout::run_layout(const Rect *dst) {
     auto move_next = [&, this]() -> bool {
         if (_direction == RightToLeft || _direction == BottomToTop) {
             // Reverse
+            while (iter != items.begin()) {
+                --iter;
+                if (iter != items.begin()) {
+                    if (!should_skip(iter->first)) {
+                        // Got 
+                        return true;
+                    }
+                }
+            }
             if (iter == items.begin()) {
                 // EOF
                 return false;
             }
-            --iter;
             return true;
         }
-        ++iter;
-        return iter != items.end();
+        while (iter != items.end()) {
+            ++iter;
+            if (iter != items.end()) {
+                if (!should_skip(iter->first)) {
+                    // Got 
+                    return true;
+                }
+            }
+        }
+        // EOF
+        return false;
     };
     auto move_to_begin = [&, this]() -> void {
         if (_direction == RightToLeft || _direction == BottomToTop) {
@@ -261,10 +292,10 @@ void BoxLayout::run_layout(const Rect *dst) {
     int space = 0;
 
     if (is_vertical) {
-        space = r.w - spacing() * (items.size() - 1);
+        space = r.w - spacing() * (visible_items() - 1);
     }
     else {
-        space = r.h - spacing() * (items.size() - 1);
+        space = r.h - spacing() * (visible_items() - 1);
     }
     // Useable space
     do {
@@ -315,7 +346,7 @@ void BoxLayout::run_layout(const Rect *dst) {
         else {
             // Alloc space for item has stretch 0 by size policy
             // TODO : temp use avg
-            int part = space / items.size();
+            int part = space / visible_items();
             do {
                 auto &extra = iter->second;
                 auto  item = iter->first;
@@ -419,9 +450,9 @@ Size BoxLayout::size_hint() const {
             }
             case RightToLeft : {
                 for (auto [item, extra] : items) {
-                    // if (should_skip(item)) {
-                    //     continue;
-                    // }
+                    if (should_skip(item)) {
+                        continue;
+                    }
 
                     auto hint = item->size_hint();
                     
@@ -429,9 +460,9 @@ Size BoxLayout::size_hint() const {
                     result.h = max(result.h, hint.h);
                 }
 
-                if (items.size() > 0) {
+                if (visible_items() > 0) {
                     // Add spacing
-                    result.w += spacing * (items.size() - 1);
+                    result.w += spacing * (visible_items() - 1);
                 }
                 break;
             }
@@ -440,9 +471,9 @@ Size BoxLayout::size_hint() const {
             }
             case TopToBottom : {
                 for (auto [item, extra] : items) {
-                    // if (should_skip(item)) {
-                    //     continue;
-                    // }
+                    if (should_skip(item)) {
+                        continue;
+                    }
 
                     auto hint = item->size_hint();
                     
@@ -450,9 +481,9 @@ Size BoxLayout::size_hint() const {
                     result.w = max(result.w, hint.w);
                 }
 
-                if (items.size() > 0) {
+                if (visible_items() > 0) {
                     // Add spacing
-                    result.h += spacing * (items.size() - 1);
+                    result.h += spacing * (visible_items() - 1);
                 }
                 break;
             }
@@ -469,6 +500,25 @@ Rect BoxLayout::rect() const {
     //     return w->rect();
     // }
     return _rect;
+}
+bool BoxLayout::should_skip(LayoutItem *item) const {
+    auto w = item->widget();
+    if (w) {
+        if (!w->visible()) {
+            return true;
+        }
+    }
+    return false;
+}
+size_t BoxLayout::visible_items() const {
+    size_t n = 0;
+    for (auto item : items) {
+        if (should_skip(item.first)) {
+            continue;
+        }
+        n += 1;
+    }
+    return n;
 }
 
 BTK_NS_END

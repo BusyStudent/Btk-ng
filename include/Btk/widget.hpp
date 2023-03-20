@@ -58,7 +58,7 @@ enum class WindowFlags : uint32_t {
     Vulkan     = 1 << 7,
     AcceptDrop = 1 << 8,
     Transparent = 1 << 9,
-    NeverShowed = 1 << 10,
+    Framebuffer = 1 << 10, //< This window is used as a framebuffer
 };
 // Enum for widget.
 enum class FocusPolicy : uint8_t {
@@ -208,11 +208,25 @@ class BTKAPI Widget : public Object {
          */
         void set_rect(int x, int y, int w, int h);
         /**
+         * @brief Set the rect object (Point ver) 
+         * 
+         * @param p 
+         */
+        void set_rect(const Rect &r) {
+            set_rect(r.x, r.y, r.w, r.h);
+        }
+        /**
          * @brief Set the palette object
          * 
          * @param palette The new color palette
          */
         void set_palette(const Palette &palette);
+        /**
+         * @brief Set the name object
+         * 
+         * @param name 
+         */
+        void set_name(u8string_view name);
         /**
          * @brief Move the widget to position x, y
          * 
@@ -220,6 +234,14 @@ class BTKAPI Widget : public Object {
          * @param y 
          */
         void move(int x, int y);
+        /**
+         * @brief Move the widget to position x, y (Point ver) 
+         * 
+         * @param p 
+         */
+        void move(const Point &p) {
+            move(p.x, p.y);
+        }
         /**
          * @brief Resize the widget to width, height
          * 

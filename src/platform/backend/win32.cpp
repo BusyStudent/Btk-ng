@@ -784,7 +784,7 @@ window_t Win32Driver::window_create(u8string_view title, int width, int height, 
     win->flags     = flags;
 
     // Check flags
-    if ((flags & WindowFlags::NeverShowed) != WindowFlags::NeverShowed) {
+    if ((flags & WindowFlags::Framebuffer) != WindowFlags::Framebuffer) {
         window_add(win);
         win->enable_alpha_blend();
     }

@@ -17,10 +17,10 @@ bool Frame::paint_event(PaintEvent &) {
         case NoFrame : break;
         case Box : {
             if (under_mouse()) {
-                painter.set_color(style()->border);
+                painter.set_brush(palette().border());
             }
             else {
-                painter.set_color(style()->highlight);
+                painter.set_brush(palette().hightlight());
             }
             painter.draw_rect(rect());
             break;

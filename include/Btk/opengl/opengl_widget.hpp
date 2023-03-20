@@ -5,6 +5,8 @@
 
 BTK_NS_BEGIN
 
+class GLWidgetImpl;
+class GLContext;
 /**
  * @brief Widget for OpenGL rendering
  * 
@@ -14,6 +16,7 @@ class BTKAPI GLWidget : public Widget {
         GLWidget();
         ~GLWidget();
 
+        GLContext *gl_context();
         /**
          * @brief Get the OpenGL Proc Address (only valid after gl_ready was called)
          * 
@@ -40,9 +43,6 @@ class BTKAPI GLWidget : public Widget {
             });
         }
 
-        bool  paint_event(PaintEvent &event) override;
-        bool  resize_event(ResizeEvent &event) override;
-
         /**
          * @brief Notify the user that OpenGL is ready
          * 
@@ -53,20 +53,15 @@ class BTKAPI GLWidget : public Widget {
          * 
          */
         virtual void gl_paint() = 0;
+    protected:
+        bool  paint_event(PaintEvent &event) override;
+        bool  resize_event(ResizeEvent &event) override;
+        bool  move_event(MoveEvent &event) override;
     private:
-        void     gl_initialize();
-        Texture  texture = {};    //< Painter's texture for drawing the opengl framebuffer 
-        window_t glwin = nullptr; //< Physical window never showed used for rendering        
-        any_t    glctxt = nullptr; //< OpenGL context layer
+        bool  gl_initialize();
 
-        // Buffers 
-        void   *buffer      = nullptr; //< Raw pixel of this framebuffer
-        Size    buffer_size = {}; //< Size of the pixel buffer
-
-        // OpenGL functions
-        void    *Viewport   = nullptr;
-        void    *ReadPixels = nullptr;
-        void    *GetError   = nullptr;
+        GLWidgetImpl *priv = nullptr;
+        bool          init_failed = false;
 };
 
 BTK_NS_END

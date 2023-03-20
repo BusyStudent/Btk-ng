@@ -29,7 +29,7 @@ class LayoutItem : public Any {
     private:
         Alignment _alignment = {};
 };
-class WidgetItem : public LayoutItem {
+class WidgetItem final : public LayoutItem {
     public:
         WidgetItem(Widget *w) : wi(w) {}
 
@@ -52,7 +52,7 @@ class WidgetItem : public LayoutItem {
     private:
         Widget *wi;
 };
-class SpacerItem : public LayoutItem {
+class SpacerItem final : public LayoutItem {
     public:
         SpacerItem(int w, int h) : size(w, h) {}
 
@@ -145,6 +145,7 @@ class BTKAPI BoxLayout : public Layout {
     private:
         void        run_layout(const Rect *dst);
         bool        should_skip(LayoutItem *item) const;
+        size_t      visible_items() const;
 
         struct ItemExtra {
             int stretch = 0;

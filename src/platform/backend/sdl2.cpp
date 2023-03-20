@@ -380,13 +380,14 @@ void SDLDispatcher::dispatch_sdl_window(SDL_Event *event) {
     SDLWindow *win = iter->second;
 
     switch(event->window.event) {
-        case SDL_WINDOWEVENT_MOVED : {
-            MoveEvent tr_event(event->window.data1, event->window.data2);
-            tr_event.set_widget(win->widget);
-            tr_event.set_timestamp(GetTicks());
-            win->widget->handle(tr_event);
-            break;
-        }
+        // case SDL_WINDOWEVENT_MOVED : {
+        //     MoveEvent tr_event(event->window.data1, event->window.data2);
+        //     tr_event.set_widget(win->widget);
+        //     tr_event.set_timestamp(GetTicks());
+        //     win->widget->handle(tr_event);
+        //     break;
+        // }
+        case SDL_WINDOWEVENT_SIZE_CHANGED :
         case SDL_WINDOWEVENT_RESIZED : {
             int width = win->sdl_to_btk(event->window.data1);
             int height = win->sdl_to_btk(event->window.data2);
@@ -635,8 +636,8 @@ window_t SDLDriver::window_create(u8string_view title, int width, int height, Wi
     // Resize by dpi
     ret->resize(width, height);
 
-    // NeverShowed means that the window is always invisable, no need to add it to event dispatcher
-    if ((flags & WindowFlags::NeverShowed) != WindowFlags::NeverShowed) {
+    // Framebuffer means that the window is always invisable, no need to add it to event dispatcher
+    if ((flags & WindowFlags::Framebuffer) != WindowFlags::Framebuffer) {
         window_add(ret);
     }
     return ret;
@@ -656,7 +657,7 @@ u8string SDLDriver::clipboard_get() {
     return ret;
 }
 void SDLDriver::clipboard_set(u8string_view str) {
-    SDL_SetClipboardText(u8string(str).c_str());
+    SDL_SetClipboardText(str.copy().c_str());
 }
 bool   SDLDriver::query_value(int what, ...) {
     va_list varg;
@@ -792,7 +793,7 @@ void SDLWindow::repaint() {
 #endif
 }
 void SDLWindow::set_title(u8string_view title) {
-    SDL_SetWindowTitle(win, u8string(title).c_str());
+    SDL_SetWindowTitle(win, title.copy().c_str());
 }
 void SDLWindow::set_icon(const PixBuffer &buf) {
     SDL_Surface *ref = SDL_CreateRGBSurfaceWithFormatFrom(

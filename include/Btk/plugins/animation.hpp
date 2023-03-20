@@ -7,10 +7,81 @@
 #include <Btk/defs.hpp>
 #include <Btk/rect.hpp>
 
-#include <functional>
 #include <algorithm>
+#include <any>
 
 BTK_NS_BEGIN
+
+
+// Internal used callback fn
+template <typename ...Args>
+class _AnimSmallFunction {
+    public:
+        _AnimSmallFunction() { }
+        _AnimSmallFunction(const _AnimSmallFunction &) = delete;
+        ~_AnimSmallFunction() {
+            if (release) {
+                release(this);
+            }
+        }
+
+        template <typename Callable>
+        void assign(Callable &&callable) {
+            using T = std::decay_t<Callable>;
+
+            if (release) {
+                release(this);
+                release = nullptr;
+            }
+            invoke = [](_AnimSmallFunction *self, Args ...args) {
+                (*(self->callable<T>())) (args...);
+            };
+            if constexpr(sizeof(T) > sizeof(data)) {
+                // Alloc memory
+                data.holder = new T(std::forward<T>(callable));
+                release = [](_AnimSmallFunction *self) {
+                    delete self->callable<T>();
+                };
+            }
+            else {
+                // Construct in place
+                new(&data) T(std::forward<T>(callable));
+                // Destruct if needed
+                if constexpr(std::is_default_constructible_v<T>) {
+                    release = [](_AnimSmallFunction *self) {
+                        (*reinterpret_cast<T*>(&(self->data)))->~Callable();
+                    };
+                }
+            }
+        }
+
+        void operator()(Args... args) {
+            invoke(this, args...);
+        }
+        template <typename T>
+        void operator =(T &&t) {
+            assign(std::forward<T>(t));
+        }
+    private:
+        template <typename T>
+        T *callable() {
+            if constexpr(sizeof(T) > sizeof(data)) {
+                return reinterpret_cast<T*>(data.holder);
+            }
+            else {
+                return reinterpret_cast<T*>(&data);
+            }
+        }
+
+        union Data {
+            void *holder;
+            void (Object::*method)(void);
+            void *ptrs[3];
+        } data;
+        void (*release)(_AnimSmallFunction *self) = nullptr;
+        void (*invoke)(_AnimSmallFunction *self, Args ...) = nullptr;
+};
+
 
 class AbstractAnimation : public Object {
     public:
@@ -127,7 +198,7 @@ class LerpAnimation     : public AbstractAnimation {
 
                 T v = lerp(beg.v, end.v, perc);
 
-                printf("%f / %f = %f\n", rgn - beg.step, end.step - beg.step, perc);
+                // printf("%f / %f = %f\n", rgn - beg.step, end.step - beg.step, perc);
 
                 run(v);
             }
@@ -141,20 +212,20 @@ class LerpAnimation     : public AbstractAnimation {
         // Member function
         template <typename Class, typename Ret, class Prov>
         void bind(Ret (Class::*fn)(const T &value), Prov *self) {
-            run = [=](const T &v) {
+            run = [self, fn](const T &v) {
                 (self->*fn)(v);
             };
         }
         template <typename Class, typename Ret, class Prov>
         void bind(Ret (Class::*fn)(T value), Prov *self) {
-            run = [=](const T &v) -> void {
+            run = [self, fn](const T &v) -> void {
                 (self->*fn)(v);
             };
         }
         // Member variable 
         template <typename Class, typename Var, class Prov>
         void bind(Var (Class::*var), Prov *self) {
-            run = [=](const T &value) {
+            run = [var, self](const T &value) {
                 (self->*var) = value;
             };
         }
@@ -181,7 +252,7 @@ class LerpAnimation     : public AbstractAnimation {
             Stopped
         };
         
-        std::function<void(const T &value)> run;
+        _AnimSmallFunction<const T &> run;
         std::vector<Value> values;
 
         timestamp_t ts_start;

@@ -216,22 +216,22 @@ bool RadioButton::paint_event(PaintEvent &) {
     gc.set_antialias(true);
 
     // Draw background
-    gc.set_color(style->background);
+    gc.set_brush(palette().input());
     gc.fill_circle(cx, cy, style->radio_button_circle_r);
     if (_checked) {
         // Draw inner box
-        gc.set_color(style->highlight);
+        gc.set_brush(palette().hightlight());
         gc.fill_circle(cx, cy, style->radio_button_circle_r);
-        gc.set_color(style->background);
+        gc.set_brush(palette().input());
         gc.fill_circle(cx, cy, style->radio_button_circle_r - style->radio_button_circle_inner_pad);
     }
     else {
         // We didnot draw border at checked
         if (under_mouse()) {
-            gc.set_color(style->highlight);
+            gc.set_brush(palette().hightlight());
         }
         else {
-            gc.set_color(style->border);
+            gc.set_brush(palette().border());
         }
         gc.draw_circle(cx, cy, style->radio_button_circle_r);
     }
@@ -241,7 +241,7 @@ bool RadioButton::paint_event(PaintEvent &) {
         gc.push_scissor(border);
         gc.set_font(font());
         gc.set_text_align(Alignment::Left | Alignment::Middle);
-        gc.set_color(style->text);
+        gc.set_brush(palette().text());
         gc.draw_text(
             _textlay,
             cx + style->radio_button_circle_r + style->radio_button_text_pad,

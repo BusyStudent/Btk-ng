@@ -263,11 +263,11 @@ bool ProgressBar::paint_event(PaintEvent &) {
     gc.set_antialias(window_dpi().x > 96.0f);
 
     // Background
-    gc.set_color(style->background);
+    gc.set_brush(palette().input());
     gc.fill_rect(border);
 
     // Progress
-    gc.set_color(style->highlight);
+    gc.set_brush(palette().hightlight());
 
     auto bar = border;
 
@@ -301,7 +301,7 @@ bool ProgressBar::paint_event(PaintEvent &) {
         gc.set_text_align(Alignment::Center | Alignment::Middle);
         gc.set_font(font());
 
-        gc.set_color(style->text);
+        gc.set_brush(palette().text());
         gc.draw_text(
             text,
             border.x + border.w / 2,
@@ -309,7 +309,7 @@ bool ProgressBar::paint_event(PaintEvent &) {
         );
 
         gc.push_scissor(bar);
-        gc.set_color(style->highlight_text);
+        gc.set_brush(palette().hightlighted_text());
         gc.draw_text(
             text,
             border.x + border.w / 2,
@@ -320,7 +320,7 @@ bool ProgressBar::paint_event(PaintEvent &) {
 
 
     // Border
-    gc.set_color(style->border);
+    gc.set_brush(palette().border());
     gc.draw_rect(border);
 
     // End

@@ -135,10 +135,10 @@ bool TextEdit::key_press(KeyEvent &event) {
             if (int(event.modifiers() & Modifier::Ctrl)) {
                 BTK_LOG("Ctrl + C\n");
                 if (has_selection()) {
-                    driver()->clipboard_set(selection_text().c_str());
+                    driver()->clipboard_set(selection_text());
                 }
                 else{
-                    driver()->clipboard_set(_text.c_str());
+                    driver()->clipboard_set(_text);
                 }
             }
             break;
@@ -147,7 +147,7 @@ bool TextEdit::key_press(KeyEvent &event) {
             if (int(event.modifiers() & Modifier::Ctrl) && has_selection()) {
                 BTK_LOG("Ctrl + X\n");
                 // Set to clipbiard
-                driver()->clipboard_set(selection_text().c_str());
+                driver()->clipboard_set(selection_text());
                 // Remove it
                 auto [start,end] = sel_range();
                 do_delete(start,end);
@@ -293,13 +293,13 @@ bool TextEdit::paint_event(PaintEvent &) {
     // In low dpi screens, we didnot need to antialiasing the rectangle
     p.set_antialias(window_dpi().x > 96.0f);
     // Border and background
-    p.set_color(style->background);
+    p.set_brush(palette().input());
     p.fill_rect(border);
     if (_has_focus || under_mouse()) {
-        p.set_color(style->highlight);
+        p.set_brush(palette().hightlight());
     }
     else {
-        p.set_color(style->border);
+        p.set_brush(palette().border());
     }
 
     if (!_flat) {
@@ -318,14 +318,14 @@ bool TextEdit::paint_event(PaintEvent &) {
     // Decrease 1.0f to make sure the cursor has properly space to draw
     p.push_scissor(txt_rect.apply_margin(-1.0f));
     if (!_text.empty()) {
-        p.set_color(style->text);
+        p.set_brush(palette().text());
         p.draw_text(_lay, txt_pos.x, txt_pos.y);
         // Use TextLayout directly
     }
     else if(!_placeholder.empty()) {
         //Draw place holder
         //Gray color
-        p.set_color(Color::Gray);
+        p.set_brush(palette().placeholder_text());
         p.draw_text(_placeholder, txt_pos.x, txt_pos.y);
     }
 
@@ -348,12 +348,12 @@ bool TextEdit::paint_event(PaintEvent &) {
         sel_rect.h = result.back().box.h;
 
         // Draw highlight box
-        p.set_color(style->highlight);
+        p.set_brush(palette().hightlight());
         p.fill_rect(sel_rect);
 
         // Draw text again to cover selection
         p.push_scissor(sel_rect);
-        p.set_color(style->highlight_text);
+        p.set_brush(palette().hightlighted_text());
         p.draw_text(_lay, txt_pos.x, txt_pos.y);
         p.pop_scissor();
     }
@@ -362,7 +362,7 @@ bool TextEdit::paint_event(PaintEvent &) {
         if (_cursor_pos == 0 && _text.empty()) {
             float h = font().size();
             float y = txt_pos.y - h / 2;
-            p.set_color(style->text);
+            p.set_brush(palette().text());
             p.draw_line(
                 txt_pos.x, y,
                 txt_pos.x, y + h
@@ -384,7 +384,7 @@ bool TextEdit::paint_event(PaintEvent &) {
                 cursor_y = box.y;
                 cursor_h = box.h;
                 // Draw cursor
-                p.set_color(style->text);
+                p.set_brush(palette().text());
                 p.draw_line(
                     cursor_x, cursor_y,
                     cursor_x, cursor_y + cursor_h

@@ -83,6 +83,11 @@ class Player : public Widget {
             if (event.key() == Key::F11) {
                 fullscreen = !fullscreen;
                 set_fullscreen(fullscreen);
+
+                edit.set_visible(!fullscreen);
+                play.set_visible(!fullscreen);
+                pause.set_visible(!fullscreen);
+                stop.set_visible(!fullscreen);
                 return true;
             }
             else if (event.key() == Key::Space) {

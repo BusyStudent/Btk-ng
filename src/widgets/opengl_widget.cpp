@@ -10,148 +10,206 @@ BTK_NS_BEGIN
 
 // TODO : Need a better way to draw OpenGL framebuffer by painter
 
-GLWidget::GLWidget() {
+// Delegate
+class GLWidgetImpl : public OpenGLES3Function {
+    public:
+        std::unique_ptr<GLContext> glctxt;
+        bool ok = false;
 
+        virtual ~GLWidgetImpl() { }
+        virtual bool handle(Event &) = 0;
+        virtual void gl_paint(GLWidget *) = 0;
+};
+// Slowest way, but portable
+class GLWidgetOffscreenFbImpl : public GLWidgetImpl {
+    public:
+        GLWidgetOffscreenFbImpl(GLWidget *w);
+        ~GLWidgetOffscreenFbImpl();
+        bool handle(Event &) override;
+        void gl_paint(GLWidget *) override;
+
+        std::unique_ptr<AbstractWindow> glwin;
+        void *membuffer = nullptr;
+        size_t membuffer_size = 0;
+        Texture texture;
+};
+class GLWidgetShareFbImpl : public GLWidgetImpl {
+
+};
+class GLWidgetWin32GLImpl : public GLWidgetImpl {
+    public:
+
+};
+
+GLWidget::GLWidget() {
+    priv = nullptr;
 }
 GLWidget::~GLWidget() {
-    delete glctxt;
-    delete glwin;
-
-    Btk_free(buffer);
+    delete priv;
 }
 
 bool GLWidget::paint_event(PaintEvent &event) {
-    if (!glwin) {
-        gl_initialize();
+    if (!priv && !init_failed) {
+        if (!gl_initialize()) {
+            init_failed = true;
+        }
     }
-    if (!glctxt) {
-        // Error
+    if (init_failed) {
         painter().set_color(Color::Black);
         painter().fill_rect(rect());
         return true;
     }
-    auto ctxt = static_cast<GLContext*>(glctxt);
-    auto glReadPixels = PFNGLREADPIXELSPROC(ReadPixels);
-    auto glGetError   = PFNGLGETERRORPROC(GetError);
-    auto glViewport  = PFNGLVIEWPORTPROC(Viewport);
-
-
-    ctxt->begin();
-    // Query info
-    Size glsize = ctxt->get_drawable_size();
-    if (buffer_size != glsize || !buffer) {
-        buffer_size = glsize;
-        buffer = Btk_realloc(buffer, 4 * buffer_size.w * buffer_size.h);
-    }
-
-    glViewport(0, 0, glsize.w, glsize.h);
-    BTK_ASSERT(glGetError() == 0);
-
-    // Begin Draw
-    gl_paint();
-
-    // Read the pixel back
-    glReadPixels(
-        0, 0, glsize.w, glsize.h,
-        GL_RGBA, GL_UNSIGNED_BYTE, buffer
-    );
-    BTK_ASSERT(glGetError() == 0);
-
-    ctxt->end();
-
-    // Make texture
-    auto &p = painter();
-    if (!texture.empty()) {
-        if (texture.size() != glsize) {
-            texture.clear();
-        }
-    }
-    if (texture.empty()) {
-        texture = p.create_texture(PixFormat::RGBA32, glsize.w, glsize.h);
-    }
-    texture.update(nullptr, buffer, glsize.w * 4);
-
-    // Copy to screen
-    FRect dst = rect();
-    p.draw_image(texture, &dst, nullptr);
-
+    priv->gl_paint(this);
     return true;
 }
 bool GLWidget::resize_event(ResizeEvent &event) { 
-    if (glwin) {
-        glwin->resize(event.width(), event.height());
+    if (priv) {
+        return priv->handle(event);
     }
     return true;
 }
-void  GLWidget::gl_initialize() {
-    auto size = rect().size();
-    glwin = driver()->window_create(
-        nullptr,
-        size.w,
-        size.h,
-        WindowFlags::OpenGL | WindowFlags::NeverShowed
+bool GLWidget::move_event(MoveEvent &event) {
+    if (priv) {
+        return priv->handle(event);
+    }
+    return true;
+}
+bool  GLWidget::gl_initialize() {
+    priv = new GLWidgetOffscreenFbImpl(this);
+    if (!priv->ok) {
+        delete priv;
+        return false;
+    }
+
+    // Done
+    priv->glctxt->begin();
+    gl_ready();
+    priv->glctxt->end();
+
+    return true;
+}
+
+void *GLWidget::gl_get_proc_address(const char_t *proc_name) {
+    if (priv) {
+        return priv->glctxt->get_proc_address(proc_name);
+    }
+    return nullptr;
+}
+Size  GLWidget::gl_drawable_size() {
+    if (priv) {
+        return priv->glctxt->get_drawable_size();
+    }
+    return Size(-1, -1);
+}
+bool   GLWidget::gl_make_current() {
+    if (priv) {
+        return priv->glctxt->make_current();
+    }
+    return false;
+}
+GLContext *GLWidget::gl_context() {
+    if (priv) {
+        return priv->glctxt.get();
+    }
+    return nullptr;
+}
+
+// GLWidgetOffscreenFbImpl
+GLWidgetOffscreenFbImpl::GLWidgetOffscreenFbImpl(GLWidget *widget) {
+    auto driver = widget->driver();
+
+    // Create window used for Framebuffer
+    glwin.reset(
+        driver->window_create(
+            "GLWidgetFramebuffer",
+            widget->width(),
+            widget->height(),
+            WindowFlags::OpenGL | WindowFlags::Framebuffer
+        )
     );
     if (!glwin) {
+        // Bad
         return;
     }
-    glctxt = glwin->gc_create("opengl");
+    // Try alloc glcontext
+    glctxt.reset(static_cast<GLContext*>(glwin->gc_create("opengl")));
     if (!glctxt) {
         return;
     }
 
-    auto ctxt = static_cast<GLContext*>(glctxt);
-
-#if !defined(BTK_NO_RTTI)
-    // Check is OpenGL context
-    if (!dynamic_cast<GLContext*>(glctxt)) {
-        goto error;
-    }
-#endif
-
-
-    if (!ctxt->initialize(GLFormat())) {
-        goto error;
+    // Try init
+    if (!glctxt->initialize(GLFormat())) {
+        return;   
     }
 
-    // Get some function pointers
-    ReadPixels = ctxt->get_proc_address("glReadPixels");
-    Viewport   = ctxt->get_proc_address("glViewport");
-    GetError = ctxt->get_proc_address("glGetError");
+    glctxt->begin();
 
+    // Load proc
+    OpenGLES3Function::load([this](const char *name) {
+        return glctxt->get_proc_address(name);
+    });
 
-    // Notify User
-    ctxt->begin();
-    gl_ready();
-    ctxt->end();
+    // Alloc buffer
+    auto [dw, dh] = glctxt->get_drawable_size();
+    membuffer = Btk_realloc(membuffer, dw * dh * 4);
+    membuffer_size = dw * dh * 4;
 
-    return;
+    glctxt->end();
 
-    error:
-        delete glctxt;
-        delete glwin;
-
-        glctxt = nullptr;
-        glwin = nullptr;
-        return;
+    ok = true;
 }
+GLWidgetOffscreenFbImpl::~GLWidgetOffscreenFbImpl() {
+    glctxt.reset();
+    glwin.reset();
+    Btk_free(membuffer);
+}
+bool GLWidgetOffscreenFbImpl::handle(Event &event) {
+    switch (event.type()) {
+        case Event::Resized : {
+            auto w = event.as<ResizeEvent>().width();
+            auto h = event.as<ResizeEvent>().height();
+            glwin->resize(w, h);
 
-void *GLWidget::gl_get_proc_address(const char_t *proc_name) {
-    if (!glwin) {
-        return nullptr;
+            texture.clear();
+
+            glctxt->begin();
+            auto [dw, dh] = glctxt->get_drawable_size();
+            if (membuffer_size < dw * dh * 4) {
+                membuffer_size = dw * dh * 4;
+                membuffer = Btk_realloc(membuffer, membuffer_size);
+            }
+            glctxt->end();
+            return true;
+        }
     }
-    return static_cast<GLContext*>(glctxt)->get_proc_address(proc_name);
+    return false;
 }
-Size  GLWidget::gl_drawable_size() {
-    if (!glwin) {
-        return Size(0, 0);
+void GLWidgetOffscreenFbImpl::gl_paint(GLWidget *widget) {
+    // Begin ctxt
+    glctxt->begin();
+
+    // Let child paint
+    auto [dw, dh] = glctxt->get_drawable_size();
+    glViewport(0, 0, dw, dh);
+    widget->gl_paint();
+
+    // Read pixels
+    glViewport(0, 0, dw, dh);
+    glReadPixels(0, 0, dw, dh, GL_RGBA, GL_UNSIGNED_BYTE, membuffer);
+    if (glGetError() != GL_NO_ERROR) {
+        printf("Ogl errpr\n");
     }
-    return static_cast<GLContext*>(glctxt)->get_drawable_size();
-}
-bool   GLWidget::gl_make_current() {
-    if (!glwin) {
-        return false;
+
+    auto &painter = widget->painter();
+    FRect dst = widget->rect();
+    // Make texture
+    if (texture.empty()) {
+        texture = painter.create_texture(PixFormat::RGBA32, dw, dh);
     }
-    return static_cast<GLContext*>(glctxt)->make_current();
+    texture.update(nullptr, membuffer, dw * 4);
+    painter.draw_image(texture, &dst, nullptr);
+
+    glctxt->end();
 }
 
 BTK_NS_END

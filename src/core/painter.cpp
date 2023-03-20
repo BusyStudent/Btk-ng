@@ -5,6 +5,8 @@
 
 #if defined(_WIN32)
     #include "common/win32/wincodec.hpp"
+    #undef min
+    #undef max
 #endif
 
 #include <Btk/detail/platform.hpp>
@@ -13,6 +15,7 @@
 #include <Btk/detail/types.hpp>
 #include <Btk/painter.hpp>
 #include <Btk/font.hpp>
+#include <algorithm>
 #include <variant>
 #include <stack>
 #include <map>
@@ -753,8 +756,50 @@ bool PainterPath::empty() const {
     return true;
 }
 FRect PainterPath::bounding_box() const {
-    BTK_ONCE(BTK_LOG("PainterPath::bounding_box() unimplmented\n"));
-    return FRect(0.0f, 0.0f, 0.0f, 0.0f);
+    if (empty()) {
+        return FRect(0.0f, 0.0f, 0.0f, 0.0f);
+    }
+    // Calc the bounding box by curve
+    float left = std::numeric_limits<float>::max();
+    float top = std::numeric_limits<float>::max();
+    float right = std::numeric_limits<float>::min();
+    float bottom = std::numeric_limits<float>::min();
+
+    // Calculate the bounding box by command's control point
+    for (auto iter = priv->paths.data(); iter != priv->paths.data() + priv->paths.size(); ) {
+        switch (int(*iter)) {
+            case PainterPathImpl::MoveTo :
+            case PainterPathImpl::LineTo : {
+                left = std::min(left, iter[1]);
+                top = std::min(top, iter[2]);
+                right = std::max(right, iter[1]);
+                bottom = std::max(bottom, iter[2]);
+                iter += 3;
+                break;
+            }
+            case PainterPathImpl::BezierTo : {
+                left = std::min({left, iter[1], iter[3], iter[5]});
+                top = std::min({top, iter[2], iter[4], iter[6]});
+                right = std::max({right, iter[1], iter[3], iter[5]});
+                bottom = std::max({bottom, iter[2], iter[4], iter[6]});
+                iter += 7;
+                break;
+            }
+            case PainterPathImpl::ClosePath : {
+                iter += 1;
+                break;
+            }
+            case PainterPathImpl::SetWinding : {
+                iter += 2;
+                break;
+            }
+        }
+    }
+
+    // Update the width and height of the bounding box
+    FRect box(left, top, right - left, bottom - top);
+
+    return box;
 }
 bool  PainterPath::contains(float x, float y) const {
     BTK_ONCE(BTK_LOG("PainterPath::contains() unimplmented\n"));

@@ -56,6 +56,18 @@ if has_config("multimedia") then
 
 end
 
+-- Add XmlBuilder
+if has_config("multimedia") then
+    add_requires("tinyxml2")
+
+    target("btk_builder")
+        set_kind("static")
+        add_deps("btk_core")
+        add_packages("tinyxml2")
+
+        add_files("builder.cpp")
+    target_end()
+end
 
 -- Add Webview
 if has_config("webview") then
