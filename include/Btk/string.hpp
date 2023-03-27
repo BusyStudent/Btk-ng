@@ -339,6 +339,9 @@ class BTKAPI u8string {
         bool compare(const char_t *str, size_t len) const noexcept {
             return _str == stdu8string_view(str, len);
         }
+        bool compare(stdu8string_view view) const noexcept {
+            return _str == view;
+        }
 
         void assign(const u8string &str) noexcept {
             _str = str._str;
@@ -540,10 +543,16 @@ class BTKAPI u8string {
         bool       operator ==(const char_t *str) const noexcept {
             return compare(str);
         }
+        bool       operator ==(stdu8string_view str) const noexcept {
+            return compare(str);
+        }
         bool       operator !=(const u8string &str) const noexcept {
             return !compare(str);
         }
         bool       operator !=(const char_t *str) const noexcept {
+            return !compare(str);
+        }
+        bool       operator !=(stdu8string_view str) const noexcept {
             return !compare(str);
         }
         bool       operator <(const u8string &str) const noexcept {
@@ -659,6 +668,12 @@ class BTKAPI u8string_view {
         // Operators
         const_reference operator [](size_t pos) const {
             return at(pos);
+        }
+        bool            operator ==(stdu8string_view other) const {
+            return _str == other;
+        }
+        bool            operator !=(stdu8string_view other) const {
+            return _str != other;
         }
 
         // Auto cast to stdu8string const refernce

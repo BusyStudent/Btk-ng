@@ -38,7 +38,9 @@ class BTKAPI PopupWidget : public Widget {
         ~PopupWidget();
 
         void popup(Widget *where = nullptr);
-        
+    protected:
+        bool mouse_press(MouseEvent &) override;
+        bool mouse_release(MouseEvent &) override;
         bool paint_event(PaintEvent &) override;
         bool focus_lost(FocusEvent &) override;
     private:

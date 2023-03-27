@@ -14,6 +14,8 @@
 
 // From platform module
 extern "C" void __BtkPlatform_Init();
+// From widgets module
+extern "C" void __BtkWidgets_Init();
 
 BTK_NS_BEGIN
 
@@ -41,6 +43,8 @@ UIContext::UIContext(GraphicsDriver *driv) {
 }
 UIContext::UIContext() {
     BTK_ONCE(__BtkPlatform_Init());
+    BTK_ONCE(__BtkWidgets_Init());
+
     initialize(CreateDriver());
 }
 UIContext::~UIContext() {
@@ -61,13 +65,17 @@ void UIContext::initialize(GraphicsDriver *driv) {
     assert(!GetUIContext());
     assert(driv);
 
+    _palette    = PaletteBreeze();
+    _style      = CreateStyle();
     _dispatcher = GetDispatcher(); 
     _driver     = driv;
-    PaletteBreeze(&palette);
-    StyleBreeze(&style);
     SetUIContext(this);
 
     thread_id = std::this_thread::get_id(); 
+
+    if (!_style) {
+        abort();
+    }
 }
 
 // EventQueue::EventQueue() {

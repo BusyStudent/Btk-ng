@@ -13,6 +13,7 @@ BTK_NS_BEGIN
 using char_t      = char;         //< Utf8 char type
 using uchar_t     = char32_t;     //< Unicode character type
 using timerid_t   = uintptr_t;    //< Timer id type
+using coord_t     = int;          //< Default widget coord units
 using pointer_t   = void *;       //< Pointer type
 using cpointer_t  = const void *; //< Const pointer type
 using timestamp_t = uintptr_t;    //< Timestamp type
@@ -149,6 +150,12 @@ enum class PixFormat   : uint32_t;
 // Signal
 template <typename T>
 class Signal;
+
+// Refs
+template <typename T>
+class Refable;
+template <typename T>
+class Ref;
 
 // Alias
 using  any_t      = Any *;

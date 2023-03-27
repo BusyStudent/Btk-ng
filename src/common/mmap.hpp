@@ -10,126 +10,85 @@
 #include <fcntl.h>
 #elif defined(_WIN32)
 #include <windows.h>
-#include <wrl.h>
 #undef min
 #undef max
 #else
 #error "Unsupported platform"
 #endif
 
-BTK_NS_BEGIN2()
+BTK_PRIV_BEGIN
 
-using namespace BTK_NAMESPACE;
-
-bool MapFile(const char_t *path, IOAccess access, void **ptr, size_t *size) {
-    if (path == nullptr) {
-        return false;
-    }
-    if (ptr == nullptr) {
-        return false;
-    }
-    if (size == nullptr) {
-        return false;
-    }
-    *ptr = nullptr;
-    *size = 0;
-
+inline bool MapFile(u8string_view url, void **out, size_t *size) {
 #if defined(__linux)
-    int flags = 0;
-    if (access == IOAccess::ReadOnly) {
-        flags = O_RDONLY;
-    }
-    else if (access == IOAccess::ReadWrite) {
-        flags = O_RDWR;
-    }
-    else if (access == IOAccess::WriteOnly) {
-        flags = O_WRONLY;
-    }
-    else {
-        return false;
-    }
-
-    int fd = open(path, flags);
+    int fd = open(url.copy().c_str(), O_RDONLY);
     if (fd == -1) {
         return false;
     }
-
     struct stat st;
     if (fstat(fd, &st) == -1) {
         close(fd);
         return false;
     }
-
-    void *ptr_ = mmap(nullptr, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
-    if (ptr_ == MAP_FAILED) {
-        close(fd);
-        return false;
-    }
-
+    void *ptr = mmap(nullptr, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
     close(fd);
-    *ptr = ptr_;
+    if (ptr == MAP_FAILED) {
+        return false;
+    }
+    *out = ptr;
     *size = st.st_size;
+    return true;
 #elif defined(_WIN32)
-    using namespace Microsoft::WRL::Wrappers;
-    HandleT<HandleTraits::FileHandleTraits> file;
-    HandleT<HandleTraits::FileHandleTraits> view;
-
-    DWORD flags;
-    DWORD prot;
-
-    switch (access) {
-        case IOAccess::ReadOnly : flags = GENERIC_READ;  prot = PAGE_READONLY; break;
-        case IOAccess::WriteOnly : flags = GENERIC_WRITE; prot = PAGE_WRITECOPY; break;
-        case IOAccess::ReadWrite : flags = GENERIC_READ | GENERIC_WRITE; prot = PAGE_READWRITE; break;
-    }
-
-    file.Attach(
-        CreateFileW(
-            reinterpret_cast<LPCWSTR>(u8string_view(path).to_utf16().c_str()),
-            flags,
-            FILE_SHARE_READ,
-            nullptr,
-            OPEN_EXISTING,
-            FILE_ATTRIBUTE_NORMAL,
-            nullptr
-        )
-    );
-    if (!file.IsValid()) {
+    HANDLE hfile = CreateFileW((LPCWSTR) url.to_utf16().c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (hfile == INVALID_HANDLE_VALUE) {
         return false;
     }
-    DWORD size = GetFileSize(file.Get(), nullptr);
-    view.Attach(
-        CreateFileMapping(
-            file.Get(),
-            nullptr,
-            prot,
-            0,
-            0,
-            0
-        )
-    );
-    if (!view.IsValid()) {
+    HANDLE hmapping = CreateFileMappingW(hfile, nullptr, PAGE_READONLY, 0, 0, nullptr);
+    CloseHandle(hfile);
+    if (hmapping == nullptr) {
         return false;
     }
-#else
-    return false;
-#endif
-}
-
-bool UnmapFile(void *ptr, size_t size) {
+    void *ptr = MapViewOfFile(hmapping, FILE_MAP_READ, 0, 0, 0);
+    CloseHandle(hmapping);
     if (ptr == nullptr) {
         return false;
     }
-    if (size == 0) {
+    *out = ptr;
+    *size = GetFileSize(hmapping, nullptr);
+    return true;
+#else
+    FILE *fp = fopen(url.copy().c_str(), "rb");
+    if (fp == nullptr) {
         return false;
     }
-#if defined(__linux)
-    return munmap(ptr, size) == 0;
-#elif defined(_WIN32)
-    return UnmapViewOfFile(ptr);
-#else
-    return false;
+    fseek(fp, 0, SEEK_END);
+    size_t file_size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    void *ptr = Btk_malloc(file_size);
+    if (ptr == nullptr) {
+        fclose(fp);
+        return false;
+    }
+    if (fread(ptr, 1, file_size, fp) != file_size) {
+        fclose(fp);
+        free(ptr);
+        return false;
+    }
+    fclose(fp);
+    *out = ptr;
+    *size = file_size;
+    return true;
 #endif
+
+}
+inline bool UnmapFile(void *out, size_t size) {
+#if defined(__linux)
+    return munmap(out, size) == 0;
+#elif defined(_WIN32)
+    return UnmapViewOfFile(out) != 0;
+#else
+    Btk_free(out);
+#endif
+
 }
 
-BTK_NS_END2()
+BTK_PRIV_END

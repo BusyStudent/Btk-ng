@@ -1,5 +1,4 @@
 #include "build.hpp"
-#include "common/utils.hpp"
 
 #include <Btk/detail/platform.hpp>
 #include <Btk/painter.hpp>
@@ -22,9 +21,9 @@ Widget::Widget(Widget *parent) {
         parent->add_child(this);
     }
     else {
-        _style   = &_context->style;
-        _palette = _context->palette;
-        _font    = _style->font;
+        _style   = _context->style();
+        _palette = _context->palette();
+        _font    = _context->font();
     }
 }
 Widget::~Widget() {
@@ -627,10 +626,13 @@ Widget *Widget::parent() const {
     return _parent;
 }
 Style  *Widget::style() const {
-    return _style;
+    return _style.get();
 }
 auto   Widget::font() const -> const Font & {
     return _font;
+}
+auto   Widget::cursor() const -> const Cursor & {
+    return _cursor;
 }
 auto   Widget::palette() const -> const Palette & {
     return _palette;
@@ -1101,9 +1103,6 @@ void Widget::debug_draw() {
 }
 
 // Cursor
-Cursor::Cursor() {
-    cursor = nullptr;
-}
 Cursor::Cursor(SystemCursor sys) {
     auto driver = GetDriver();
     BTK_ASSERT(driver);
@@ -1114,12 +1113,6 @@ Cursor::Cursor(const PixBuffer &pixbuf, int hot_x, int hot_y) {
     BTK_ASSERT(driver);
     cursor = driver->cursor_create(pixbuf, hot_x, hot_y);
 }
-Cursor::Cursor(const Cursor &c) {
-    cursor = COW_REFERENCE(c.cursor);
-}
-Cursor::~Cursor() {
-    COW_RELEASE(cursor);
-}
 bool Cursor::empty() const {
     return !cursor;
 }
@@ -1128,13 +1121,9 @@ void Cursor::set() const {
         cursor->set();
     }
 }
-Cursor &Cursor::operator =(const Cursor &c) {
-    if (this == &c) {
-        return *this;
-    }
-    COW_RELEASE(cursor);
-    cursor = COW_REFERENCE(c.cursor);
-    return *this;
-}
+Cursor::Cursor() = default;
+Cursor::Cursor(const Cursor &c) = default;
+Cursor::~Cursor() = default;
+Cursor &Cursor::operator =(const Cursor &c) = default;
 
 BTK_NS_END

@@ -87,7 +87,7 @@ class D2DRenderTarget  : public PaintContext {
         bool fill_mask(AbstractTexture *mask, const FRect *dst, const FRect *src) override;
 
         // Texture
-        auto create_texture(PixFormat fmt, int w, int h, float xdpi, float ydpi) -> AbstractTexture * override;;
+        auto create_texture(PixFormat fmt, int w, int h, float xdpi, float ydpi) -> Ref<AbstractTexture> override;;
 
         bool set_state(PaintContextState state, const void *data) override;
         bool native_handle(PaintContextHandle, void *out) override { return false; }
@@ -194,7 +194,7 @@ class D2DPaintDevice    : public WindowDevice {
         D2DPaintDevice();
         ~D2DPaintDevice();
 
-        auto paint_context() -> PaintContext * override;
+        auto paint_context() -> Ref<PaintContext> override;
         auto query_value(PaintDeviceValue v, void *out) -> bool override;
 
         // Inherit from WindowDevice
@@ -224,7 +224,7 @@ class D2DWicDevice final : public D2DPaintDevice {
     public:
         D2DWicDevice(PixBuffer *pixbuffer);
 
-        auto paint_context() -> PaintContext *;
+        auto paint_context() -> Ref<PaintContext> override;
     private:
         PixBuffer         *pixbuffer;
         ComPtr<IWICBitmap> bitmap;
@@ -252,7 +252,7 @@ class D2DHwndDeviceEx final  : public D2DPaintDevice {
     public:
         D2DHwndDeviceEx(HWND hwnd);
 
-        auto paint_context() -> PaintContext *;
+        auto paint_context() -> Ref<PaintContext> override;
         void resize(int w, int h) override;
 
         HWND                 hwnd = nullptr;
@@ -353,7 +353,7 @@ class D2DTexture      final : public AbstractTexture {
 
         // Inherit from PaintDevice
         bool query_value(PaintDeviceValue value, void *out) override;
-        auto paint_context() -> PaintContext * override;
+        auto paint_context() -> Ref<PaintContext> override;
 
         void update(const Rect *rect, cpointer_t data, int pitch) override;
         void set_interpolation_mode(InterpolationMode mode) override;
@@ -715,7 +715,7 @@ bool D2DRenderTarget::fill_mask(AbstractTexture *mask_, const FRect *dst, const 
     return false;
 }
 
-auto D2DRenderTarget::create_texture(PixFormat fmt, int w, int h, float xdpi, float ydpi) -> AbstractTexture * {
+auto D2DRenderTarget::create_texture(PixFormat fmt, int w, int h, float xdpi, float ydpi) -> Ref<AbstractTexture> {
     auto d2d_fmt = D2DPixFormatFrom(fmt);
     ComPtr<ID2D1Bitmap> bitmap;
     auto hr = target->CreateBitmap(
@@ -1129,7 +1129,7 @@ bool D2DTexture::query_value(PaintDeviceValue value, void *out) {
     }
     return true;
 }
-auto D2DTexture::paint_context() -> PaintContext * {
+auto D2DTexture::paint_context() -> Ref<PaintContext> {
     ComPtr<ID2D1BitmapRenderTarget> bitmap_target;
     auto hr = target->target->CreateCompatibleRenderTarget(
         bitmap->GetSize(),
@@ -1253,7 +1253,7 @@ D2DPaintDevice::D2DPaintDevice() {
 D2DPaintDevice::~D2DPaintDevice() {
 
 }
-auto D2DPaintDevice::paint_context() -> PaintContext * {
+auto D2DPaintDevice::paint_context() -> Ref<PaintContext> {
     if (!context) {
         // No context, prepare it
         context.reset(new D2DRenderTarget(this, target.Get()));
@@ -1318,7 +1318,7 @@ D2DWicDevice::D2DWicDevice(PixBuffer *buffer) : pixbuffer(buffer) {
         target.GetAddressOf()
     );
 }
-auto D2DWicDevice::paint_context() -> PaintContext* {
+auto D2DWicDevice::paint_context() -> Ref<PaintContext> {
     if (!context) {
         context.reset(new D2DWicBitmapTarget(this, target.Get(), pixbuffer, bitmap.Get()));
     }
@@ -1458,7 +1458,7 @@ void D2DHwndDeviceEx::resize(int w, int h) {
     );
     d2d_context->SetTarget(bitmap.Get());
 }
-auto D2DHwndDeviceEx::paint_context() -> PaintContext * {
+auto D2DHwndDeviceEx::paint_context() -> Ref<PaintContext> {
     if 	(!context) {
         context.reset(new D2DDeviceContext(this, d3d_swapchain.Get(), d2d_context.Get()));
     }

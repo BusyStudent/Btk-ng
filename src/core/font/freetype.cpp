@@ -1,7 +1,10 @@
 #include "build.hpp"
 #include "common/utils.hpp"
+#include "common/mmap.hpp"
 
+#include <Btk/detail/reference.hpp>
 #include <Btk/painter.hpp>
+#include <map>
 
 extern "C" {
     #define STB_TRUETYPE_IMPLEMENTATION
@@ -31,7 +34,7 @@ class GlyphMetrics {
 class PhyFontSource : public Refable<PhyFontSource> {
     public:
         PhyFontSource(const void *buffer, size_t n);
-        PhyFontSource(u8string path);
+        PhyFontSource(u8string_view path);
         ~PhyFontSource();
         
         const uint8_t *data() const {
@@ -44,11 +47,17 @@ class PhyFontSource : public Refable<PhyFontSource> {
         u8string path; //< Path
         void *buffer = nullptr;
         size_t buffer_size = 0;
+        bool   from_file = false;    
 };
 
+PhyFontSource::PhyFontSource(u8string_view path) {
+    MapFile(path, &buffer, &buffer_size);
+    from_file = true;
+}
 PhyFontSource::~PhyFontSource() {
-    if (!path.empty()) {
-        // Free If
+    if (from_file) {
+        UnmapFile(buffer, buffer_size);
+        return;
     }
 }
 
@@ -132,6 +141,13 @@ auto PhyFontFace::glyph_metrics(int index, float xscale, float yscale) -> GlyphM
     return m;
 }
 
+class FtRuntime final {
+    public:
+        // Map file to font data
+        std::map<u8string, Ref<PhyFontSource>> source;
+        // Map family name to face
+        std::map<u8string, Ref<PhyFontFace>> faces;
+};
 class FtFont : public Refable<FtFont> {
     public:
         u8string family;
@@ -154,7 +170,7 @@ BTK_PRIV_END
 
 BTK_NS_BEGIN
 
-class FontImpl : public FtFont { };
-class TextLayoutImpl : public FtTextLayout { };
+class FontImpl final       : public FtFont { };
+class TextLayoutImpl final : public FtTextLayout { };
 
 BTK_NS_END

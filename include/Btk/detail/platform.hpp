@@ -237,7 +237,7 @@ class AbstractWindow : public Any {
         virtual any_t      gc_create(const char_t *type) = 0;
 };
 
-class AbstractCursor : public Any {
+class AbstractCursor : public DynRefable {
     public:
         // Refcounting manage
         virtual void       ref()   = 0;

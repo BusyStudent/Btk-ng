@@ -1,6 +1,7 @@
 #include "build.hpp"
 #include "common/utils.hpp"
 #include "common/painterpath.hpp"
+#include "common/pod_container.hpp"
 #include "common/device_resource.hpp"
 
 #if defined(_WIN32)
@@ -1097,13 +1098,13 @@ auto Pen::line_cap() const -> LineCap {
 
 // Impl factory methods
 static
-auto GetPaintDeviceList() -> std::vector<std::pair<const char *, PaintDevice *(*)(void *)>> & {
-    static std::vector<std::pair<const char *, PaintDevice *(*)(void *)>> list;
+auto GetPaintDeviceList() -> CompressedDict<PaintDevice *(*)(void *)> & {
+    static CompressedDict<PaintDevice *(*)(void *)> list;
     return list;
 }
 
 auto RegisterPaintDevice(const char *type, PaintDevice *(*fn)(void *)) -> void {
-    GetPaintDeviceList().emplace_back(std::make_pair(type, fn));
+    GetPaintDeviceList().push_back(type, fn);
 }
 auto CreatePaintDevice(const char *type, void *source) -> PaintDevice* {
     for (auto [t, create] : GetPaintDeviceList()) {

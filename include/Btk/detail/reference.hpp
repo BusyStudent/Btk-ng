@@ -2,110 +2,84 @@
 
 #include <Btk/detail/macro.hpp>
 #include <type_traits>
-#include <memory>
+#include <atomic>
 
 BTK_NS_BEGIN
 
-// Traits for Check the class has ref & unref methods
-
-template <typename T, typename = void>
-class _IsRefableImpl : public std::false_type { };
-
-template <typename T>
-class _IsRefableImpl<T, std::void_t<decltype(&T::ref)> > : public std::true_type { };
-
-template <typename T>
-constexpr auto _IsRefable = _IsRefableImpl<T>::value;
-
 // Begin smart pointer
-
-template <typename T, bool IsRefable>
-class _Ref;
-
-
 template <typename T>
-class _Ref<T, false> : public std::shared_ptr<T> {
+class Ref {
     public:
-        static_assert(!_IsRefable<T>, "Should never has ref method");
-        static_assert(sizeof(T) >= 0, "Should be a compelete type");
+        constexpr Ref() noexcept = default;
+        constexpr Ref(std::nullptr_t) noexcept { };
 
-        using std::shared_ptr<T>::shared_ptr;
-};
-
-template <typename T>
-class _Ref<T, true> {
-    public:
-        static_assert(_IsRefable<T>, "Should have ref method");
-        static_assert(sizeof(T) >= 0, "Should be a compelete type");
-
-        constexpr _Ref() noexcept = default;
-        constexpr _Ref(std::nullptr_t) noexcept { };
-
-        _Ref(T *p) {
+        Ref(T *p) {
             ptr = p;
-            do_ref();
+            doRef();
         }
-        _Ref(_Ref && other) {
+        Ref(Ref && other) {
             ptr = other.ptr;
             other.ptr = nullptr;
         }
-        _Ref(const _Ref &other) : _Ref(other.ptr) { }
-        ~_Ref() {
+        template <typename U>
+        Ref(const Ref<U> &other) : Ref(other.get()) { }
+        Ref(const Ref    &other) : Ref(other.get()) { }
+        ~Ref() {
             reset();
         }
 
         void reset(T *n = nullptr) {
             do_unref();
             ptr = n;
-            do_ref();
+            doRef();
         }
         T   *release(T *n = nullptr) {
             T *prev = ptr;
             ptr = n;
             return prev;
         }
-        T   *get() {
+        T   *get() const {
             return ptr; 
         }
-        const T *get() const {
-            return ptr;
+        bool unique() const {
+            if (!ptr) {
+                return false;
+            }
+            return ptr->unique();
         }
 
+        template <typename U>
+        Ref<U> as() const {
+            return static_cast<U*>(ptr);
+        }
 
-        _Ref &operator =(const _Ref &other) {
+        Ref &operator =(const Ref &other) {
             if (&other == this) {
                 return *this;
             }
             reset(other.get());
             return *this;
         }
-        _Ref &operator =(_Ref &&other) {
+        Ref &operator =(Ref &&other) {
             if (&other == this) {
                 return *this;
             }
             reset(other.release());
             return *this;
         }
-        _Ref &operator =(std::nullptr_t) {
+        Ref &operator =(std::nullptr_t) {
             reset();
             return *this;
         }
-        _Ref &operator =(T *p) {
+        Ref &operator =(T *p) {
             reset(p);
             return *this;
         }
 
-        T   *operator ->() noexcept {
+        T   *operator ->() const noexcept {
             return ptr;
         }
-        T   &operator *() noexcept {
-            return *ptr;
-        }
-
-        const T *operator ->() const noexcept {
-            return ptr;
-        }
-        const T &operator *() const noexcept {
+        T   &operator *() const noexcept {
             return *ptr;
         }
 
@@ -116,7 +90,7 @@ class _Ref<T, true> {
             return ptr == nullptr;
         }
     private:
-        void do_ref() {
+        void doRef() {
             if (ptr) {
                 ptr->ref();
             }
@@ -129,10 +103,134 @@ class _Ref<T, true> {
 
         T *ptr = nullptr;
 };
+// End smart pointer
+
+// Begin Cow
+template <typename T>
+class Cow {
+    public:
+        Cow() = default;
+        Cow(T *p) : object(p) { }
+        Cow(const Ref<T> &r) : object(r) { }
+        Cow(const Cow &) = default;
+        ~Cow() = default;
+
+        Cow &mut() {
+            if (!object.unique()) {
+                object.reset(new T(*object));
+            }
+            return *this;
+        }
+        template <typename Callable>
+        Cow &mut(Callable &&cb) {
+            mut();
+            cb(*object);
+            return *this;
+        }
+
+        Cow &operator =(const Cow &) = default;
+        Cow &operator =(Cow &&) = default;
+        Cow &operator =(const Ref<T> &r) {
+            object = r;
+            return *this;
+        }
+
+        T  *get() const noexcept {
+            return object.get();
+        }
+        T  * operator ->() const noexcept {
+            return object.get();
+        }
+        T  & operator *() const noexcept {
+            return *object.get();
+        }
+        bool operator !() const noexcept {
+            return !object;
+        }
+        operator bool() const noexcept {
+            return object;
+        }
+        operator const Ref<T> &() const noexcept {
+            return object;
+        }
+    private:
+        Ref<T> object;
+};
+
+
+// Begin Refable helper
+template <typename T>
+class Refable {
+    public:
+        // Constructor
+        // Copy doesnot inhert refcount
+        Refable() = default;
+        Refable(const Refable &) : Refable() { }
+        Refable(Refable &&) : Refable() { }
+
+        void ref() {
+            ++_refcount;
+        }
+        void unref() {
+            if (--_refcount <= 0) {
+                delete static_cast<T*>(this);
+            }
+        }
+        void set_refcount(int c) noexcept {
+            _refcount = c;
+        }
+        int  refcount() const noexcept {
+            return _refcount;
+        }
+        bool unique() const noexcept {
+            return _refcount <= 1;
+        }
+    private:
+        std::atomic_int _refcount = 0;
+};
+
+/**
+ * @brief Dyn Refcounting interface
+ * 
+ */
+class DynRefable { 
+    public:
+        virtual void ref()   = 0;
+        virtual void unref() = 0;
+};
+
+
+template <typename T, typename ...Args>
+inline Ref<T> MakeRefable(Args &&...args) {
+    return Ref<T>(new T(std::forward<Arg>(args)...));
+}
+
 
 template <typename T>
-using Ref = _Ref<T, _IsRefable<T>>;
+inline bool operator ==(const Ref<T> &a, const Ref<T> &b) noexcept {
+    return a.get() == b.get();
+}
+template <typename T>
+inline bool operator !=(const Ref<T> &a, const Ref<T> &b) noexcept {
+    return a.get() != b.get();
+}
+template <typename T>
+inline bool operator ==(const Ref<T> &a, std::nullptr_t) noexcept {
+    return a.get() == nullptr;
+}
+template <typename T>
+inline bool operator !=(const Ref<T> &a, std::nullptr_t) noexcept {
+    return a.get() != nullptr;
+}
+template <typename T>
+inline bool operator ==(const Ref<T> &a, T *ptr) noexcept {
+    return a.get() == ptr;
+}
+template <typename T>
+inline bool operator !=(const Ref<T> &a, T *ptr) noexcept {
+    return a.get() != ptr;
+}
+// End refhelper
 
-// End smart pointer
 
 BTK_NS_END

@@ -63,7 +63,8 @@ class Event {
             PaletteChanged        = WidgetEvent + 31, // < Palette changed
             LayoutRequest         = WidgetEvent + 32, // < Layout changed
             ChildRectangleChanged = WidgetEvent + 33, //< Child's rectangle changed 
-
+            DpiChanged            = WidgetEvent + 34, //< Window dpi changed
+            
             WidgetEnd ,
 
             Call      , //< EventLoop will call it

@@ -72,6 +72,10 @@ enum class WidgetAttrs : uint8_t {
     ClipRectangle = 1 << 2, //< Clip rect, avoid draw out of there  
     BackgroundTransparent = 1 << 3, //< Make background transparent
 };
+enum class SizeHint    : uint8_t {
+    Perfered = 0,
+    Minimum  = 1
+};
 // Class for widget
 class SizePolicy {
     public:
@@ -133,7 +137,7 @@ class BTKAPI Cursor {
         void set() const;
         bool empty() const;
     private:
-        AbstractCursor *cursor = nullptr;
+        Ref<AbstractCursor> cursor;
 };
 
 /**
@@ -614,7 +618,7 @@ class BTKAPI Widget : public Object {
 
         UIContext  *_context    = nullptr; //< Pointer to UIContext
         Widget     *_parent     = nullptr; //< Parent widget
-        Style      *_style      = nullptr; //< Pointer to style
+        Ref<Style>  _style      = nullptr; //< Pointer to style
         WindowFlags _flags      = WindowFlags::Resizable; //< Window flags
         WidgetAttrs _attrs      = WidgetAttrs::None; //< Widget attributrs
         FocusPolicy _focus      = FocusPolicy::None; //< Focus policy

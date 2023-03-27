@@ -60,7 +60,19 @@ class BTKAPI StackedWidget : public Widget {
 class BTKAPI TabWidget : public Widget {
     public:
 
+    protected:
+        bool resize_event(ResizeEvent &) override;
+        bool move_event(MoveEvent &) override;
+        bool paint_event();
+    private:
+        StackedWidget display {this};
 };
-
+class BTKAPI ListWidget : public Widget {
+    public:
+        ListWidget();
+        ~ListWidget();
+    private:
+        std::vector<Widget*> widgets;
+};
 
 BTK_NS_END

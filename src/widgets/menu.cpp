@@ -45,5 +45,13 @@ bool PopupWidget::focus_lost(FocusEvent &) {
     close();
     return true;
 }
+bool PopupWidget::mouse_press(MouseEvent &) {
+    // Accept it prevent the mouse event processed by lower
+    return true;
+}
+bool PopupWidget::mouse_release(MouseEvent &) {
+    // Accept it prevent the mouse event processed by lower
+    return true;
+}
 
 BTK_NS_END

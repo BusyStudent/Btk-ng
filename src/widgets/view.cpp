@@ -423,14 +423,19 @@ bool ListBox::paint_event(PaintEvent &event) {
             if (_current == idx) {
                 // Draw background
                 p.set_brush(palette().hightlight());
+                p.set_alpha(0.4f);
                 p.fill_rect(client);
+                p.set_alpha(1.0f);
 
-                p.set_brush(palette().hightlighted_text());
+                p.set_brush(palette().text());
+                // p.set_brush(palette().hightlighted_text());
             }
             else if (_hovered == idx) {
                 // Is Hovered
-                p.set_brush(palette().light());
+                p.set_brush(palette().hightlight());
+                p.set_alpha(0.2f);
                 p.fill_rect(client);
+                p.set_alpha(1.0f);
                 
                 p.set_brush(palette().text());
             }
@@ -585,9 +590,11 @@ void ListBox::calc_slider() {
     auto s = style();
     auto item_viewport = rect().apply_margin(s->margin).apply_margin(s->margin);
     float height = 0.0f;
+    float width = 0.0f;
     
     for (auto &item : _items) {
         auto [w, h] = item.layout.size();
+        width += max(width, w);
         height += h;
     }
 
@@ -617,6 +624,32 @@ void ListBox::calc_slider() {
         _vslider->set_range(0, 100);
         _vslider->set_value(0);
         _ytranslate = 0;
+    }
+
+    // Check width is bigger than it
+    if (width > item_viewport.w) {
+        // Should enable slider
+        float diff = width - item_viewport.w;
+        auto cur = _hslider->value();
+
+        _hslider->show();
+        _hslider->set_page_step(item_viewport.w);
+        _hslider->set_single_step(width / _items.size());
+        _hslider->set_range(0, diff);
+        _hslider->set_value(min<double>(diff, cur));
+
+        // BTK_LOG("Slider line step %lf\n", slider->single_step());
+        // BTK_LOG("Slider page step %lf\n", slider->page_step());
+        
+        // Place at
+        _hslider->move(item_viewport.x, item_viewport.y + item_viewport.h - _hslider->height());
+        _hslider->resize(item_viewport.w, _hslider->height());
+    }
+    else {
+        _hslider->hide();
+        _hslider->set_range(0, 100);
+        _hslider->set_value(0);
+        _xtranslate = 0;
     }
 }
 void ListBox::vslider_value_changed() {

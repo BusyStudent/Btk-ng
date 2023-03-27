@@ -89,7 +89,7 @@ class PaintDevice {
     public:
         virtual ~PaintDevice() {}
 
-        virtual auto  paint_context() -> PaintContext* = 0;
+        virtual auto  paint_context() -> Ref<PaintContext> = 0;
         virtual bool  query_value(PaintDeviceValue value, void *) = 0;
 
         // Simplify query value for user
@@ -180,9 +180,9 @@ class PaintContext : public PaintResource, public GraphicsContext {
          * @param h The pixel height of this texture
          * @param xdpi The xdpi of this texture (0 on device xdpi)
          * @param ydpi The ydpi of this texture (0 on device ydpi)
-         * @return AbstractTexture* 
+         * @return Ref<AbstractTexture>
          */
-        virtual auto create_texture(PixFormat fmt, int w, int h, float xdpi = 96, float ydpi = 96) -> AbstractTexture * = 0;
+        virtual auto create_texture(PixFormat fmt, int w, int h, float xdpi = 96, float ydpi = 96) -> Ref<AbstractTexture> = 0;
         
         /**
          * @brief Get the native_handle of it

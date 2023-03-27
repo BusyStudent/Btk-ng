@@ -1,9 +1,11 @@
 #pragma once
 
+#include <Btk/detail/reference.hpp>
 #include <Btk/painter.hpp>
 #include <Btk/pixels.hpp>
 #include <Btk/font.hpp>
 #include <Btk/defs.hpp>
+#include <memory>
 
 BTK_NS_BEGIN
 
@@ -110,7 +112,7 @@ class BTKAPI Palette {
  * @brief Style for widgets
  * 
  */
-class Style {
+class Style : public Refable<Style>, public Any {
     public:
         int   button_width; //< Default button width
         int   button_height; //< Default button height
@@ -154,6 +156,25 @@ class Style {
         float shadow_offset_x;
         float shadow_offset_y;
         float shadow_radius;
+    public:
+        // Widget type
+        enum Control : uint32_t {
+            Button,
+            RadioButton,
+            TextEdit,
+            ProgressBar,
+            Label,
+            ImageView,
+            Slider,
+            ScrollBar
+        };
+        // Element type
+        enum Element : uint32_t {
+            Border,
+        };
+
+        // Draw        
+        virtual void draw_control(Control ctl, Widget *wi, Painter &p) = 0;
 };
 
 inline auto Palette::set_brush(Role role, const Brush &brush) -> void {
@@ -167,8 +188,15 @@ inline auto Palette::set_color(Role role, const GLColor &color) -> void {
     set_color(Disable, role, color);
 }
 
+BTKAPI Palette    PaletteBreeze();
+BTKAPI Ref<Style> CreateStyle(u8string_view name = { });
+BTKAPI void       RegisterStyle(u8string_view name, Ref<Style> (*fn)());
 
-BTKAPI void StyleBreeze(Style *style);
-BTKAPI void PaletteBreeze(Palette *palette);
+template <typename T>
+inline void       RegisterStyle(u8string_view name) {
+    RegisterStyle(name, []() -> Ref<Style> {
+        return MakeRefable<T>();
+    });
+}
 
 BTK_NS_END

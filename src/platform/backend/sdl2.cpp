@@ -782,9 +782,12 @@ void SDLWindow::repaint() {
     // event.window.timestamp = SDL_GetTicks();
     // event.window.type = SDL_WINDOWEVENT;
     // event.window.windowID = SDL_GetWindowID(win);
-    if (last_repaint_ticks != 0) {
+    Uint32 current = SDL_GetTicks();
+    if (current - last_repaint_ticks < 1) {
         // Merge
+        return;
     }
+    last_repaint_ticks = current;
 
     event.type = SDL_REPAINT_EVENT;
     event.user.windowID = SDL_GetWindowID(win);

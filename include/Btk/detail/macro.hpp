@@ -162,6 +162,12 @@
             __VA_ARGS__;            \
         }                           \
     }
+// Simple Call on load
+#define BTK_INITCALL(fn)                \
+    static int _##__COUNTER__ = []() {  \
+        fn();                           \
+        return 0;                       \
+    } ();                               \
 
 // Macro for enum class to flag
 

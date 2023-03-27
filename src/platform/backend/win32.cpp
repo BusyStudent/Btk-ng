@@ -201,7 +201,7 @@ class Win32Cursor final : public AbstractCursor {
     private:
         HCURSOR cursor = nullptr;
         bool owned = false;
-        int  refcount = 1;
+        int  refcount = 0;
 };
 
 class Win32Dispatcher final : public EventDispatcher {
@@ -1337,6 +1337,7 @@ LRESULT Win32Window::wnd_proc(UINT msg, WPARAM wparam, LPARAM lparam) {
             }
             return 1;
         }
+        case WM_SIZING : 
         case WM_SIZE : {
             ResizeEvent event;
             event.set_widget(widget);
@@ -1648,6 +1649,11 @@ LRESULT Win32Window::wnd_proc(UINT msg, WPARAM wparam, LPARAM lparam) {
             win_dpi = HIWORD(wparam);
 
             WIN_LOG("[Win32] DPI Changed to %d\n", int(win_dpi));
+            
+            ChangeEvent event(Event::DpiChanged);
+            event.set_widget(widget);
+            event.set_timestamp(GetTicks());
+            widget->handle(event);
             break;
         }
         // case WM_MOVE : {
@@ -1905,6 +1911,7 @@ BOOL   Win32Window::enable_alpha_blend() {
 
     BOOL opaque;
     DWORD color;
+    HRESULT hr;
 
     if ((SUCCEEDED(driver->DwmGetColorizationColor(&color, &opaque)))) {
         HRGN region = ::CreateRectRgn(0, 0, -1, -1);
@@ -1912,9 +1919,9 @@ BOOL   Win32Window::enable_alpha_blend() {
         bb.dwFlags = DWM_BB_ENABLE | DWM_BB_BLURREGION;
         bb.hRgnBlur = region;
         bb.fEnable = TRUE;
-        driver->DwmEnableBlurBehindWindow(hwnd, &bb);
+        hr = driver->DwmEnableBlurBehindWindow(hwnd, &bb);
         ::DeleteObject(region);
-        return TRUE;
+        return SUCCEEDED(hr);
     }
     return FALSE;
 }

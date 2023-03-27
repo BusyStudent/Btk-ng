@@ -1,14 +1,10 @@
 #pragma once
 
-#include <Btk/detail/threading.hpp>
 #include <Btk/string.hpp>
 #include <Btk/object.hpp>
 #include <Btk/pixels.hpp>
 #include <Btk/style.hpp>
-#include <unordered_set>
 #include <thread>
-#include <atomic>
-#include <deque>
 
 #define BTK_MAKE_DEVINFO(type, name, text) \
     GraphicsDriverInfo name = { \
@@ -88,10 +84,25 @@ class BTKAPI UIContext : public Trackable {
         auto dispatcher() -> EventDispatcher *{
             return _dispatcher;
         }
+        auto style()      -> Style          *{
+            return _style.get();
+        }
+        auto palette()    -> const Palette & {
+            return _palette;
+        }
+        auto font()       -> const Font & {
+            return _style->font;
+        }
 
         // Configure
         auto set_font(const Font &f)            -> void {
-            style.font = f;
+            _style->font = f;
+        }
+        auto set_style(const Ref<Style> &s)      -> void {
+            _style = s;
+        }
+        auto set_palette(const Palette &p)       -> void {
+            _palette = p;
         }
         auto set_dispatcher(EventDispatcher *d) -> void {
             _dispatcher = d;
@@ -108,8 +119,8 @@ class BTKAPI UIContext : public Trackable {
         EventDispatcher *_dispatcher = nullptr;
         GraphicsDriver  *_driver = nullptr;
         std::thread::id thread_id;
-        Palette palette;
-        Style style;
+        Palette  _palette;
+        Ref<Style> _style;
     friend class Widget;
     friend class EventLoop;
 };

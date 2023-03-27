@@ -35,7 +35,7 @@ class NanoVGWindowDevice final : public WindowDevice {
         NanoVGWindowDevice(AbstractWindow *);
         ~NanoVGWindowDevice();
 
-        auto paint_context() -> PaintContext *;
+        auto paint_context() -> Ref<PaintContext >;
         bool query_value(PaintDeviceValue value, void *out);
 
         // We didnot need it
@@ -95,7 +95,7 @@ class NanoVGContext final : public PaintContext, PainterPathSink, OpenGLES3Funct
         bool native_handle(PaintContextHandle h, void *out) override;
 
         // Texture
-        auto create_texture(PixFormat fmt, int w, int h, float xdpi, float ydpi) -> AbstractTexture * override;
+        auto create_texture(PixFormat fmt, int w, int h, float xdpi, float ydpi) -> Ref<AbstractTexture> override;
 
         // Vector Graphics Sink
         void open() override;
@@ -147,7 +147,7 @@ class NanoVGTexture final : public AbstractTexture {
         }
 
         // Inhertied from PaintDevice
-        auto paint_context() -> PaintContext * override {
+        auto paint_context() -> Ref<PaintContext > override {
             return nullptr;
         }
         bool query_value(PaintDeviceValue v, void *out) override;
@@ -563,7 +563,7 @@ void NanoVGContext::set_winding(PathWinding wi) {
     winding = wi;
 }
 
-auto NanoVGContext::create_texture(PixFormat fmt, int w, int h, float xdpi, float ydpi) -> AbstractTexture * {
+auto NanoVGContext::create_texture(PixFormat fmt, int w, int h, float xdpi, float ydpi) -> Ref<AbstractTexture> {
     GLGuard guard(glctxt);
 
     int id = -1;
@@ -747,8 +747,8 @@ void NanoVGContext::apply_brush(const FRect &object) {
                 auto tex = create_texture(pixbuffer.format(), pixbuffer.width(), pixbuffer.height(), 96, 96);
                 tex->update(nullptr, pixbuffer.pixels(), pixbuffer.pitch());
 
-                resource = tex;
-                brush.bind_device_resource(nvgctxt, tex);
+                resource = tex.get();
+                brush.bind_device_resource(nvgctxt, tex.get());
             }
             auto tex = static_cast<NanoVGTexture*>(resource);
 
@@ -856,7 +856,7 @@ NanoVGTextCache::NanoVGTextCache(NanoVGContext *ctxt, const TextLayout &layout) 
     }
 
     // Make Bitmap on it
-    bitmap = static_cast<NanoVGTexture *>(ctxt->create_texture(PixFormat::Gray8, width, height, 96, 96));
+    bitmap = ctxt->create_texture(PixFormat::Gray8, width, height, 96, 96).as<NanoVGTexture>();
 
     // Because nanovg use a big texture to update a part of it, So we also like it
     PixBuffer hole_texture(PixFormat::Gray8, width, height);
@@ -994,7 +994,7 @@ bool NanoVGWindowDevice::query_value(PaintDeviceValue value, void *out) {
     }
     return true;
 }
-auto NanoVGWindowDevice::paint_context() -> PaintContext* {
+auto NanoVGWindowDevice::paint_context() -> Ref<PaintContext> {
     return nvgctxt;
 }
 

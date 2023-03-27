@@ -141,64 +141,34 @@ class WeakRef;
 template <typename T>
 class Ref;
 
-template <typename T>
-class Refable {
-    public:
-        // Constructor
-        // Copy doesnot inhert refcount
-        Refable() = default;
-        Refable(const Refable &) : Refable() {}
-        Refable(Refable &&) : Refable() {}
+// template <typename T>
+// class WeakRefable : public Refable<T> {
+//     public:
+//         WeakRefable() : Refable<T>() {}
+//         WeakRefable(const WeakRefable &r) : Refable<T>(r) {}
+//         WeakRefable(WeakRefable &&r) : Refable<T>(r) {}
+//         ~WeakRefable() {
+//             // Destroy weak refs
+//             if (_weak) {
+//                 _weak->_die = true;
+//                 _weak->unref();
 
-        void ref() {
-            ++_refcount;
-        }
-        void unref() {
-            if (--_refcount <= 0) {
-                delete static_cast<T*>(this);
-            }
-        }
-        void set_refcount(int c) {
-            _refcount = c;
-        }
-        int  refcount() const {
-            return _refcount;
-        }
+//                 _weak = nullptr;
+//             }
+//         }
 
-        // Helper for Make a instance
-        template <typename ...Args>
-        static Ref<T> New(Args &&... args);
-    private:
-        int       _refcount = 0;
-};
-template <typename T>
-class WeakRefable : public Refable<T> {
-    public:
-        WeakRefable() : Refable<T>() {}
-        WeakRefable(const WeakRefable &r) : Refable<T>(r) {}
-        WeakRefable(WeakRefable &&r) : Refable<T>(r) {}
-        ~WeakRefable() {
-            // Destroy weak refs
-            if (_weak) {
-                _weak->_die = true;
-                _weak->unref();
-
-                _weak = nullptr;
-            }
-        }
-
-        auto weakref() -> WeakData *{
-            if (!_weak) {
-                _weak = new WeakData();
-                _weak->ref();
-            }
-            return _weak;
-        }
-    private:
-        WeakData *_weak = nullptr; //< For weak reference
-    template <typename U>
-    friend class WeakRef;
-};
+//         auto weakref() -> WeakData *{
+//             if (!_weak) {
+//                 _weak = new WeakData();
+//                 _weak->ref();
+//             }
+//             return _weak;
+//         }
+//     private:
+//         WeakData *_weak = nullptr; //< For weak reference
+//     template <typename U>
+//     friend class WeakRef;
+// };
 
 // Strong reference
 // template <typename T>
@@ -394,11 +364,11 @@ class WeakRef {
 
 
 // Helper for Make a instance
-template <typename T>
-template <typename ...Args>
-inline Ref<T> Refable<T>::New(Args &&... args) {
-    return Ref<T>(new T(std::forward<Args>(args)...));
-}
+// template <typename T>
+// template <typename ...Args>
+// inline Ref<T> Refable<T>::New(Args &&... args) {
+//     return Ref<T>(new T(std::forward<Args>(args)...));
+// }
 
 
 // Helper to calc the size

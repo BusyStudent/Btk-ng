@@ -1,5 +1,6 @@
 #include "build.hpp"
 #include "common/utils.hpp"
+#include "common/pod_container.hpp"
 
 #include <Btk/style.hpp>
 
@@ -61,122 +62,73 @@ auto Palette::set_color(Group group, Role role, const GLColor &cl) -> void {
     priv->brushs[group][role].set_color(cl);
 }
 
-void PaletteBreeze(Palette *palette) {
+Palette PaletteBreeze() {
+    Palette palette;
     // Make brush for button actived / inactived
     LinearGradient gradient;
     gradient.set_start_point(0.5f, 0.0f);
     gradient.set_end_point(0.5f  , 1.0f);
     gradient.add_stop(0.0f, Color(241, 242, 243));
     gradient.add_stop(1.0f, Color(232, 233, 234));
-    palette->set_brush(Palette::Button, gradient); //< Set for all groups
-    palette->set_brush(Palette::ButtonHovered, gradient);
+    palette.set_brush(Palette::Button, gradient); //< Set for all groups
+    palette.set_brush(Palette::ButtonHovered, gradient);
     // Make for pressed
     gradient.clear();
     gradient.add_stop(0.0f, Color(150, 210, 238));
     gradient.add_stop(1.0f, Color(134, 188, 212));
-    palette->set_brush(Palette::ButtonPressed, gradient);
-    palette->set_brush(Palette::Active, Palette::ButtonHovered, gradient); //< As same as active
+    palette.set_brush(Palette::ButtonPressed, gradient);
+    palette.set_brush(Palette::Active, Palette::ButtonHovered, gradient); //< As same as active
     // Make for nohovered active button
-    palette->set_brush(Palette::Active, Palette::Button, Color(61 , 174, 233)); 
+    palette.set_brush(Palette::Active, Palette::Button, Color(61 , 174, 233)); 
     
     // Color(252, 252, 252);
 
-    palette->set_color(Palette::Window, Color(239, 240, 241));
-    palette->set_color(Palette::Input, Color(252, 252, 252));
-    palette->set_color(Palette::Border, Color(179, 181, 182));
-    palette->set_color(Palette::Hightlight, Color(61 , 174, 233));
+    palette.set_color(Palette::Window, Color(239, 240, 241));
+    palette.set_color(Palette::Input, Color(252, 252, 252));
+    palette.set_color(Palette::Border, Color(179, 181, 182));
+    palette.set_color(Palette::Hightlight, Color(61 , 174, 233));
 
 
     // Text
-    palette->set_color(Palette::Text, Color::Black);
-    palette->set_color(Palette::PlaceholderText, Color::Gray);
-    palette->set_color(Palette::HightlightedText, Color::White);
+    palette.set_color(Palette::Text, Color::Black);
+    palette.set_color(Palette::PlaceholderText, Color::Gray);
+    palette.set_color(Palette::HightlightedText, Color::White);
 
-    palette->set_color(Palette::Shadow, Color::Gray);
-    palette->set_color(Palette::Light, Color(61 , 174, 233, 255 / 2.5));
+    palette.set_color(Palette::Shadow, Color::Gray);
+    palette.set_color(Palette::Light, Color(61 , 174, 233, 255 / 2.5));
 
-    // palette->set_color(Palette::Active, Palette::Border, Color(61 , 174, 233));
+    // palette.set_color(Palette::Active, Palette::Border, Color(61 , 174, 233));
     // Active group
-    palette->set_brush(Palette::Active, Palette::Border, Color(166, 216, 243));
+    palette.set_brush(Palette::Active, Palette::Border, Color(166, 216, 243));
+
+    return palette;
 }
 
 // Style
-void StyleBreeze(Style *style) {
-    // style->background = Color(252, 252, 252);
-    // style->window     = Color(239, 240, 241);
-    // // style->button     = Color(238, 240, 241);
-    // style->border     = Color(188, 190, 191);
-    // style->highlight  = Color(61 , 174, 233);
-    // style->selection  = Color(61 , 174, 233);
+static CompressedDict<Ref<Style> (*)()> &
+GetStyleList() {
+    static CompressedDict<Ref<Style> (*)()> list;
+    return list;
+}
 
-    // style->text           = Color(0, 0, 0);
-    // style->highlight_text = Color(255, 255, 255);
-
-    // Button default size
-    style->button_width = 88;
-    style->button_height = 32;
-    // Button radius
-    style->button_radius = 0;
-    style->button_icon_spacing = 4;
-
-    style->radio_button_circle_pad = 4;
-    style->radio_button_circle_inner_pad = 4;
-    style->radio_button_circle_r = 8;
-    style->radio_button_text_pad = 4;
-
-    // Progress bar
-    style->progressbar_width = 100;
-    style->progressbar_height = 20;
-
-    // Slider
-    style->slider_height = 20;
-    style->slider_width  = 20;
-    // style->slider_bar_height = 10;
-    // style->slider_bar_width  = 10;
-
-    style->scrollbar_width  = 12;
-    style->scrollbar_height = 12;
-
-    style->margin = 2.0f;
-
-    // Set font family and size
-// #if defined(_WIN32)
-#if 0
-    // Query current system font
-    LOGFONTW lf;
-    GetObjectW(GetStockObject(DEFAULT_GUI_FONT), sizeof(LOGFONTW), &lf);
-    auto nameu8 = u8string::from(lf.lfFaceName);
-
-    style->font = Font(nameu8, std::abs(lf.lfHeight));
-#else
-    const char *sysfont = ::getenv("BTK_SYSFONT");
-    if (!sysfont) {
-        sysfont = "Noto Sans Regular";
+void       RegisterStyle(u8string_view name, Ref<Style> (*fn)()) {
+    auto &list = GetStyleList();
+    list.push_back(name, fn);
+}
+Ref<Style> CreateStyle(u8string_view name) {
+    auto &list = GetStyleList();
+    if (list.empty()) {
+        return nullptr;
     }
-    style->font = Font(sysfont, 12);
-#endif
-    
-    // Icon
-    style->icon_width = 20;
-    style->icon_height = 20;
-
-    // Window default
-    style->window_height = 100;
-    style->window_width  = 100;
-
-    // Shadow
-    style->shadow_radius = 4;
-    style->shadow_offset_x = 2;
-    style->shadow_offset_y = 2;
-
-    LinearGradient linear;
-    linear.add_stop(0, Color::Gray);
-    linear.add_stop(1, Color::Transparent);
-    linear.set_start_point(0.5f, 0.0f);
-    linear.set_end_point(0.5f, 1.0f);
-
-    style->shadow = linear;
-
+    if (name.empty()) {
+        return list.back().second();
+    }
+    for (auto [n, create] : list) {
+        if (name == n) {
+            return create();
+        }
+    }
+    return nullptr;
 }
 
 

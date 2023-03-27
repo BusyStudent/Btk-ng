@@ -171,20 +171,15 @@ void BoxLayout::mark_dirty() {
 }
 void BoxLayout::run_hook(Event &event) {
     switch (event.type()) {
-        // case Event::Moved : {
-        //     _rect.x = event.as<MoveEvent>().x();
-        //     _rect.y = event.as<MoveEvent>().y();
-        //     if (!_except_resize) {
-        //         mark_dirty();
-        //         run_layout(nullptr);
-        //     }
-        //     break;
-        // }
         case Event::Moved : {
-            [[fallthrough]];
+            _rect.x = event.as<MoveEvent>().x();
+            _rect.y = event.as<MoveEvent>().y();
+            mark_dirty();
+            break;
         }
         case Event::Resized : {
-            _rect = widget()->rect();
+            _rect.w = event.as<ResizeEvent>().width();
+            _rect.h = event.as<ResizeEvent>().height();
             if (!_except_resize) {
                 mark_dirty();
                 run_layout(nullptr);
