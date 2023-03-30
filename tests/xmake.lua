@@ -51,6 +51,12 @@ if has_config("tests") then
 
     target_end()
 
+	target("combobox")
+		add_deps("btk")
+		set_kind("binary")
+		add_files("combobox_test.cpp")
+	target_end()
+
     if has_package("gtest") then 
         -- Add string test
         target("test")
