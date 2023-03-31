@@ -10,7 +10,10 @@ ComboBox::ComboBox(Widget *parent) : Widget(parent) {
 	// 目前不提供其他view类支持，只委托给listbox。
 	_listbox_view = new ListBox();
 	_listbox_view->signal_item_clicked().connect(&ComboBox::set_current_item, this);
-	// _popup_widget.set_hide_on_focus_lost(true);
+	set_focus_policy(FocusPolicy::Mouse);
+	_text_layout.set_font(font());
+	_text_layout.set_text(" ");
+	blank = _text_layout.size().w;
 }
 
 ComboBox::~ComboBox() {
@@ -27,13 +30,13 @@ void ComboBox::set_max_visible_items(int max_items) {
 }
 
 int ComboBox::count() const {
-	return _items.size();
+	return _count;
 }
 
 int ComboBox::find_text(u8string_view text) {
 	int index = -1;
-	for (int i = 0;i < _items.size(); ++i) {
-		if (_items[i].text == text) {
+	for (int i = 0;i < _count; ++i) {
+		if (_listbox_view->item_at(i)->text == text) {
 			index = i;
 			break;
 		}
@@ -46,17 +49,16 @@ int ComboBox::current_index() const {
 }
 
 u8string ComboBox::current_text() const {
-	if (_current_index < 0 || _current_index >= _items.size()) {
+	if (_current_index < 0 || _current_index >= _count) {
 		return "";
 	}
-	return _items[_current_index].text;
+	return _listbox_view->item_at(_current_index)->text;
 }
 
 bool ComboBox::set_item_text(int index, u8string_view text) {
-	if (index < 0 || _current_index >= _items.size()) {
+	if (index < 0 || _current_index >= _count) {
 		return false;
 	} else {
-		_items[index].text = text;
 		auto item = _listbox_view->item_at(index);
 		item->text = text;
 		_text_changed.emit(index, text);
@@ -67,9 +69,30 @@ bool ComboBox::set_item_text(int index, u8string_view text) {
 void ComboBox::add_item(u8string_view str) {
 	ListItem list_item;
 	list_item.text = str;
-	_items.push_back(list_item);
 	_listbox_view->add_item(list_item);
-	if (_items.size() == 1) {
+	++ _count;
+	if (_count == 1) {
+		set_current_index(0);
+	}
+}
+
+void ComboBox::add_item(const PixBuffer& icon) {
+	ListItem list_item;
+	list_item.image = icon;
+	_listbox_view->add_item(list_item);
+	++ _count;
+	if (_count == 1) {
+		set_current_index(0);
+	}
+}
+
+void ComboBox::add_item(u8string_view str, const PixBuffer& icon) {
+	ListItem list_item;
+	list_item.image = icon;
+	list_item.text = str;
+	_listbox_view->add_item(list_item);
+	++ _count;
+	if (_count == 1) {
 		set_current_index(0);
 	}
 }
@@ -77,21 +100,32 @@ void ComboBox::add_item(u8string_view str) {
 void ComboBox::remove_item(u8string_view what) {
 	int index = find_text(what);
 	_listbox_view->remove_item(_listbox_view->item_at(index));
-	_items.erase(_items.begin() + index);
+	-- _count;
+	if (index == _current_index) {
+		set_current_index(0);
+	}
 }
 
 void ComboBox::set_current_index(int index) {
-	if (index >= 0 && index < _items.size()) {
+	if (index >= 0 && index < _count) {
 		_current_index = index;
-		if (_items[_current_index].font.empty()) {
+		if (_listbox_view->item_at(_current_index)->font.empty()) {
 			_text_layout.set_font(font());
 		} else {
-			_text_layout.set_font(_items[_current_index].font);
+			_text_layout.set_font(_listbox_view->item_at(_current_index)->font);
 		}
-		_text_layout.set_text(_items[_current_index].text);
+		_text_layout.set_text(_listbox_view->item_at(_current_index)->text);
 		_current_index_changed(_current_index);
-		_current_text_changed(_items[_current_index].text);
+		_current_text_changed(_listbox_view->item_at(_current_index)->text);
 		repaint();
+	} else {
+		if (_count > 0) {
+			set_current_index(0);
+		} else {
+			_text_layout.set_font(font());
+			_text_layout.set_text("");
+			repaint();
+		}
 	}
 }
 
@@ -107,17 +141,26 @@ void ComboBox::set_current_item(ListItem* item) { // 一旦通过listbox选择it
 	set_current_text(item->text);
 }
 
+bool ComboBox::set_item_icon(int index, const PixBuffer& icon) {
+	auto item = _listbox_view->item_at(index);
+	item->image = icon;
+	return true;
+}
+
 bool ComboBox::paint_event(PaintEvent &event)  {
 	// comboBox border
 	auto border = this->rect().cast<float>();
 	// text view border
-	FRect text_border{border.x, border.y, border.w - border.h / 2, border.h};
+	FRect text_border{border.x + blank, border.y, border.w - border.h / 2, border.h};
 	// drop down symbol view border
 	FRect drop_down_border{border.x + border.w - border.h / 2, border.y, border.h / 2, border.h};
     auto &painter = this->painter();
 
+	painter.set_brush(palette().input());
+	painter.fill_rect(border);
+	
     auto size = _text_layout.size();
-    FRect textbox(0, 0, text_border.w, text_border.h);
+    FRect textbox(0, 0, size.w, size.h);
     textbox = textbox.align_at(text_border, _align);
 
     painter.set_font(font());
@@ -131,13 +174,20 @@ bool ComboBox::paint_event(PaintEvent &event)  {
         textbox.y
     );
     painter.pop_scissor();
-
 	painter.push_scissor(drop_down_border);
-	painter.set_brush(palette().light());
+	if (has_focus() || _popup_widget != nullptr) {
+		painter.set_brush(palette().light());
+	} else {
+		painter.set_brush(palette().window());
+	}
 	painter.fill_rect(drop_down_border);
 	painter.set_brush(palette().border());
 	painter.draw_rect(drop_down_border);
-	painter.set_brush(palette().hightlight());
+	if (has_focus() || _popup_widget != nullptr) {
+		painter.set_brush(palette().hightlight());
+	} else {
+		painter.set_brush(palette().light());
+	}
 	painter.draw_line({drop_down_border.x + drop_down_border.w / 5, drop_down_border.y + drop_down_border.h / 3}, {drop_down_border.x + drop_down_border.w / 2, drop_down_border.y + drop_down_border.h * 2 / 3});
 	painter.draw_line({drop_down_border.x + drop_down_border.w * 4 / 5, drop_down_border.y + drop_down_border.h / 3}, {drop_down_border.x + drop_down_border.w / 2, drop_down_border.y + drop_down_border.h * 2 / 3});
 	painter.pop_scissor();
@@ -150,8 +200,8 @@ bool ComboBox::paint_event(PaintEvent &event)  {
 
 bool ComboBox::change_event(ChangeEvent &event) {
 	if (event.type() == ChangeEvent::FontChanged) {
-		if (_current_index >= 0 && _current_index <= _items.size()) {
-			if (!_items[_current_index].font.empty()) {
+		if (_current_index >= 0 && _current_index <= _count) {
+			if (!_listbox_view->item_at(_current_index)->font.empty()) {
 				_text_layout.set_font(font());
 			}
 		}
@@ -183,6 +233,16 @@ bool ComboBox::mouse_press(MouseEvent &event) {
 	return true;
 }
 
+bool ComboBox::focus_gained(FocusEvent &event) {
+	repaint();
+	return true;
+}
+
+bool ComboBox::focus_lost   (FocusEvent &event) {
+	repaint();
+	return true;
+}
+
 bool ComboBox::mouse_release(MouseEvent &event) {
 	return true;
 }
@@ -200,9 +260,9 @@ bool ComboBox::mouse_motion(MotionEvent &event) {
 }
 
 bool ComboBox::mouse_wheel(WheelEvent &event) {
-	if (_items.size() > 0 && !_popup_widget) {
+	if (_count > 0 && !_popup_widget) {
 		// When not display it
-		int len = _items.size();
+		int len = _count;
 		set_current_index(((_current_index - event.y()) % len + len) % len);
 	}
 	return true;
@@ -211,17 +271,15 @@ bool ComboBox::mouse_wheel(WheelEvent &event) {
 Size ComboBox::size_hint() const {
 	float height = style()->button_height / 2;
 	TextLayout layout;
-	layout.set_font(font());
-	layout.set_text("    ");
-	int blank = layout.size().w;
 	float width = blank;
-	for (const auto& item : _items) {
-		if (item.font.empty()) {
+	for (int i = 0;i < _count; ++ i) {
+		const auto& item = _listbox_view->item_at(i);
+		if (item->font.empty()) {
 			layout.set_font(font());
 		} else {
-			layout.set_font(item.font);
+			layout.set_font(item->font);
 		}
-		layout.set_text(item.text);
+		layout.set_text(item->text);
 		width = max(width, layout.size().w + blank);
 	}
 	width += height / 2;

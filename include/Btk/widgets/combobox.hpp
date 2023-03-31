@@ -61,12 +61,15 @@ class BTKAPI ComboBox : public Widget {
 		 * @return false (set falied,maybe index invalid)
 		 */
         bool set_item_text(int index, u8string_view text);
+		bool set_item_icon(int index, const PixBuffer& icon);
 		/**
 		 * @brief add item
 		 * 
 		 * @param str 
 		 */
         void add_item(u8string_view str);
+		void add_item(const PixBuffer& icon);
+		void add_item(u8string_view str, const PixBuffer& icon);
 		/**
 		 * @brief remove item
 		 * 
@@ -76,14 +79,19 @@ class BTKAPI ComboBox : public Widget {
 
     protected: // Event handlers
         bool paint_event(PaintEvent &event) override;
-        bool mouse_press(MouseEvent &event) override;
+        
+		bool mouse_press  (MouseEvent &event) override;
         bool mouse_release(MouseEvent &event) override;
-        bool mouse_enter(MotionEvent &event) override;
-        bool mouse_leave(MotionEvent &event) override;
-        bool mouse_motion(MotionEvent &event) override;
-		bool mouse_wheel(WheelEvent &event) override;
-        bool change_event(ChangeEvent &event) override;
-	
+        bool mouse_enter  (MotionEvent &event) override;
+        bool mouse_leave  (MotionEvent &event) override;
+        bool mouse_motion (MotionEvent &event) override;
+		bool mouse_wheel  (WheelEvent &event) override;
+        
+		bool change_event (ChangeEvent &event) override;
+		
+		bool focus_gained (FocusEvent &event) override;
+		bool focus_lost   (FocusEvent &event) override; 
+
 	public:
         Size size_hint() const override;
 
@@ -132,9 +140,10 @@ class BTKAPI ComboBox : public Widget {
         Signal<void(int)> _current_index_changed;
 
     private:
-        std::vector<ListItem> _items;
         int _current_index = 0;
         int _max_visible_items = 5;
+		int _count = 0;
+		float blank;
         TextLayout _text_layout;
 		Alignment  _align = Alignment::Left | Alignment::Middle;
         ListBox *_listbox_view = nullptr;
