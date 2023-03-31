@@ -16,16 +16,25 @@ PopupWidget::~PopupWidget() {
 
 }
 void PopupWidget::popup(Widget *wi) {
+    set_parent(nullptr);
     if (wi) {
         wi->root()->add_child(this);
 
         raise();
         take_focus();
     }
+    else {
+        show();
+        raise();
+    }
 }
 
 bool PopupWidget::paint_event(PaintEvent &) {
     auto &p = painter();
+    if (is_window()) {
+        // Popup like window
+        return true;
+    }
 
     // Draw shadow
     p.save();
@@ -42,7 +51,13 @@ bool PopupWidget::paint_event(PaintEvent &) {
     return true;
 }
 bool PopupWidget::focus_lost(FocusEvent &) {
-    close();
+    _focus_lost.emit();
+    if (hide_on_focus_lost) {
+        hide();
+    }
+    else {
+        close();
+    }
     return true;
 }
 bool PopupWidget::mouse_press(MouseEvent &) {

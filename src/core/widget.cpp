@@ -742,6 +742,10 @@ void Widget::set_parent(Widget *w) {
     if (w) {
         w->add_child(this);
     }
+    else {
+        // Nullptr
+        _parent = w;
+    }
 }
 void Widget::paint_children(PaintEvent &event) {
     // From bottom to top
@@ -786,7 +790,7 @@ FPoint Widget::window_dpi() const {
     }
     return dpi;
 }
-Point  Widget::client_to_screen(int x, int y) const {
+Point  Widget::map_to_screen(int x, int y) const {
     Point p = {x, y};
     auto win = root()->_win;
     if (win) {
@@ -794,11 +798,27 @@ Point  Widget::client_to_screen(int x, int y) const {
     }
     return p;
 }
-Point  Widget::screen_to_client(int x, int y) const {
+Point  Widget::map_to_client(int x, int y) const {
     Point p = {x, y};
     auto win = root()->_win;
     if (win) {
         p = win->map_point(p, AbstractWindow::ToClient);
+    }
+    return p;
+}
+Point  Widget::map_to_pixels(int x, int y) const {
+    Point p = {x, y};
+    auto win = root()->_win;
+    if (win) {
+        p = win->map_point(p, AbstractWindow::ToPixel);
+    }
+    return p;
+}
+Point  Widget::map_to_dips(int x, int y) const {
+    Point p = {x, y};
+    auto win = root()->_win;
+    if (win) {
+        p = win->map_point(p, AbstractWindow::ToDIPS);
     }
     return p;
 }

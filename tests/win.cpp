@@ -120,6 +120,7 @@ class Canvas : public Widget {
             gc.set_brush(linear_brush);
             gc.set_pen(dash_pen);
             gc.draw_path(path);
+            gc.draw_rect(path.bounding_box());
             gc.set_stroke_width(1);
 
             gc.push_transform();
@@ -566,6 +567,8 @@ int main () {
     ltedit.signal_enter_pressed().connect([&]() {
         ListItem item;
         item.text = ltedit.text();
+        item.image = test_image();
+        item.image_size = Size(64, 64);
         ltbox.add_item(item);
     });
     ltadd.signal_clicked().connect([&]() {

@@ -105,9 +105,9 @@ Palette PaletteBreeze() {
 }
 
 // Style
-static CompressedDict<Ref<Style> (*)()> &
+static CompressedPtrDict<Ref<Style> (*)()> &
 GetStyleList() {
-    static CompressedDict<Ref<Style> (*)()> list;
+    static CompressedPtrDict<Ref<Style> (*)()> list;
     return list;
 }
 

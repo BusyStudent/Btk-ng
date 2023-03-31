@@ -373,6 +373,13 @@ void ListBox::add_item(const ListItem &item) {
     if (ref.font.empty()) {
         ref.font = font();
     }
+    if (!ref.image_size.is_valid() && !ref.image.empty()) {
+        // Invalid, does not sepcial it
+        ref.image_size = Size(
+            style()->icon_width,
+            style()->icon_height
+        );
+    }
 
     ref.layout.set_text(ref.text);
     ref.layout.set_font(ref.font);
@@ -415,9 +422,28 @@ bool ListBox::paint_event(PaintEvent &event) {
     bool painted = false; //< Has painted text    
 
     for (auto &item : _items) {
-        auto [w, h] = item.layout.size();
+        // Clac the box width, height
+        auto layout_size = item.layout.size();
+        float box_w = layout_size.w;
+        float box_h = layout_size.h;
+        float text_x = x;
+        float text_y = y;
 
-        FRect client(x, y, r.w, h);
+        // Check if has image, calc the img box
+        if (!item.image.empty()) {
+            box_w +=     item.image_size.w + style()->margin * 2;
+            box_h  = max(item.image_size.h + style()->margin * 2, box_h);
+
+            text_x += (item.image_size.w + style()->margin * 2);
+        }
+        else {
+            // Add margin
+            text_x += style()->margin;
+        }
+
+        // _xtranslate < 0
+        // - it to make box fit
+        FRect client(x, y, r.w - _xtranslate, box_h);
         if (r.is_intersected(client)) {
             // Draw 
             if (_current == idx) {
@@ -442,7 +468,21 @@ bool ListBox::paint_event(PaintEvent &event) {
             else {
                 p.set_brush(palette().text());
             }
-            p.draw_text(item.layout, x, y);
+            p.draw_text(item.layout, text_x, text_y);
+
+            // Draw Image
+            if (!item.image.empty()) {
+                if (item.image_brush.type() != BrushType::Bitmap) {
+                    item.image_brush.set_image(item.image);
+                }
+                p.set_brush(item.image_brush);
+                p.fill_rect(
+                    x + style()->margin, 
+                    y + style()->margin, 
+                    item.image_size.w, 
+                    item.image_size.h
+                );
+            }
 
             painted = true;
         }
@@ -451,7 +491,8 @@ bool ListBox::paint_event(PaintEvent &event) {
         }
         // Increase
         idx += 1;
-        y   += h;
+        y   += box_h;
+        y   += _spacing;
     }
     p.restore();
     p.restore();
@@ -508,14 +549,24 @@ ListItem *ListBox::item_at(float x, float y) {
 
     float cur_x = item_viewport.x;
     float cur_y = item_viewport.y;
+    float box_w = 0;
+    float box_h = 0;
     for (auto &item : _items) {
         auto [w, h] = item.layout.size();
-        FRect rect(cur_x, cur_y, item_viewport.w, h);
+        box_w = w;
+        box_h = h;
+        if (!item.image.empty()) {
+            box_h  = max(box_h, item.image_size.h + style()->margin * 2);
+            box_w += item.image_size.w + style()->margin * 2;
+        }
+
+        FRect rect(cur_x, cur_y, (item_viewport.w - _xtranslate), box_h);
         if (rect.contains(x, y)) {
             return &item;
         }
 
-        cur_y   += h;
+        cur_y   += box_h;
+        cur_y   += _spacing;
     }
 
     return nullptr;
@@ -589,15 +640,9 @@ void ListBox::calc_slider() {
     // Calc the Height of the string list
     auto s = style();
     auto item_viewport = rect().apply_margin(s->margin).apply_margin(s->margin);
-    float height = 0.0f;
-    float width = 0.0f;
-    
-    for (auto &item : _items) {
-        auto [w, h] = item.layout.size();
-        width += max(width, w);
-        height += h;
-    }
 
+    auto [width, height] = calc_items_size();
+    BTK_LOG("ListBox::calc_slider: width: %f, height: %f\n", width, height);
 
     // Check is bigger than slider
     if (height > item_viewport.h) {
@@ -663,5 +708,42 @@ void ListBox::hslider_value_changed() {
         _xtranslate = -_hslider->value();
         repaint();
     }
+}
+Size ListBox::size_hint() const {
+    auto s = calc_items_size();
+    if (s.w == 0 && s.h == 0) {
+        return Size(0, 0);
+    }
+    // Add content margin, convert it to border
+    s.w += style()->margin * 2;
+    s.h += style()->margin * 2;
+    return s;
+}
+FSize ListBox::calc_items_size() const {
+    float height = 0.0f;
+    float width = 0.0f;
+    
+    for (auto &item : _items) {
+        // Calc the font
+        auto [w, h] = item.layout.size();
+        width   = max(width, w);
+
+        // Calc the if has image
+        if (!item.image.empty()) {
+            // Margin Image Margin
+            float box_width = item.image_size.w + style()->margin * 2 + w;
+            float box_height = item.image_size.h + style()->margin * 2;
+
+            width   = max(width, box_width);
+            height += max(h, box_height);
+        }
+        else {
+            height += h;            
+        }
+
+        height += _spacing;
+    }
+
+    return FSize(width, height);
 }
 BTK_NS_END

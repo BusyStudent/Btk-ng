@@ -37,7 +37,8 @@ class CompressedDict {
 
         void push_back(u8string_view view, const T &value) {
             // Realloc the size
-            _values =  (Elem*) Btk_realloc(_values, _end + sizeof(T) + view.size() + 1);
+            size_t elem_size = sizeof(T) + view.size() + 1;
+            _values =  (Elem*) Btk_realloc(_values, _end + elem_size);
 
             // AddValue
             auto cur = index(_end);
@@ -45,7 +46,7 @@ class CompressedDict {
             Btk_memcpy(cur->first, view.data(), view.size());
             cur->first[view.size()] = '\0';
 
-            _end += sizeof(T) + view.size() + 1;
+            _end += elem_size;
         }
         bool  empty() {
             return _values == nullptr;
@@ -95,4 +96,57 @@ class CompressedDict {
         }
 };
 
+// For erase ptr type
+template <typename T>
+class CompressedPtrDict {
+    public:
+        inline CompressedPtrDict() = default;
+        inline ~CompressedPtrDict() = default;
+
+        struct Result {
+            const char *first;
+            T           second;
+        };
+        struct iterator {
+            typename CompressedDict<void*>::iterator i;
+            void operator ++() {
+                ++i;
+            }
+            bool operator !=(iterator other) const {
+                return i != other.i;
+            }
+            bool operator ==(iterator other) const {
+                return i == other.i;
+            }
+            Result operator *() {
+                auto [first, second] = *i;
+                return {
+                    first,
+                    reinterpret_cast<T>(second)
+                };
+            }
+        };
+        iterator begin() {
+            return {d.begin()};
+        }
+        iterator end() {
+            return {d.end()};
+        }
+        Result back() {
+            auto [first, second] = d.back();
+            return {
+                first,
+                reinterpret_cast<T>(second)
+            };
+        }
+        bool empty() {
+            return d.empty();
+        }
+        void push_back(u8string_view view, const T &value) {
+            d.push_back(view, reinterpret_cast<void*>(value));
+        }
+    private:
+        static_assert(std::is_pointer_v<T>);
+        CompressedDict<void*> d;
+};
 BTK_NS_END

@@ -1,6 +1,7 @@
 #include "build.hpp"
 #include "common/win32/backtrace.hpp"
 #include "common/win32/dialog.hpp"
+#include "common/win32/dwmapi.hpp"
 #include "common/dlloader.hpp"
 
 #include <Btk/service/desktop.hpp>
@@ -88,14 +89,6 @@ LIB_BEGIN(Win32User32, "user32.dll")
     LIB_PROC4(UINT(* WINAPI)(HWND), GetDpiForWindow)
     LIB_PROC4(UINT(* WINAPI)()    , GetDpiForSystem)
 LIB_END(Win32User32)
-
-// Dwmapi
-LIB_BEGIN(Win32Dwmapi, "dwmapi.dll")
-    LIB_PROC(DwmEnableBlurBehindWindow)
-    LIB_PROC(DwmGetColorizationColor)
-    LIB_PROC(DwmIsCompositionEnabled)
-    LIB_PROC(DwmExtendFrameIntoClientArea)
-LIB_END(Win32Dwmapi)
 
 // Make sure the MSG can be casted to a Win32Callback
 static_assert(sizeof(LPARAM) >= sizeof(void *));
@@ -944,14 +937,12 @@ void Win32Window::move(int x, int y) {
     int w = client.right - client.left;
     int h = client.bottom - client.top;
 
-    auto rect   = adjust_rect(x, y, w, h);
-
     MoveWindow(
         hwnd,
-        rect.left,
-        rect.top,
-        rect.right - rect.left,
-        rect.bottom - rect.top,
+        x,
+        y,
+        w,
+        h,
         TRUE
     );
 }
@@ -1087,6 +1078,7 @@ bool     Win32Window::set_flags(WindowFlags new_flags) {
         }
     }
     if (bit_changed(WindowFlags::Borderless)) {
+        auto [width, height] = size();
         bool borderless = bool(new_flags & WindowFlags::Borderless);
         auto s = style();
         if (borderless) {
@@ -1098,6 +1090,8 @@ bool     Win32Window::set_flags(WindowFlags new_flags) {
             s |= WS_CAPTION;
         }
         SetWindowLongPtrW(hwnd, GWL_STYLE, s);
+        // Resize
+        resize(width, height);
     }
     // if (bit_changed(WindowFlags::Transparent)) {
     //     DWORD new_ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
@@ -1903,27 +1897,8 @@ DWORD  Win32Window::exstyle() const {
 // Experimental to enable alpha blending
 // Borrowed by from GLFW
 BOOL   Win32Window::enable_alpha_blend() {
-    // Get version
-    BOOL composition = FALSE;
-    if (FAILED(driver->DwmIsCompositionEnabled(&composition)) || !composition) {
-        return FALSE;
-    }
-
-    BOOL opaque;
-    DWORD color;
-    HRESULT hr;
-
-    if ((SUCCEEDED(driver->DwmGetColorizationColor(&color, &opaque)))) {
-        HRGN region = ::CreateRectRgn(0, 0, -1, -1);
-        DWM_BLURBEHIND bb = {};
-        bb.dwFlags = DWM_BB_ENABLE | DWM_BB_BLURREGION;
-        bb.hRgnBlur = region;
-        bb.fEnable = TRUE;
-        hr = driver->DwmEnableBlurBehindWindow(hwnd, &bb);
-        ::DeleteObject(region);
-        return SUCCEEDED(hr);
-    }
-    return FALSE;
+    // Moved to common/dwmapi.hpp
+    return driver->DwmEnableAlphaBlend(hwnd);
 }
 
 // Win32GLContext

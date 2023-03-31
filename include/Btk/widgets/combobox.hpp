@@ -138,7 +138,7 @@ class BTKAPI ComboBox : public Widget {
         TextLayout _text_layout;
 		Alignment  _align = Alignment::Left | Alignment::Middle;
         ListBox *_listbox_view = nullptr;
-		PopupWidget _popup_widget;
+		PopupWidget *_popup_widget = nullptr;
 };
 
 BTK_NS_END

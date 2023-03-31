@@ -228,7 +228,7 @@ class BTKAPI Font {
         Font &operator =(std::nullptr_t);
 
         /**
-         * @brief Get the size of the font
+         * @brief Get the size of the font (in pixels)
          * 
          * @return float 
          */
@@ -241,7 +241,7 @@ class BTKAPI Font {
          */
         bool  empty() const;
         /**
-         * @brief Set the size object
+         * @brief Set the size object (in pixels)
          * 
          * @param size 
          */
@@ -264,7 +264,12 @@ class BTKAPI Font {
          * @param family The family of the font
          */
         void  set_family(u8string_view family);
-
+        /**
+         * @brief Set the ptsize object
+         * 
+         * @param size The font size, in pt
+         */
+        void  set_ptsize(float size);
         /**
          * @brief Get the native handle of the font
          * 
@@ -305,5 +310,9 @@ class BTKAPI Font {
     friend class Painter;
 };
 
+
+inline void Font::set_ptsize(float ptsize) {
+    set_size(ptsize * 1.333);
+}
 
 BTK_NS_END

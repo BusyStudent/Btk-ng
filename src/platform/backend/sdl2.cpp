@@ -13,6 +13,7 @@
 #if   defined(_WIN32)
 #include "common/win32/backtrace.hpp"
 #include "common/win32/dialog.hpp"
+#include "common/win32/dwmapi.hpp"
 #elif defined(__gnu_linux__)
 #include "common/x11/backtrace.hpp"
 #include "common/x11/dialog.hpp"
@@ -184,6 +185,11 @@ class SDLDriver final : public GraphicsDriver {
         pointer_t service_of(int what) override;
 
         bool      query_value(int what, ...) override;
+
+#if     defined(_WIN32)
+        Win32Dwmapi dwmapi;
+#endif
+
     private:
         SDLDispatcher dispatcher {this};
         timestamp_t init_time = 0;
@@ -719,6 +725,10 @@ SDLWindow::SDLWindow(SDL_Window *w, SDLDriver *dr, WindowFlags f) : win(w), driv
 
     auto idx = SDL_GetWindowDisplayIndex(win);
     load_dpi(idx);
+
+#if defined(_WIN32)
+    driver->dwmapi.DwmEnableAlphaBlend(info.info.win.window);
+#endif
 }
 SDLWindow::~SDLWindow() {
     // Remove self from driver

@@ -533,21 +533,51 @@ class BTKAPI Widget : public Object {
          * @param y 
          * @return Point 
          */
-        Point      screen_to_client(int x, int y) const;
+        Point      map_to_client(int x, int y) const;
         /**
-         * @brief Convert client point to scrren
+         * @brief Convert client point to screen
          * 
          * @param x 
          * @param y 
          * @return Point 
          */
-        Point      client_to_screen(int x, int y) const;
+        Point      map_to_screen(int x, int y) const;
+        /**
+         * @brief Convert device independent pixels (DIPs) to physical pixels
+         * 
+         * @param x 
+         * @param y 
+         * @return Point 
+         */
+        Point      map_to_pixels(int x, int y) const;
+        /**
+         * @brief Convert physical pixels to device independent pixels (DIPs)
+         * 
+         * @param x 
+         * @param y 
+         * @return Point 
+         */
+        Point      map_to_dips(int x, int y) const;
 
-        Point      screen_to_client(const Point &p) const {
-            return screen_to_client(p.x, p.y);
+        Point      map_to_client(const Point &p) const {
+            return map_to_client(p.x, p.y);
         }
-        Point      client_to_screen(const Point &p) const {
-            return client_to_screen(p.x, p.y);
+        Point      map_to_screen(const Point &p) const {
+            return map_to_screen(p.x, p.y);
+        }
+        Point      map_to_pixels(const Point &p) const {
+            return map_to_pixels(p.x, p.y);
+        }
+        Point      map_to_dips(const Point &p) const {
+            return map_to_dips(p.x, p.y);
+        }
+        Size       map_to_pixels(const Size &s) const {
+            auto [x, y] = map_to_pixels(s.w, s.h);
+            return Size(x, y);
+        }
+        Size       map_to_dips(const Size &s) const {
+            auto [x, y] = map_to_dips(s.w, s.h);
+            return Size(x, y);
         }
 
         // Configure window

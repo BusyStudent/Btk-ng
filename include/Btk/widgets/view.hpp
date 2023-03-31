@@ -93,10 +93,17 @@ class BTKAPI ProgressBar : public Widget {
  */
 class ListItem {
     public:
-        u8string text;
-        Font     font;
+        // < Text
+        u8string  text;
+        Font      font;
+        Alignment alignment = AlignLeft + AlignTop;
+
+        // < Image
+        PixBuffer image;
+        Size      image_size = {-1, -1};
     private:
         TextLayout layout; //< TextLayout of it
+        Brush      image_brush; //< Brush of image
     friend class ListBox;
 };
 /**
@@ -172,6 +179,12 @@ class ListBox : public Widget {
          * @return int (-1 on not invalid or nullptr)
          */
         int       index_of(const ListItem *item) const;
+        /**
+         * @brief Get perfered size
+         * 
+         * @return Size 
+         */
+        Size      size_hint() const override;
 
         BTK_EXPOSE_SIGNAL(_current_item_changed);
         BTK_EXPOSE_SIGNAL(_item_double_clicked);
@@ -201,12 +214,19 @@ class ListBox : public Widget {
         void calc_slider();
         void vslider_value_changed();
         void hslider_value_changed();
+        /**
+         * @brief Calc the items_size
+         * 
+         * @return FSize 
+         */
+        FSize calc_items_size() const;
 
         std::vector<ListItem> _items;
         ScrollBar            *_vslider = nullptr;
         ScrollBar            *_hslider = nullptr;
         int                   _current = -1; //< Current selected 
         int                   _hovered = -1; //< Current mouse hovered
+        int                   _spacing = 0; //< Spacing of each item
 
         float                 _ytranslate = 0.0f;
         float                 _xtranslate = 0.0f;

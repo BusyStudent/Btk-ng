@@ -141,7 +141,7 @@ void  Font::set_bold(bool bold) {
         priv->weight = DWRITE_FONT_WEIGHT_BOLD;
     }
     else {
-        priv->weight = DWRITE_FONT_WEIGHT_BOLD;
+        priv->weight = DWRITE_FONT_WEIGHT_NORMAL;
     }
 }
 void  Font::set_italic(bool italic) {

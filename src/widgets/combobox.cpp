@@ -1,20 +1,21 @@
-#include <Btk/event.hpp>
+#include "build.hpp"
+
 #include <Btk/widgets/combobox.hpp>
-#include <Btk/detail/platform.hpp>
+#include <Btk/event.hpp>
 #include <algorithm>
 
 BTK_NS_BEGIN
 
 ComboBox::ComboBox(Widget *parent) : Widget(parent) {
 	// 目前不提供其他view类支持，只委托给listbox。
-	_listbox_view = new ListBox(&_popup_widget);
+	_listbox_view = new ListBox();
 	_listbox_view->signal_item_clicked().connect(&ComboBox::set_current_item, this);
+	// _popup_widget.set_hide_on_focus_lost(true);
 }
 
 ComboBox::~ComboBox() {
-    if (_listbox_view) {
-        delete _listbox_view;
-    }
+	delete _listbox_view;
+	delete _popup_widget;
 }
 
 int ComboBox::max_visible_items() const {
@@ -99,7 +100,10 @@ void ComboBox::set_current_text(u8string_view text) {
 }
 
 void ComboBox::set_current_item(ListItem* item) { // 一旦通过listbox选择item了就马上关闭弹窗
-	_popup_widget.close();
+	_listbox_view->set_parent(nullptr);
+	delete _popup_widget;
+	_popup_widget = nullptr;
+
 	set_current_text(item->text);
 }
 
@@ -158,13 +162,23 @@ bool ComboBox::change_event(ChangeEvent &event) {
 bool ComboBox::mouse_press(MouseEvent &event) {
 	if (event.button() == MouseButton::Left) {
 		auto rect = this->rect();
-		Point pos = root()->winhandle()->map_point({rect.x, rect.y}, AbstractWindow::ToScreen);
-		Point size = root()->winhandle()->map_point({rect.w, rect.h}, AbstractWindow::ToPixel);
-		_popup_widget.show();
-		_popup_widget.set_window_position(pos.x,pos.y + size.y);
-		_popup_widget.resize({rect.w, _max_visible_items * rect.h});
+		Point pos = map_to_screen(rect.position());
+		Size  size = map_to_pixels(rect.size());
+
+		_popup_widget = new PopupWidget;
+		_popup_widget->popup();
+		_popup_widget->set_window_position(pos.x, pos.y + size.h);
+		_popup_widget->resize({rect.w, _max_visible_items * rect.h});
 		_listbox_view->set_rect({0, 0, rect.w, _max_visible_items * rect.h});
-		_popup_widget.set_window_borderless(true);
+		_popup_widget->set_window_borderless(true);
+		_popup_widget->set_attribute(WidgetAttrs::DeleteOnClose, true);
+		_popup_widget->set_attribute(WidgetAttrs::BackgroundTransparent, true);
+		_popup_widget->signal_focus_lost().connect([this]() {
+			// Detach it
+			_listbox_view->set_parent(nullptr);
+			_popup_widget = nullptr;
+		});
+		_listbox_view->set_parent(_popup_widget);
 	}
 	return true;
 }
@@ -186,7 +200,8 @@ bool ComboBox::mouse_motion(MotionEvent &event) {
 }
 
 bool ComboBox::mouse_wheel(WheelEvent &event) {
-	if (_items.size() > 0) {
+	if (_items.size() > 0 && !_popup_widget) {
+		// When not display it
 		int len = _items.size();
 		set_current_index(((_current_index - event.y()) % len + len) % len);
 	}

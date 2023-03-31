@@ -1098,8 +1098,8 @@ auto Pen::line_cap() const -> LineCap {
 
 // Impl factory methods
 static
-auto GetPaintDeviceList() -> CompressedDict<PaintDevice *(*)(void *)> & {
-    static CompressedDict<PaintDevice *(*)(void *)> list;
+auto GetPaintDeviceList() -> CompressedPtrDict<PaintDevice *(*)(void *)> & {
+    static CompressedPtrDict<PaintDevice *(*)(void *)> list;
     return list;
 }
 
