@@ -43,6 +43,18 @@ TEST(StringTest, RunIterator) {
 
     std::cout << str << std::endl;
 }
+TEST(StringTest, AddString) {
+    ASSERT_EQ(u8string("Hello") + "World", "HelloWorld");
+    ASSERT_EQ("Hello" + u8string("World"), "HelloWorld");
+    ASSERT_EQ(u8string("Hello") + u8string("World"), "HelloWorld");
+}
+TEST(StringTest, TestCollections) {
+    StringList slist;
+    slist.emplace_back(u8string_view("a"));
+    slist.emplace_back("B");
+    slist.emplace_back(std::string("C"));
+    ASSERT_TRUE(slist.contains("a"));
+}
 
 TEST(MathTest, RectUnited) {
     Rect r = Rect(0, 0, 100, 100);

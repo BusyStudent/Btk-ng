@@ -1,5 +1,6 @@
 #include <Btk/plugins/webview.hpp>
 #include <Btk/widgets/textedit.hpp>
+#include <Btk/widgets/view.hpp>
 #include <Btk/context.hpp>
 #include <Btk/layout.hpp>
 #include <iostream>
@@ -19,7 +20,12 @@ int main() {
 
     auto inf = wv->interface();
 
+    ListBox lbox;
+
+    lbox.resize(500, 600);
     root.resize(500, 600);
+
+    lbox.show();
 
     inf->signal_ready().connect([&]() {
         inf->navigate(R"(https://www.github.com/)");
@@ -41,11 +47,14 @@ int main() {
             inf->navigate(edit->text());
         });
         inf->interop()->add_request_watcher([&](u8string_view url) {
-            if (url.contains(".m3u8") && !url.contains("getplay_url=")) {
-                std::cout << "Request video: " << url << std::endl;
-                // Stop current
-                inf->stop();
-            }
+            lbox.add_item(ListItem(url));
+        });
+        inf->signal_navigation_starting().connect([&]() {
+            wv->root()->set_window_title("Starting");
+            lbox.clear();
+        });
+        inf->signal_navigation_compeleted().connect([&]() {
+            wv->root()->set_window_title("Compeleted");
         });
     });
 

@@ -6,6 +6,11 @@ Written in C++17
 
 Its goal is less dependency and mini
 
+## CI
+
+[![C/C++ CI on Windows](https://github.com/BusyStudent/Btk-ng/actions/workflows/window_build_test.yml/badge.svg)](https://github.com/BusyStudent/Btk-ng/actions/workflows/window_build_test.yml)
+
+
 ## Example
 
 Create a button on window

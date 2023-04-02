@@ -112,6 +112,9 @@ class BTKAPI UIContext : public Trackable {
         auto ui_thread_id() const -> std::thread::id {
             return thread_id;
         }
+
+        // Service
+        auto deskop_service() const -> DesktopService *;
     private:
         void initialize(GraphicsDriver *driver);
 

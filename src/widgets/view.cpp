@@ -355,14 +355,7 @@ void ListBox::insert_item(size_t idx, const ListItem &item) {
         idx = _items.size();
     }
     auto iter = _items.insert(_items.begin() + idx, item);
-    if (iter->font.empty()) {
-        iter->font = font();
-    }
-
-    iter->layout.set_text(iter->text);
-    iter->layout.set_font(iter->font);
-
-    items_changed();
+    update_item(&*iter);
 }
 void ListBox::set_flat(bool value) {
     _flat = value;
@@ -370,21 +363,8 @@ void ListBox::set_flat(bool value) {
 }
 void ListBox::add_item(const ListItem &item) {
     auto &ref = _items.emplace_back(item);
-    if (ref.font.empty()) {
-        ref.font = font();
-    }
-    if (!ref.image_size.is_valid() && !ref.image.empty()) {
-        // Invalid, does not sepcial it
-        ref.image_size = Size(
-            style()->icon_width,
-            style()->icon_height
-        );
-    }
-
-    ref.layout.set_text(ref.text);
-    ref.layout.set_font(ref.font);
-
-    items_changed();
+    // Update internal data
+    update_item(&ref);
 }
 bool ListBox::paint_event(PaintEvent &event) {
     auto &p = painter();
@@ -596,6 +576,26 @@ void ListBox::remove_item(ListItem *item) {
     _items.erase(_items.begin() + idx);
     items_changed();
 }
+void ListBox::update_item(ListItem *item) {
+    if (!item) {
+        return;
+    }
+    if (item->font.empty()) {
+        item->font = font();
+    }
+    if (!item->image_size.is_valid() && !item->image.empty()) {
+        // Invalid, does not sepcial it
+        item->image_size = Size(
+            style()->icon_width,
+            style()->icon_height
+        );
+    }
+
+    item->layout.set_text(item->text);
+    item->layout.set_font(item->font);
+
+    items_changed();
+}
 
 void ListBox::set_current_item(ListItem *item) {
     int now;
@@ -630,6 +630,9 @@ int  ListBox::index_of(const ListItem *item) const {
         return -1;
     }
     return item - _items.data();
+}
+int  ListBox::count_items() const {
+    return _items.size();
 }
 
 void ListBox::items_changed() {

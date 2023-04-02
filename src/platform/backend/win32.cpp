@@ -227,7 +227,7 @@ class Win32Dispatcher final : public EventDispatcher {
 
 class Win32Service final : public DesktopService {
     public:
-        bool     reparent_native_window(window_t parent, void *native_window, const Rect &placement) override;
+        bool     notify(u8string_view title, u8string_view msg, const PixBuffer &icon) override;
         bool     openurl(u8string_view url) override;
 
 };
@@ -260,6 +260,7 @@ class Win32Driver final  : public GraphicsDriver, public Win32User32, public Win
         // Platform data
         Win32Dispatcher dispatcher;
         DWORD           working_thread_id = GetCurrentThreadId();
+        Win32Service    service;
     private:
         Win32Cursor     syscursor[int(SystemCursor::NumOf)] {
             SystemCursor::Arrow,    
@@ -860,6 +861,9 @@ cursor_t Win32Driver::cursor_create(SystemCursor sys) {
     return &syscursor[int(sys)];
 }
 pointer_t Win32Driver::service_of(int what) {
+    if (what == Desktop) {
+        return &service;
+    }
     return nullptr;
 }
 
@@ -2100,6 +2104,38 @@ void Win32Cursor::unref() {
 }
 void Win32Cursor::set() {
     SetCursor(cursor);
+}
+
+// Service
+bool Win32Service::notify(u8string_view title, u8string_view msg, const PixBuffer &icon) {
+    ComPtr<IUserNotification> notification;
+    HRESULT hr = CoCreateInstance(
+        CLSID_UserNotification,
+        nullptr,
+        CLSCTX_INPROC,
+        IID_PPV_ARGS(&notification)
+    );
+    if (FAILED(hr)) {
+        return false;
+    }
+    hr = notification->SetBalloonInfo(
+        title.to_wstring().c_str(),
+        msg.to_wstring().c_str(),
+        NIIF_INFO
+    );
+    hr = notification->Show(nullptr, INFINITE);
+
+    return SUCCEEDED(hr);
+}
+bool Win32Service::openurl(u8string_view url) {
+    return ShellExecuteW(
+        nullptr,
+        L"open",
+        url.to_wstring().c_str(),
+        nullptr,
+        nullptr,
+        SW_SHOW
+    );
 }
 
 BTK_PRIV_END

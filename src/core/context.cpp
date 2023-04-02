@@ -77,6 +77,9 @@ void UIContext::initialize(GraphicsDriver *driv) {
         abort();
     }
 }
+auto UIContext::deskop_service() const -> DesktopService * {
+    return _driver->service_of<DesktopService>();
+}
 
 // EventQueue::EventQueue() {
 

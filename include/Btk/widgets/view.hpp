@@ -93,6 +93,35 @@ class BTKAPI ProgressBar : public Widget {
  */
 class ListItem {
     public:
+        /**
+         * @brief Construct a new List Item object
+         * 
+         */
+        ListItem() = default;
+        /**
+         * @brief Construct a new List Item object
+         * 
+         * @param txt The text of item
+         */
+        ListItem(u8string_view txt) : text(txt) { }
+        /**
+         * @brief Construct a new List Item object with text and image
+         * 
+         * @param text The text
+         * @param b The image pixbuffer
+         * @param img_size The image size
+         */
+        ListItem(u8string_view text, const PixBuffer &b, Size img_size = {-1, -1}) : text(text), image(b), image_size(img_size) { }
+        /**
+         * @brief Construct a new List Item object with image
+         * 
+         * @param b The image pixbuffer
+         * @param img_size The image size
+         */
+        ListItem(const PixBuffer &b, Size img_size = {-1, -1}) : image(b), image_size(img_size) { }
+        ListItem(const ListItem &) = default;
+        ~ListItem() = default;
+    public:
         // < Text
         u8string  text;
         Font      font;
@@ -133,6 +162,12 @@ class ListBox : public Widget {
          * @param item 
          */
         void remove_item(ListItem *item);
+        /**
+         * @brief Notify item's data is modifed, need to update internal state
+         * 
+         * @param item The pointer of item (nullptr on no-op)
+         */
+        void update_item(ListItem *item);
         /**
          * @brief Scroll to item at 
          * 
@@ -179,6 +214,12 @@ class ListBox : public Widget {
          * @return int (-1 on not invalid or nullptr)
          */
         int       index_of(const ListItem *item) const;
+        /**
+         * @brief Get num of items
+         * 
+         * @return int 
+         */
+        int       count_items() const;
         /**
          * @brief Get perfered size
          * 

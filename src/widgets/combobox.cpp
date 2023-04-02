@@ -61,6 +61,7 @@ bool ComboBox::set_item_text(int index, u8string_view text) {
 	} else {
 		auto item = _listbox_view->item_at(index);
 		item->text = text;
+		_listbox_view->update_item(item);
 		_text_changed.emit(index, text);
 	}
 	return true;
@@ -144,6 +145,7 @@ void ComboBox::set_current_item(ListItem* item) { // 一旦通过listbox选择it
 bool ComboBox::set_item_icon(int index, const PixBuffer& icon) {
 	auto item = _listbox_view->item_at(index);
 	item->image = icon;
+	_listbox_view->update_item(item);
 	return true;
 }
 

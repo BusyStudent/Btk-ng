@@ -12,15 +12,12 @@ BTK_NS_BEGIN
 class DesktopService {
     public:
         /**
-         * @brief Reparent a native window to AbstractWindow
+         * @brief Send a notifition to desktop
          * 
-         * @param parent The pointer of AbstractWindow as parent
-         * @param native_window The child window embed to it
-         * @param placement The position of the child window (in dpi indepent units)
          * @return true 
          * @return false 
          */
-        virtual bool     reparent_native_window(window_t parent, void *native_window, const Rect &placement) = 0;
+        virtual bool     notify(u8string_view title, u8string_view msg = { }, const PixBuffer &icon = { }) = 0;
         /**
          * @brief Let system open a url in a native way
          * 
@@ -29,6 +26,10 @@ class DesktopService {
          * @return false 
          */
         virtual bool     openurl(u8string_view url) = 0;
+    protected:
+        ~DesktopService() = default;
 };
+
+BTKAPI DesktopService *GetDesktopService();
 
 BTK_NS_END

@@ -23,6 +23,11 @@ static ULONG                                        webview2_refcount = 0;
 
 HMODULE webview2_dll = nullptr;
 
+#if !defined(NDEBUG)
+#define CheckHResult(hr) CheckHResultImpl(hr, BTK_FUNCTION)
+#else
+#define CheckHResult(hr) SUCCEEDED(hr)
+#endif
 
 /**
  * @brief Class for Function binding
@@ -55,6 +60,8 @@ class MSWebView2 : public ICoreWebView2CreateCoreWebView2EnvironmentCompletedHan
                    public ICoreWebView2PermissionRequestedEventHandler,
                    public ICoreWebView2WebMessageReceivedEventHandler,
                    public ICoreWebView2NewWindowRequestedEventHandler, //< For webview require new window
+                   public ICoreWebView2NavigationStartingEventHandler, //< For webview start navigation
+                   public ICoreWebView2NavigationCompletedEventHandler, //< For webview complete navigation
                    public ICoreWebView2SourceChangedEventHandler, //< For get url changed
                    public WebInterface,
                    public WebInterop 
@@ -80,6 +87,10 @@ class MSWebView2 : public ICoreWebView2CreateCoreWebView2EnvironmentCompletedHan
         HRESULT Invoke(ICoreWebView2 *sender, ICoreWebView2NewWindowRequestedEventArgs *args) override;
         // ICoreWebView2SourceChangedEventHandler
         HRESULT Invoke(ICoreWebView2 *sender, ICoreWebView2SourceChangedEventArgs *args) override;
+        // ICoreWebView2NavigationStartingEventHandler
+        HRESULT Invoke(ICoreWebView2 *sender, ICoreWebView2NavigationStartingEventArgs *args) override;
+        // ICoreWebView2NavigationCompletedEventHandler
+        HRESULT Invoke(ICoreWebView2 *sender, ICoreWebView2NavigationCompletedEventArgs *args) override;
 
         // Init
         HRESULT Initialize(HWND h);
@@ -88,6 +99,7 @@ class MSWebView2 : public ICoreWebView2CreateCoreWebView2EnvironmentCompletedHan
         HRESULT PutBounds(RECT rect);
         HRESULT SetVisible(BOOL visible);
 
+        BOOL    CheckHResultImpl(HRESULT hr, const char *where) const;
         BOOL    IsReady() const;
 
         // WebInterface
@@ -104,6 +116,7 @@ class MSWebView2 : public ICoreWebView2CreateCoreWebView2EnvironmentCompletedHan
 
         // WebInterop
         pointer_t add_request_watcher(const WebRequestWatcher &watcher) override;
+        bool      del_request_watcher(pointer_t where) override;
 
         BTK_EXPOSE_SIGNAL(_got_focus);
         BTK_EXPOSE_SIGNAL(_lost_focus);
@@ -180,14 +193,10 @@ MSWebView2::~MSWebView2() {
 
 // Impl as it
 ULONG MSWebView2::AddRef() {
-    return ++refcount;
+    return 1;
 }
 ULONG MSWebView2::Release() {
-    if (refcount > 1) {
-        return --refcount;
-    }
-    delete this;
-    return 0;
+    return 1;
 }
 HRESULT MSWebView2::QueryInterface(REFIID id, void **pobj) {
     // Check if
@@ -325,6 +334,8 @@ HRESULT MSWebView2::Invoke(HRESULT errorCode, ICoreWebView2Controller *createdCo
     webview->add_WebMessageReceived(this, &token);
     webview->add_NewWindowRequested(this, &token);
     webview->add_SourceChanged(this, &token);
+    webview->add_NavigationStarting(this, &token);
+    webview->add_NavigationCompleted(this, &token);
 
     // Listen focus
     controller->add_GotFocus(
@@ -340,6 +351,14 @@ HRESULT MSWebView2::Invoke(HRESULT errorCode, ICoreWebView2Controller *createdCo
                 signal_lost_focus().emit();
                 return S_OK;
     }).Get(), &token);
+
+    // Handle headless
+    if (headless) {
+        ComPtr<ICoreWebView2_8> webview8;
+        if (SUCCEEDED(webview.As(&webview8))) {
+            webview8->put_IsMuted(TRUE);
+        }
+    }
 
 
     ready = TRUE;
@@ -424,6 +443,14 @@ HRESULT MSWebView2::Invoke(ICoreWebView2 *sender, ICoreWebView2SourceChangedEven
 
     return S_OK;
 }
+HRESULT MSWebView2::Invoke(ICoreWebView2 *sender, ICoreWebView2NavigationStartingEventArgs *args) {
+    signal_navigation_starting().emit();
+    return S_OK;
+}
+HRESULT MSWebView2::Invoke(ICoreWebView2 *sender, ICoreWebView2NavigationCompletedEventArgs *args) {
+    signal_navigation_compeleted().emit();
+    return S_OK;
+}
 HRESULT MSWebView2::PutBounds(RECT rect) {
     if (!IsReady()) {
         return E_FAIL;
@@ -439,31 +466,50 @@ HRESULT MSWebView2::SetVisible(BOOL v) {
 BOOL    MSWebView2::IsReady() const {
     return ready;
 }
+BOOL    MSWebView2::CheckHResultImpl(HRESULT hr, const char *where) const {
+    if (FAILED(hr)) {
+        wchar_t *ret;
+        DWORD result = FormatMessageW(
+            FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
+            nullptr,
+            hr,
+            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+            reinterpret_cast<LPWSTR>(&ret),
+            0,
+            nullptr
+        );
+        auto us = u8string::from(ret);
+        LocalFree(ret);
+
+        BTK_LOG(BTK_BLUE("[MSWebView2] ") "CheckHResult(%ld) => %s\n", hr, us.c_str());
+    }
+    return SUCCEEDED(hr);
+}
 
 // WebInterface
 bool MSWebView2::navigate(u8string_view url) {
     if (!IsReady()) {
         return false;
     }
-    return SUCCEEDED(webview->Navigate(ComToWString(url)));
+    return CheckHResult(webview->Navigate(ComToWString(url)));
 }
 bool MSWebView2::navigate_html(u8string_view html) {
     if (!IsReady()) {
         return false;
     }
-    return SUCCEEDED(webview->NavigateToString(ComToWString(html)));
+    return CheckHResult(webview->NavigateToString(ComToWString(html)));
 }
 bool MSWebView2::eval(u8string_view javascript) {
     if (!IsReady()) {
         return false;
     }
-    return SUCCEEDED(webview->ExecuteScript(ComToWString(javascript), nullptr));
+    return CheckHResult(webview->ExecuteScript(ComToWString(javascript), nullptr));
 }
 bool MSWebView2::inject(u8string_view javascript) {
     if (!IsReady()) {
         return false;
     }
-    return SUCCEEDED(webview->AddScriptToExecuteOnDocumentCreated(ComToWString(javascript), nullptr));
+    return CheckHResult(webview->AddScriptToExecuteOnDocumentCreated(ComToWString(javascript), nullptr));
 }
 bool MSWebView2::bind(u8string_view name, const WebFunction &func) {
     if (!IsReady()) {
@@ -580,11 +626,17 @@ pointer_t MSWebView2::add_request_watcher(const WebRequestWatcher &watcher) {
             }
         ).Get(), &token
     );
-    if (FAILED(hr)) {
+    if (!CheckHResult(hr)) {
         return nullptr;
     }
     static_assert(sizeof(EventRegistrationToken) <= sizeof(pointer_t));
     return reinterpret_cast<pointer_t&>(token);
+}
+bool   MSWebView2::del_request_watcher(pointer_t p) {
+    if (!p) {
+        return false;
+    }
+    return CheckHResult(webview->remove_WebResourceRequested(reinterpret_cast<EventRegistrationToken&>(p)));
 }
 
 // MSWebView2Binding
@@ -648,7 +700,6 @@ WebView::WebView(Widget *parent) : Widget(parent) {
     set_focus_policy(FocusPolicy::Mouse);
 
     priv = new WebViewImpl;
-    priv->AddRef();
 
     priv->signal_ready().connect([this]() {
         priv->place_to(this);
@@ -669,7 +720,7 @@ WebView::WebView(Widget *parent) : Widget(parent) {
     });
 }
 WebView::~WebView() {
-    priv->Release();
+    delete priv;
 }
 
 bool WebView::paint_event(PaintEvent &) {
@@ -742,11 +793,10 @@ bool WebView::focus_lost(FocusEvent &) {
 
 void WebViewImpl::place_to(Widget *w) {
     // Map to pixel
-    auto win = w->root()->winhandle();
     auto r = w->rect();
 
-    Point top_left = win->map_point(r.top_left(), AbstractWindow::ToPixel);
-    Point bottom_right = win->map_point(r.bottom_right(), AbstractWindow::ToPixel);
+    Point top_left = w->map_to_pixels(r.top_left());
+    Point bottom_right = w->map_to_pixels(r.bottom_right());
 
     RECT rect;
     rect.top = top_left.y;

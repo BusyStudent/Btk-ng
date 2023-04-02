@@ -28,6 +28,17 @@ namespace {
         utf8::unchecked::utf8to32(s, s + n, std::back_inserter(ret));
         return ret;
     }
+    std::wstring btkus_to_wstring(const char_t *s, size_t n) {
+        static_assert(sizeof(wchar_t) == sizeof(char32_t) || sizeof(wchar_t) == sizeof(char16_t));
+        std::wstring ret;
+        if constexpr (sizeof(wchar_t) == sizeof(char16_t)) {
+            utf8::unchecked::utf8to16(s, s + n, std::back_inserter(ret));
+        }
+        else if constexpr(sizeof(wchar_t) == sizeof(char32_t)) {
+            utf8::unchecked::utf8to32(s, s + n, std::back_inserter(ret));
+        }
+        return ret;
+    }
 
     template <typename T>
     struct fake_back_inserter {
@@ -227,6 +238,9 @@ std::u16string u8string::to_utf16() const {
 std::u32string u8string::to_utf32() const {
     return btkus_to_utf32(c_str(), size());
 }
+std::wstring   u8string::to_wstring() const {
+    return btkus_to_wstring(c_str(), size());
+}
 
 // Split
 StringList u8string::split(u8string_view delim, size_t limit) const {
@@ -299,6 +313,9 @@ std::u16string u8string_view::to_utf16() const {
 }
 std::u32string u8string_view::to_utf32() const {
     return btkus_to_utf32(data(), size());
+}
+std::wstring   u8string_view::to_wstring() const {
+    return btkus_to_wstring(data(), size());
 }
 
 // u8string_view::split

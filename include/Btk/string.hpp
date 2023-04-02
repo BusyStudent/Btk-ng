@@ -521,20 +521,24 @@ class BTKAPI u8string {
         }
 
         // Operators
-        u8string & operator =(const u8string &str) noexcept {
+        u8string & operator =(const u8string &str) {
             _str = str._str;
             return *this;
         }
-        u8string & operator =(u8string &&str) noexcept {
+        u8string & operator =(u8string &&str) {
             _str = std::move(str._str);
             return *this;
         }
-        u8string & operator =(const char_t *str) noexcept {
+        u8string & operator =(const char_t *str) {
             _str = str;
             return *this;
         }
         u8string & operator =(stdu8string_view s) {
             _str = s;
+            return *this;
+        }
+        u8string & operator +=(stdu8string_view s) {
+            _str += s;
             return *this;
         }
         bool       operator ==(const u8string &str) const noexcept {
@@ -571,6 +575,7 @@ class BTKAPI u8string {
         // Cast
         std::u16string to_utf16() const;
         std::u32string to_utf32() const;
+        std::wstring   to_wstring() const;
 
         // Auto cast to stdu8string const refernce
         operator const stdu8string &() const noexcept {
@@ -664,6 +669,7 @@ class BTKAPI u8string_view {
         // Cast
         std::u16string to_utf16() const;
         std::u32string to_utf32() const;
+        std::wstring   to_wstring() const;
         
         // Operators
         const_reference operator [](size_t pos) const {
@@ -687,10 +693,29 @@ class BTKAPI u8string_view {
 class StringList    : public std::vector<u8string> {
     public:
         using std::vector<u8string>::vector;
+
+        bool contains(stdu8string_view v) const noexcept {
+            for (auto &e : *this) {
+                if (e == v) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
 };
 class StringRefList : public std::vector<u8string_view> {
     public:
         using std::vector<u8string_view>::vector;
+
+        bool contains(stdu8string_view v) const noexcept {
+            for (auto &e : *this) {
+                if (e == v) {
+                    return true;
+                }
+            }
+            return false;
+        }
 };
 
 // Implementation for some method in u8string
@@ -723,6 +748,18 @@ inline bool u8string::starts_with(u8string_view what) const {
 }
 inline u8string_view u8string::view() const {
     return u8string_view(_str.data(), _str.size());
+}
+
+// Implmementation for some operators in u8string
+
+inline u8string operator +(const char_t *left, const u8string &right) {
+    return left + right.str();
+}
+inline u8string operator +(const u8string &left, const u8string &right) {
+    return left.str() + right.str();
+}
+inline u8string operator +(const u8string &left, const char_t *right) {
+    return left.str() + right;
 }
 
 // Implmentations for some utils in u8string_view

@@ -127,13 +127,26 @@ class WebInterface {
         auto signal_title_changed() -> Signal<void(u8string_view)> & {
             return _title_changed;
         }
+        /**
+         * @brief Signal of the url changed
+         * 
+         * @return Signal<void(u8string_view)>& 
+         */
         auto signal_url_changed() -> Signal<void(u8string_view)> & {
             return _url_changed;
         }
-    protected:
+        auto signal_navigation_starting() -> Signal<void()> & {
+            return _navigation_starting;
+        }
+        auto signal_navigation_compeleted() -> Signal<void()> & {
+            return _navigation_completed;
+        }
+    private:
         Signal<void()> _ready; //< Emit on env ready
         Signal<void(u8string_view)> _title_changed; //< Emit on view title changed
         Signal<void(u8string_view)> _url_changed; //< Emit on view url changed
+        Signal<void()> _navigation_starting; //< Emit on view navigation_starting
+        Signal<void()> _navigation_completed; //< Emit on view navigation_completed
 };
 /**
  * @brief Low level interop for WebView
@@ -148,6 +161,9 @@ class WebInterop {
          * @return pointer_t nullptr on failure
          */
         virtual pointer_t add_request_watcher(const WebRequestWatcher &watcher) = 0;
+        virtual bool      del_request_watcher(pointer_t where) = 0;
+    protected:
+        ~WebInterop() = default;
 };
 
 class WebSettings {
