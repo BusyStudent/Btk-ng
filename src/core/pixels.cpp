@@ -664,7 +664,7 @@ PixBuffer PixBuffer::FromMem(cpointer_t data, size_t n) {
 
     stream = SHCreateMemStream(static_cast<const BYTE*>(data), n);
 
-    if (stream) {
+    if (!stream) {
         return PixBuffer();
     }
 

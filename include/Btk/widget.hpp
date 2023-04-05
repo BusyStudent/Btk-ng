@@ -346,6 +346,14 @@ class BTKAPI Widget : public Object {
          */
         auto    set_palette_current_group(Palette::Group) -> void;
         /**
+         * @brief Get the opacity of the widget
+         * 
+         * @return float 
+         */
+        float   opacity() const {
+            return _opacity;
+        }
+        /**
          * @brief Get width of the widget
          * 
          * @return int 

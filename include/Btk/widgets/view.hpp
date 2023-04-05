@@ -113,12 +113,20 @@ class ListItem {
          */
         ListItem(u8string_view text, const PixBuffer &b, Size img_size = {-1, -1}) : text(text), image(b), image_size(img_size) { }
         /**
+         * @brief Construct a new List Item object with text and image
+         * 
+         * @param b The image pixbuffer
+         * @param text The text
+         */
+        ListItem(const PixBuffer &b, u8string_view text) : text(text), image(b) { }
+        /**
          * @brief Construct a new List Item object with image
          * 
          * @param b The image pixbuffer
          * @param img_size The image size
+         * @param text The text
          */
-        ListItem(const PixBuffer &b, Size img_size = {-1, -1}) : image(b), image_size(img_size) { }
+        ListItem(const PixBuffer &b, Size img_size = {-1, -1}, u8string_view text = { }) : text(text), image(b), image_size(img_size) { }
         ListItem(const ListItem &) = default;
         ~ListItem() = default;
     public:

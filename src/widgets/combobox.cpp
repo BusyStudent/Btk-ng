@@ -151,7 +151,7 @@ bool ComboBox::set_item_icon(int index, const PixBuffer& icon) {
 
 bool ComboBox::paint_event(PaintEvent &event)  {
 	// comboBox border
-	auto border = this->rect().cast<float>();
+	auto border = rect().cast<float>().apply_margin(style()->margin);
 	// text view border
 	FRect text_border{border.x + blank, border.y, border.w - border.h / 2, border.h};
 	// drop down symbol view border
@@ -162,8 +162,7 @@ bool ComboBox::paint_event(PaintEvent &event)  {
 	painter.fill_rect(border);
 	
     auto size = _text_layout.size();
-    FRect textbox(0, 0, size.w, size.h);
-    textbox = textbox.align_at(text_border, _align);
+    auto textbox = text_border.align_object(_text_layout.size(), _align);
 
     painter.set_font(font());
     painter.set_text_align(AlignLeft + AlignTop);
@@ -177,7 +176,7 @@ bool ComboBox::paint_event(PaintEvent &event)  {
     );
     painter.pop_scissor();
 	painter.push_scissor(drop_down_border);
-	if (has_focus() || _popup_widget != nullptr) {
+	if (under_mouse() || _popup_widget != nullptr) {
 		painter.set_brush(palette().light());
 	} else {
 		painter.set_brush(palette().window());
@@ -185,7 +184,7 @@ bool ComboBox::paint_event(PaintEvent &event)  {
 	painter.fill_rect(drop_down_border);
 	painter.set_brush(palette().border());
 	painter.draw_rect(drop_down_border);
-	if (has_focus() || _popup_widget != nullptr) {
+	if (under_mouse() || _popup_widget != nullptr) {
 		painter.set_brush(palette().hightlight());
 	} else {
 		painter.set_brush(palette().light());
@@ -194,7 +193,12 @@ bool ComboBox::paint_event(PaintEvent &event)  {
 	painter.draw_line({drop_down_border.x + drop_down_border.w * 4 / 5, drop_down_border.y + drop_down_border.h / 3}, {drop_down_border.x + drop_down_border.w / 2, drop_down_border.y + drop_down_border.h * 2 / 3});
 	painter.pop_scissor();
 
-	painter.set_brush(palette().border());
+	if (under_mouse() || _popup_widget != nullptr) {
+		painter.set_brush(palette().hightlight());
+	}
+	else {
+		painter.set_brush(palette().border());
+	}
 	painter.draw_rect(border);
 
     return true;
@@ -213,15 +217,25 @@ bool ComboBox::change_event(ChangeEvent &event) {
 
 bool ComboBox::mouse_press(MouseEvent &event) {
 	if (event.button() == MouseButton::Left) {
+		if (count() == 0) {
+			return true;
+		}
 		auto rect = this->rect();
 		Point pos = map_to_screen(rect.position());
 		Size  size = map_to_pixels(rect.size());
 
+		Size  lbox_size = _listbox_view->size_hint();
+		// Clamp it to max visvible items
+		lbox_size.h += 5;
+		if (lbox_size.h > _max_visible_items * rect.h) {
+			lbox_size.h = _max_visible_items * rect.h;
+		}
+
 		_popup_widget = new PopupWidget;
 		_popup_widget->popup();
 		_popup_widget->set_window_position(pos.x, pos.y + size.h);
-		_popup_widget->resize({rect.w, _max_visible_items * rect.h});
-		_listbox_view->set_rect({0, 0, rect.w, _max_visible_items * rect.h});
+		_popup_widget->resize({rect.w, lbox_size.h});
+		_listbox_view->set_rect({0, 0, rect.w, lbox_size.h});
 		_popup_widget->set_window_borderless(true);
 		_popup_widget->set_attribute(WidgetAttrs::DeleteOnClose, true);
 		_popup_widget->set_attribute(WidgetAttrs::BackgroundTransparent, true);
@@ -229,6 +243,8 @@ bool ComboBox::mouse_press(MouseEvent &event) {
 			// Detach it
 			_listbox_view->set_parent(nullptr);
 			_popup_widget = nullptr;
+
+			repaint();
 		});
 		_listbox_view->set_parent(_popup_widget);
 	}
@@ -250,10 +266,12 @@ bool ComboBox::mouse_release(MouseEvent &event) {
 }
 
 bool ComboBox::mouse_enter(MotionEvent &event) {
+	repaint();
 	return true;
 }
 
 bool ComboBox::mouse_leave(MotionEvent &event) {
+	repaint();
 	return true;
 }
 

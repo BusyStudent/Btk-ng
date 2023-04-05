@@ -175,6 +175,9 @@ class Style : public Refable<Style>, public Any {
 
         // Draw        
         virtual void draw_control(Control ctl, Widget *wi, Painter &p) = 0;
+        
+        // Clone
+        virtual Ref<Style> clone() = 0;
 };
 
 inline auto Palette::set_brush(Role role, const Brush &brush) -> void {

@@ -309,7 +309,52 @@ class BTKAPI Font {
     friend class TextLayout;
     friend class Painter;
 };
+/**
+ * @brief Interface for Draw Text / Layout
+ * 
+ */
+class Fontstash : public Any {
+    public:
+        enum Result : int {
+            Failed,
+            Ok,
+            AtlasFull
+        };
 
+        virtual void set_source(Font &ft, u8string_view text) = 0;
+        virtual void set_source(const TextLayout &layout) = 0;
+        virtual void set_scale(float xscale, float yscale) = 0;
+        virtual bool begin(float x, float y) = 0;
+        /**
+         * @brief For each glyph run
+         * 
+         * @param tex_rect The rectangle of the glyphrun, in the texture 
+         * @param dst_rect The dest rectangle of the glyphrun, should paint to
+         * @return Result 
+         */
+        virtual Result next(Rect *tex_rect, FRect *dst_rect) = 0;
+        /**
+         * @brief Query the texture data
+         * 
+         * @param pixels 
+         * @param size 
+         * @param dirty 
+         * @return true 
+         * @return false 
+         */
+        virtual bool query_texture(void **pixels, Size *size, Rect *dirty);
+        /**
+         * @brief Reset to new size
+         * 
+         * @param w 
+         * @param h 
+         * @return true 
+         * @return false 
+         */
+        virtual bool reset_atlas(int w, int h);
+};
+
+BTKAPI Fontstash *CreateFontstash();
 
 inline void Font::set_ptsize(float ptsize) {
     set_size(ptsize * 1.333);

@@ -7,6 +7,11 @@
 BTK_NS_BEGIN
 
 // AbstractButton
+AbstractButton::AbstractButton(Widget *parent) : Widget(parent) {
+    auto s = style();
+    _icon_size.w = s->icon_width;
+    _icon_size.h = s->icon_height;
+}
 void AbstractButton::set_flat(bool flat) {
     _flat = flat;
     repaint();
@@ -16,9 +21,20 @@ void AbstractButton::set_icon(const PixBuffer &icon) {
         _has_icon = false;
         return;
     }
-    auto s = style();
-    _icon.set_image(icon);
-    _has_icon = true;
+    else {
+        _icon.set_image(icon);
+        _has_icon = true;
+    }
+    repaint();
+}
+void AbstractButton::set_icon_size(const Size &size) {
+    _icon_size = size;
+    if (!_icon_size.is_valid()) {
+        auto s = style();
+        _icon_size.w = s->icon_width;
+        _icon_size.h = s->icon_height;
+    }
+    repaint();
 }
 void AbstractButton::set_text(u8string_view us) {     
     _text = us;
@@ -26,9 +42,74 @@ void AbstractButton::set_text(u8string_view us) {
     _textlay.set_text(_text);
     repaint();
 }
+void AbstractButton::set_text_align(Alignment alig) {
+    _textalign = alig;
+    repaint();
+}
+void AbstractButton::paint_icon_text(const FRect &border) {
+    auto &gc = painter();
 
+    // Text & Icon
+    FRect icon_rect = {0.0f, 0.0f, 0.0f, 0.0f};
+
+    if (_icon.type() == BrushType::Bitmap) {
+        // Has Icon
+        // Icon at center of this button, calc it
+        float center_y = border.y + border.h / 2;
+
+        float y = center_y - float(_icon_size.h) / 2;
+        float x = border.x + (y - border.y);
+        icon_rect = FRect(x, y, _icon_size.w, _icon_size.h);
+
+        gc.set_brush(_icon);
+        gc.fill_rect(icon_rect);
+    }
+    if (!_text.empty()) {
+        if (_pressed || !has_focus() || under_mouse()) {
+            // Normal text color on nofocus or under pressed
+            // c = style->highlight_text;
+            gc.set_brush(palette().text());
+        }
+        else{
+            // c = style->text;
+            gc.set_brush(palette().hightlighted_text());
+        }
+        gc.set_text_align(Alignment::Left | Alignment::Top);
+        // gc.set_color(c.r, c.g, c.b, c.a);
+
+        // Text border
+        float icon_width = 0.0f;
+        if (icon_rect.x != 0.0f) {
+            icon_width = icon_rect.w + (icon_rect.x - border.x) * 2;
+        }
+
+        auto tborder = border;
+        tborder.x += icon_width;
+        tborder.w -= icon_width;
+
+        gc.push_scissor(tborder);
+
+        FRect result = tborder.align_object(_textlay.size(), _textalign);
+
+        gc.draw_text(
+            _textlay,
+            result.x,
+            result.y
+        );
+        gc.pop_scissor();
+    }
+}
+bool AbstractButton::change_event(ChangeEvent &event) {
+    if (event.type() == Event::FontChanged) {
+        _textlay.set_font(font());
+
+        repaint();
+    }
+    return true;
+}
 // Button
 Button::Button(Widget *parent, u8string_view txt) : AbstractButton(parent) {
+    _textalign = AlignMiddle | AlignCenter;
     auto style = this->style();
     resize(style->button_width, style->button_height);
     set_focus_policy(FocusPolicy::Mouse);
@@ -87,55 +168,9 @@ bool Button::paint_event(PaintEvent &event) {
         // We didnot draw border on _flat mode
         // gc.set_color(c.r, c.g, c.b, c.a);
         gc.draw_rect(border);
-    }   
-
-    // Text & Icon
-    FRect icon_rect = {0.0f, 0.0f, 0.0f, 0.0f};
-
-    if (_icon.type() == BrushType::Bitmap) {
-        // Has Icon
-        // Icon at center of this button, calc it
-        float center_y = border.y + border.h / 2;
-
-        float y = center_y - float(style->icon_height) / 2;
-        float x = border.x + (y - border.y);
-        icon_rect = FRect(x, y, style->icon_width, style->icon_height);
-
-        gc.set_brush(_icon);
-        gc.fill_rect(icon_rect);
     }
-    if (!_text.empty()) {
-        if (_pressed || !has_focus() || under_mouse()) {
-            // Normal text color on nofocus or under pressed
-            // c = style->highlight_text;
-            gc.set_brush(palette().text());
-        }
-        else{
-            // c = style->text;
-            gc.set_brush(palette().hightlighted_text());
-        }
-        gc.set_text_align(Alignment::Center | Alignment::Middle);
-        gc.set_font(font());
-        // gc.set_color(c.r, c.g, c.b, c.a);
 
-        // Text border
-        float icon_width = 0.0f;
-        if (icon_rect.x != 0.0f) {
-            icon_width = icon_rect.w + (icon_rect.x - border.x) * 2;
-        }
-
-        auto tborder = border;
-        tborder.x += icon_width;
-        tborder.w -= icon_width;
-
-        gc.push_scissor(tborder);
-        gc.draw_text(
-            _textlay,
-            tborder.x + tborder.w / 2,
-            tborder.y + tborder.h / 2
-        );
-        gc.pop_scissor();
-    }
+    paint_icon_text(border);
 
     // Recover antialiasing
     gc.set_antialias(true);
@@ -197,8 +232,12 @@ Size Button::size_hint() const {
 }
 
 // RadioButton
-RadioButton::RadioButton(Widget *p) : AbstractButton(p) {
+RadioButton::RadioButton(Widget *p, u8string_view txt) : AbstractButton(p) {
     resize(size_hint());
+
+    if (!txt.empty()) {
+        set_text(txt);
+    }
 }
 RadioButton::~RadioButton() {
 
@@ -236,20 +275,28 @@ bool RadioButton::paint_event(PaintEvent &) {
         gc.draw_circle(cx, cy, style->radio_button_circle_r);
     }
 
-    // Draw text if exist
-    if (!_text.empty()) {
-        gc.push_scissor(border);
-        gc.set_font(font());
-        gc.set_text_align(Alignment::Left | Alignment::Middle);
-        gc.set_brush(palette().text());
-        gc.draw_text(
-            _textlay,
-            cx + style->radio_button_circle_r + style->radio_button_text_pad,
-            cy
-        );
+    // Calc the icon & text begin box
+    FRect box;
+    box.x = cx + style->radio_button_circle_r + style->radio_button_text_pad;
+    box.y = border.y;
+    box.w = border.x + border.w - box.x;
+    box.h = border.h;
 
-        gc.pop_scissor();
-    }
+    paint_icon_text(box);
+
+    // if (!_text.empty()) {
+    //     gc.push_scissor(border);
+    //     gc.set_font(font());
+    //     gc.set_text_align(Alignment::Left | Alignment::Middle);
+    //     gc.set_brush(palette().text());
+    //     gc.draw_text(
+    //         _textlay,
+    //         cx + style->radio_button_circle_r + style->radio_button_text_pad,
+    //         cy
+    //     );
+
+    //     gc.pop_scissor();
+    // }
 
     return true;
 }
@@ -261,10 +308,8 @@ bool RadioButton::mouse_press(MouseEvent &event) {
 }
 bool RadioButton::mouse_release(MouseEvent &event) {
     _pressed = false;
-    if (!_checked) {
-        _checked = true;
-        _clicked.emit();
-    }
+    _checked = !_checked;
+    _clicked.emit();
     repaint();
     return true;
 }

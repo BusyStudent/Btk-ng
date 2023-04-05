@@ -202,7 +202,7 @@ class DynRefable {
 
 template <typename T, typename ...Args>
 inline Ref<T> MakeRefable(Args &&...args) {
-    return Ref<T>(new T(std::forward<Arg>(args)...));
+    return Ref<T>(new T(std::forward<Args>(args)...));
 }
 
 

@@ -765,6 +765,24 @@ void NanoVGContext::apply_brush(const FRect &object) {
             nvgStrokePaint(nvgctxt, paint);
             break;
         }
+        case BrushType::Texture : {
+            // Texture brush
+            auto texture = static_cast<AbstractTexture*>(brush.texture());
+            auto nvg_texture = static_cast<NanoVGTexture*>(texture);
+
+            // Calc the position
+            auto rect = brush.rect_to_abs(device, object, brush.rect());
+            auto paint = nvgImagePattern(
+                nvgctxt,
+                rect.x, rect.y, rect.w, rect.h,
+                0,
+                nvg_texture->id,
+                1.0f
+            );
+            nvgFillPaint(nvgctxt, paint);
+            nvgStrokePaint(nvgctxt, paint);
+            break;
+        }
     }
 }
 void NanoVGContext::apply_brush(float x, float y, float w, float h) {

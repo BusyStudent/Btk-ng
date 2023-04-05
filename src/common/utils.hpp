@@ -97,7 +97,6 @@
 
 // Generate COW impl
 #define COW_BASIC_IMPL(type) \
-    static_assert(std::is_base_of<Refable<type##Impl>, type##Impl>::value, "type must be Refable"); \
     COW_COPY_IMPL(type) \
     COW_MOVE_IMPL(type) \
     COW_RELEASE_IMPL(type) \

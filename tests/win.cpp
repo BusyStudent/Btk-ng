@@ -511,6 +511,7 @@ int main () {
 
     rb.move(100, 190);
     rb.set_text("This is a radio button");
+    rb.set_icon(test_image());
     rb.resize(200, 32);
 
     Canvas c;

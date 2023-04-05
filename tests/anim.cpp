@@ -1,4 +1,5 @@
 #include <Btk/plugins/animation.hpp>
+#include <Btk/widgets/container.hpp>
 #include <Btk/context.hpp>
 #include <Btk/comctl.hpp>
 #include <iostream>
@@ -70,6 +71,20 @@ int main() {
     });
 
     op_test.show();
+
+    TabWidget tb;
+
+    tb.add_tab(new Button("First"), "First");
+    tb.add_tab(new Button("Second"), "Second"); // Will be selected by default.
+    tb.add_tab(new Button("Third"), "Third"); // Will NOT be selected by default.
+
+    auto ctmslider = new Slider(Horizontal);
+    ctmslider->signal_value_changed().connect([&]() {
+        tb.set_content_margin(ctmslider->value());
+    });
+    tb.add_tab(ctmslider, "Slider");
+
+    tb.show();
 
     ctxt.run();
 }

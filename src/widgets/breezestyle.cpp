@@ -10,6 +10,7 @@ class BreezeStyle final : public Style {
 
         // Draw
         void draw_control(Control ctl, Widget *wi, Painter &p) override; 
+        Ref<Style> clone() override;
 };
 
 extern "C" void __BtkWidgets_STYLE_Init() {
@@ -94,6 +95,9 @@ BreezeStyle::BreezeStyle() {
 }
 void BreezeStyle::draw_control(Control ctl, Widget *wi, Painter &p) {
 
+}
+Ref<Style> BreezeStyle::clone() {
+    return MakeRefable<BreezeStyle>(*this).as<Style>();
 }
 
 

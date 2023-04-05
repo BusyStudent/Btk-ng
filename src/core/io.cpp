@@ -1,24 +1,26 @@
-#pragma once
-
 #include "build.hpp"
+
 #include <Btk/io.hpp>
 
 #if   defined(__linux)
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <fcntl.h>
+    #include <sys/mman.h>
+    #include <sys/stat.h>
+    #include <unistd.h>
+    #include <fcntl.h>
 #elif defined(_WIN32)
-#include <windows.h>
-#undef min
-#undef max
-#else
-#error "Unsupported platform"
+    #include <windows.h>
+    #undef min
+    #undef max
 #endif
 
-BTK_PRIV_BEGIN
+BTK_NS_BEGIN
 
-inline bool MapFile(u8string_view url, void **out, size_t *size) {
+bool MapFile(u8string_view url, IOAccess mode, void **out, size_t *size) {
+    // Check mode, currently only support read only
+    if (mode != IOAccess::ReadOnly) {
+        return false;
+    }
+
 #if defined(__linux)
     int fd = open(url.copy().c_str(), O_RDONLY);
     if (fd == -1) {
@@ -29,7 +31,7 @@ inline bool MapFile(u8string_view url, void **out, size_t *size) {
         close(fd);
         return false;
     }
-    void *ptr = mmap(nullptr, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    void *ptr = mmap(nullptr, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
     close(fd);
     if (ptr == MAP_FAILED) {
         return false;
@@ -80,7 +82,8 @@ inline bool MapFile(u8string_view url, void **out, size_t *size) {
 #endif
 
 }
-inline bool UnmapFile(void *out, size_t size) {
+
+bool UnmapFile(void *out, size_t size) {
 #if defined(__linux)
     return munmap(out, size) == 0;
 #elif defined(_WIN32)
@@ -91,4 +94,5 @@ inline bool UnmapFile(void *out, size_t size) {
 
 }
 
-BTK_PRIV_END
+
+BTK_NS_END

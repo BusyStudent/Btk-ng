@@ -51,8 +51,8 @@ Widget::~Widget() {
 }
 
 void Widget::set_visible(bool v) {
-    if (is_root()) {
-        //Top level widget
+    if (is_root() && v) {
+        // Top level widget, and make it visible
         if (_win == nullptr) {
             window_init();
         }
@@ -62,6 +62,16 @@ void Widget::set_visible(bool v) {
     Event event(v ? Event::Show : Event::Hide);
     handle(event);
 
+    if (!v && has_focus() && _parent) {
+        // Hide should lose focus
+        FocusEvent event(Event::FocusLost);
+        event.set_widget(this);
+        event.set_timestamp(GetTicks());
+
+        handle(event);
+
+        _parent->focused_widget = nullptr;
+    }
     if (_parent) {
         event.set_type(Event::LayoutRequest);
         _parent->handle(event);

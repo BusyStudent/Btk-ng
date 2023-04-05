@@ -9,8 +9,7 @@ BTK_NS_BEGIN
 FileDialog::FileDialog() {
     auto ret = driver()->instance_create("filedialog");
     if (ret) {
-        assert(BTK_CASTABLE(AbstractFileDialog, ret));
-        native = static_cast<AbstractFileDialog*>(ret);
+        native = &ret->as<AbstractFileDialog>();
     }
 }
 FileDialog::~FileDialog() {

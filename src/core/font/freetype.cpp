@@ -1,9 +1,12 @@
 #include "build.hpp"
 #include "common/utils.hpp"
-#include "common/mmap.hpp"
+#include "common/rectpack.hpp"
+#include "common/device_resource.hpp"
 
 #include <Btk/detail/reference.hpp>
 #include <Btk/painter.hpp>
+#include <Btk/font.hpp>
+#include <Btk/io.hpp>
 #include <map>
 
 extern "C" {
@@ -51,7 +54,7 @@ class PhyFontSource : public Refable<PhyFontSource> {
 };
 
 PhyFontSource::PhyFontSource(u8string_view path) {
-    MapFile(path, &buffer, &buffer_size);
+    MapFile(path, IOAccess::ReadOnly, &buffer, &buffer_size);
     from_file = true;
 }
 PhyFontSource::~PhyFontSource() {
@@ -141,21 +144,30 @@ auto PhyFontFace::glyph_metrics(int index, float xscale, float yscale) -> GlyphM
     return m;
 }
 
-class FtRuntime final {
+class FtRuntime final : public Refable<FtRuntime> {
     public:
         // Map file to font data
         std::map<u8string, Ref<PhyFontSource>> source;
         // Map family name to face
         std::map<u8string, Ref<PhyFontFace>> faces;
 };
-class FtFont : public Refable<FtFont> {
+class FtFontstash final : public Ref<FtFontstash> {
+    public:
+        RectPacker packer;
+};
+
+static FtRuntime *ft_global = nullptr;
+
+class FtFont      : public PaintResourceManager, public Refable<FtFont> {
     public:
         u8string family;
-        float    size;
+        float    size = 7.0f;
+        bool     blod = false;
+        float    italic = false;
 
         Ref<PhyFontFace> face;
 };
-class FtTextLayout : public Refable<FtTextLayout> {
+class FtTextLayout : public PaintResourceManager, public Refable<FtTextLayout> {
     public:
         Ref<FtFont> font;
         u8string    text;
@@ -172,5 +184,46 @@ BTK_NS_BEGIN
 
 class FontImpl final       : public FtFont { };
 class TextLayoutImpl final : public FtTextLayout { };
+
+COW_BASIC_IMPL(Font);
+
+Font::Font() {
+    priv = nullptr;
+}
+Font::Font(u8string_view name, float size) {
+    priv = new FontImpl;
+    priv->family = name;
+    priv->size   = size;
+    priv->ref();
+}
+
+void Font::begin_mut() {
+    COW_MUT(priv);
+    priv->reset_manager();
+}
+void Font::Init() {
+    if (!ft_global) {
+        ft_global = new FtRuntime();
+        ft_global->set_refcount(0);
+    }
+    ft_global->ref();
+}
+void Font::Shutdown() {
+    if (ft_global->refcount() == 1) {
+        ft_global->unref();
+        ft_global = nullptr;
+    }
+    else {
+        ft_global->unref();
+    }
+}
+
+// TextLayout
+COW_BASIC_IMPL(TextLayout);
+
+void TextLayout::begin_mut() {
+    COW_MUT(priv);
+    priv->reset_manager();
+}
 
 BTK_NS_END

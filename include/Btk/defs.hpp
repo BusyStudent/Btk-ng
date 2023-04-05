@@ -35,7 +35,62 @@ using varg_double_t = double;
  */
 class Any {
     public:
+        /**
+         * @brief Destroy the Any object
+         * 
+         */
         inline virtual ~Any() = default;
+
+        /**
+         * @brief Dynmaic Cast to type T, a excpetion will be thrown if invalid.
+         * 
+         * @tparam T 
+         * @return T& 
+         */
+        template <typename T>
+        inline T       &as() BTK_NOEXCEPT {
+#if        !defined(BTK_NO_RTTI)
+            return dynamic_cast<T&>(*this);
+#else
+            return static_cast<T&>(*this);
+#endif
+        }
+        /**
+         * @brief Dynmaic Cast to type T, a excpetion will be thrown if invalid.
+         * 
+         * @tparam T 
+         * @return const T& 
+         */
+        template <typename T>
+        inline const T&as() const BTK_NOEXCEPT {
+#if        !defined(BTK_NO_RTTI)
+            return dynamic_cast<const T&>(*this);
+#else
+            return static_cast<const T&>(*this);
+#endif
+        }
+        /**
+         * @brief Static Cast to type T
+         * 
+         * @tparam T 
+         * @return T& 
+         */
+        template <typename T>
+        inline T       &unsafe_as() noexcept {
+            return static_cast<T&>(*this);
+        }
+        /**
+         * @brief Static Cast to type T
+         * 
+         * @tparam T 
+         * @return T& 
+         */
+        template <typename T>
+        inline const T&unsafe_as() const noexcept {
+            return static_cast<const T&>(*this);
+        }
+    protected:
+        inline Any() noexcept { }
 };
 
 // Basic enumerations

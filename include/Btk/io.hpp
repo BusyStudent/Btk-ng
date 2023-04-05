@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Btk/string.hpp>
 #include <Btk/defs.hpp>
 #include <cstdio>
 #include <cerrno>
@@ -67,6 +68,57 @@ class FileStream final : public IOStream {
         int   errcode = 0;
         FILE *fp      = nullptr;
 };
+
+/**
+ * @brief File memory mapping wrapper
+ * 
+ */
+class FileMapping {
+    public:
+        FileMapping() = default;
+        FileMapping(const FileMapping &) = delete;
+        FileMapping(FileMapping &&f) noexcept {
+            _data = f._data;
+            _size = f._size;
+            f._data = nullptr;
+            f._size = 0;
+        }
+        ~FileMapping() noexcept { 
+            close(); 
+        }
+
+        bool open(u8string_view path, IOAccess access = IOAccess::ReadOnly) noexcept;
+        bool close() noexcept;
+
+        void  *data() const noexcept {
+            return _data;
+        }
+        size_t size() const noexcept {
+            return _size;
+        }
+    private:
+        void  *_data = nullptr;
+        size_t _size = 0;
+};
+
+/**
+ * @brief Map file into memory
+ * 
+ * @param path The path of the file
+ * @param access The access mode
+ * @param outbuf The pointer to outbuf pointer (couldnot be nullptr) 
+ * @param outsize The pointer to outsize (couldnot be nullptr)
+ * @return bool  
+ */
+BTKAPI bool MapFile(u8string_view path, IOAccess access, void **outbuf, size_t *outsize);
+/**
+ * @brief Unmap file
+ * 
+ * @param data 
+ * @param n 
+ * @return BTKAPI 
+ */
+BTKAPI bool UnmapFile(void *data, size_t n);
 
 
 // Impl for FileStream
@@ -145,6 +197,21 @@ inline int64_t FileStream::read(void *buf, size_t size) {
 }
 inline u8string FileStream::error() {
     return ::strerror(errcode);
+}
+
+// Impl for FileMapping
+inline bool FileMapping::open(u8string_view path, IOAccess mode) noexcept {
+    close();
+    return MapFile(path, mode, &_data, &_size);
+}
+inline bool FileMapping::close() noexcept {
+    if (!_data) {
+        return false;
+    }
+    bool status = UnmapFile(_data, _size);
+    _data = nullptr;
+    _size = 0;
+    return status;
 }
 
 BTK_NS_END

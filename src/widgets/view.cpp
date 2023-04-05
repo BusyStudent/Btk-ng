@@ -33,8 +33,7 @@ bool Label::paint_event(PaintEvent &) {
 
     // Get textbox
     auto size = _layout.size();
-    FRect textbox(0, 0, size.w, size.h);
-    textbox = textbox.align_at(border, _align);
+    auto textbox = border.align_object(size, _align);
 
     painter.set_font(font());
     painter.set_text_align(AlignLeft + AlignTop);

@@ -224,37 +224,33 @@ class RectImpl {
             );
         }
 
-        // Align calc
+        // Put a object in the rectangle, by it alig
         template <typename Elem>
-        RectImpl<Elem> align_at(const RectImpl<Elem> &parent_box, Alignment alig) const {
-            RectImpl<Elem> result = *this;
+        RectImpl<Elem> align_object(const SizeImpl<Elem> &object_size, Alignment alig) const {
+            RectImpl<Elem> result;
+            result.w = object_size.w;
+            result.h = object_size.h;
 
             // Horizontal
             if (uint8_t(alig & Alignment::Left)) {
-                result.x = parent_box.x;
-                result.w = w;
+                result.x = x;
             }
             else if (uint8_t(alig & Alignment::Right)) {
-                result.x = parent_box.x + parent_box.w - w;
-                result.w = w;
+                result.x = x + w - object_size.w;
             }
             else if (uint8_t(alig & Alignment::Center)) {
-                result.x = parent_box.x + parent_box.w / 2 - w / 2;
-                result.w = w;
+                result.x = x + w / 2 - object_size.w / 2;
             }
 
             // Vertical
             if (uint8_t(alig & Alignment::Top)) {
-                result.y = parent_box.y;
-                result.h = h;
+                result.y = y;
             }
             else if (uint8_t(alig & Alignment::Bottom)) {
-                result.y = parent_box.y + parent_box.h - h;
-                result.h = h;
+                result.y = y + h - object_size.h;
             }
             else if (uint8_t(alig & Alignment::Middle)) {
-                result.y = parent_box.y + parent_box.h / 2 - h / 2;
-                result.h = h;
+                result.y = y + h / 2 - object_size.h / 2;
             }
 
             return result;

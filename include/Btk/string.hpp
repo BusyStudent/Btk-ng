@@ -279,6 +279,7 @@ class BTKAPI u8string {
         u8string(const char_t *str, const char_t *end) : _str(str, end) {}
         u8string(stdu8string_view str) : _str(str) {}
         u8string(const u8string &str) : _str(str._str) {}
+        u8string(stdu8string &&str) : _str(std::move(str)) {}
         u8string(u8string &&str) : _str(std::move(str._str)) {}
         ~u8string() = default;
 
@@ -529,6 +530,14 @@ class BTKAPI u8string {
             _str = std::move(str._str);
             return *this;
         }
+        u8string & operator =(const stdu8string &str) {
+            _str = str;
+            return *this;
+        } 
+        u8string & operator =(stdu8string &&str) {
+            _str = std::move(str);
+            return *this;
+        }
         u8string & operator =(const char_t *str) {
             _str = str;
             return *this;
@@ -540,12 +549,6 @@ class BTKAPI u8string {
         u8string & operator +=(stdu8string_view s) {
             _str += s;
             return *this;
-        }
-        bool       operator ==(const u8string &str) const noexcept {
-            return compare(str);
-        }
-        bool       operator ==(const char_t *str) const noexcept {
-            return compare(str);
         }
         bool       operator ==(stdu8string_view str) const noexcept {
             return compare(str);

@@ -247,6 +247,7 @@ class BTKAPI Brush {
         Brush(const Brush     &brush);
         Brush(const Color     &color);
         Brush(const GLColor   &color);
+        Brush(const Texture   &texture);
         Brush(const PixBuffer &pixbuf);
         Brush(const LinearGradient &gradient);
         Brush(const RadialGradient &gradient);
@@ -258,6 +259,12 @@ class BTKAPI Brush {
         Brush &operator =(const Brush &);
         Brush &operator =(std::nullptr_t);
 
+        /**
+         * @brief Set the rect object (used in Bitmap / Texture brush)
+         * 
+         * @param r The rectangle to set width
+         */
+        void set_rect(const FRect &r);
         /**
          * @brief Set the color object
          * 
@@ -271,6 +278,11 @@ class BTKAPI Brush {
          */
         void set_image(const PixBuffer &);
         /**
+         * @brief Set the texture object
+         * 
+         */
+        void set_texture(const Texture &);
+        /**
          * @brief Set the gradient object
          * 
          * @param g LinearGradient
@@ -282,7 +294,12 @@ class BTKAPI Brush {
          * @param g RadialGradient
          */
         void set_gradient(const RadialGradient &g);
-
+        /**
+         * @brief Set the coordinate mode object
+         * 
+         * @param m 
+         */
+        void set_coordinate_mode(CoordinateMode m);
         /**
          * @brief Get the rectangle of the brush
          * 
@@ -313,6 +330,12 @@ class BTKAPI Brush {
          * @return PixBuffer 
          */
         PixBuffer bitmap() const;
+        /**
+         * @brief Get the abstract texture of the brush
+         * 
+         * @return void* 
+         */
+        pointer_t texture() const;
         /**
          * @brief Get the coordinate mode of the brush
          * 
@@ -444,6 +467,7 @@ class BTKAPI Texture {
         TextureImpl *priv;
     friend class PainterEffect;
     friend class Painter;
+    friend class Brush;
 };
 
 
@@ -943,6 +967,9 @@ inline Brush::Brush(const Color   &c) : Brush() {
 }
 inline Brush::Brush(const GLColor &c) : Brush() {
     set_color(c);
+}
+inline Brush::Brush(const Texture &t) : Brush() {
+    set_texture(t);
 }
 inline Brush::Brush(const PixBuffer &buf) : Brush() {
     set_image(buf);

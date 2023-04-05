@@ -102,6 +102,7 @@ class D2DRenderTarget  : public PaintContext {
         auto map_linear_brush(Brush &, const FRect &area) -> ID2D1Brush *;
         auto map_radial_brush(Brush &, const FRect &area) -> ID2D1Brush *;
         auto map_bitmap_brush(Brush &, const FRect &area) -> ID2D1Brush *;
+        auto map_texture_brush(Brush &, const FRect &area) -> ID2D1Brush *;
         auto map_brush(Brush &, const FRect &area) -> ID2D1Brush *;
 
         void draw_text_layout(Alignment alig, IDWriteTextLayout *lay, float x, float y);
@@ -419,6 +420,7 @@ D2DRenderTarget::D2DRenderTarget(PaintDevice *dev, ID2D1RenderTarget *t) : paint
     HRESULT hr;
     
     hr = target->CreateSolidColorBrush(D2D1::ColorF(D2D1::ColorF::Black), &solid_brush);
+    hr = target->CreateBitmapBrush(nullptr, bitmap_brush.GetAddressOf());
 }
 D2DRenderTarget::~D2DRenderTarget() {
     signal.emit();
@@ -894,6 +896,9 @@ auto D2DRenderTarget::map_bitmap_brush(Brush &brush, const FRect &area) -> ID2D1
             return nullptr;
         }
 
+        // Default in linear
+        out->SetInterpolationMode(D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+
         // Bind to the brush
         resource = new D2DBrush(this, out.Get());
         brush.bind_device_resource(this, resource);
@@ -919,6 +924,36 @@ auto D2DRenderTarget::map_bitmap_brush(Brush &brush, const FRect &area) -> ID2D1
     );
 
     return btbrush;
+}
+// TODO : Do it
+auto D2DRenderTarget::map_texture_brush(Brush &brush, const FRect &area) -> ID2D1Brush * {
+    auto rect = brush.rect();
+    auto texture = static_cast<AbstractTexture*>(brush.texture());
+    auto abs_rect = brush.rect_to_abs(paint_device, area, rect);
+    auto d2d_texture = static_cast<D2DTexture*>(texture);
+
+    bitmap_brush->SetBitmap(d2d_texture->bitmap.Get());
+    // Configure brush
+    auto [width, height] = d2d_texture->bitmap->GetSize();
+    float target_width = abs_rect.w;
+    float target_height = abs_rect.h;
+    float w_scale = target_width / width;
+    float h_scale = target_height / height;
+
+    bitmap_brush->SetTransform(
+        D2D1::Matrix3x2F::Scale(
+            w_scale,
+            h_scale
+        )
+        *
+        D2D1::Matrix3x2F::Translation(
+            abs_rect.x,
+            abs_rect.y
+        )
+    );
+    bitmap_brush->SetInterpolationMode(d2d_texture->mode);
+
+    return bitmap_brush.Get();
 }
 auto D2DRenderTarget::map_gradient(const Gradient &gradient) -> ComPtr<ID2D1GradientStopCollection> {
     auto &stops = gradient.stops();

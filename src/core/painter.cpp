@@ -86,8 +86,10 @@ class BrushImpl       : public PaintResourceManager, public Refable<BrushImpl> {
             PixBuffer, 
             LinearGradient,
             RadialGradient,
-            Ref<PaintResource>  //< For textures
+            Ref<AbstractTexture>  //< For textures
         >              data = GLColor(0.0f, 0.0f, 0.0f, 1.0f);
+
+        void on_texture_destroyed() { data = Color::Black; }
 };
 class PenImpl          : public PaintResourceManager, public Refable<PenImpl> {
     public:
@@ -811,6 +813,10 @@ bool  PainterPath::contains(float x, float y) const {
 Brush::Brush() {
     priv = nullptr;
 }
+void Brush::set_rect(const FRect &r) {
+    begin_mut();
+    priv->rect = r;
+}
 void Brush::set_color(const GLColor &c) {
     begin_mut();
     priv->data = c;
@@ -821,6 +827,16 @@ void Brush::set_image(const PixBuffer &img) {
     priv->data = img;
     priv->btype = BrushType::Bitmap;
 }
+void Brush::set_texture(const Texture &tex) {
+    BTK_ASSERT(!tex.empty());
+    begin_mut();
+    priv->data = tex.priv->texture;
+    priv->btype = BrushType::Texture;
+
+    tex.priv->texture->signal_destroyed().connect(
+        &BrushImpl::on_texture_destroyed, priv
+    );
+}
 void Brush::set_gradient(const LinearGradient & g) {
     begin_mut();
     priv->data = g;
@@ -830,6 +846,10 @@ void Brush::set_gradient(const RadialGradient & g) {
     begin_mut();
     priv->data = g;
     priv->btype = BrushType::RadialGradient;
+}
+void Brush::set_coordinate_mode(CoordinateMode m) {
+    begin_mut();
+    priv->cmode = m;
 }
 FRect     Brush::rect() const {
     if (priv) {
@@ -858,6 +878,14 @@ PixBuffer  Brush::bitmap() const {
         }
     }
     ::abort();
+}
+pointer_t   Brush::texture() const {
+    if (priv) {
+        if (priv->btype == BrushType::Texture) {
+            return std::get<Ref<AbstractTexture>>(priv->data).get();
+        }
+    }
+    return nullptr;
 }
 FMatrix     Brush::matrix() const {
     if (priv) {
