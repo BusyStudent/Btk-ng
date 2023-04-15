@@ -55,6 +55,9 @@ class BTKAPI Object : public Any, public Trackable {
 
         // Timer Event
         virtual bool timer_event(TimerEvent &) { return false; }
+
+        // Signals
+        Signal<void()> &signal_destoryed();
     private:
         ObjectImpl *implment() const;
         std::shared_ptr<bool> mark() const;

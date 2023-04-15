@@ -40,6 +40,7 @@
 // Class
 #define BTK_WINDOW_CLASS L"BtkWindow"
 #define BTK_HELPER_CLASS L"BtkHelper"
+#define BTK_POPUP_CLASS  L"BtkPopup"
 
 // OpenGL support
 #define GL_LIB(x)    HMODULE library = LoadLibraryA(x)
@@ -664,6 +665,12 @@ Win32Driver::Win32Driver() {
     wc.hIconSm = LoadIcon(nullptr, IDI_APPLICATION);
     RegisterClassExW(&wc);
 
+#if !defined(BTK_WIN32_DWM_DROPSHADOW)
+    // Initialize the Popup class. for classical drop shadow
+    wc.lpszClassName = BTK_POPUP_CLASS;
+    wc.style |= CS_DROPSHADOW;
+    RegisterClassExW(&wc);
+#endif
     // Initialize the IME
 
     // Set the instance
@@ -733,17 +740,26 @@ window_t Win32Driver::window_create(u8string_view title, int width, int height, 
     auto wtitle = reinterpret_cast<const wchar_t*>(u16.c_str());
 
     // Check args if
-    DWORD style = WS_OVERLAPPEDWINDOW;
-    UINT  dpi   = GetDpiForSystem();
+    DWORD exstyle = 0;
+    auto  wclass  = BTK_WINDOW_CLASS;
+    DWORD style   = WS_OVERLAPPEDWINDOW;
+    UINT  dpi     = GetDpiForSystem();
 
     // Parse flags
+#if !defined(BTK_WIN32_DWM_DROPSHADOW)
+    if ((flags & (WindowFlags::PopupMenu)) == WindowFlags::PopupMenu) {
+        exstyle |= (WS_EX_TOOLWINDOW | WS_EX_TOPMOST);
+        wclass  =  BTK_POPUP_CLASS;
+    }
+#endif
 
+    // Calc rectangle
     RECT rect;
     rect.left = 0;
     rect.top = 0;
     rect.bottom = height;
     rect.right = width;
-    if (!AdjustWindowRectExForDpi(&rect, style, FALSE, 0, dpi)) {
+    if (!AdjustWindowRectExForDpi(&rect, style, FALSE, exstyle, dpi)) {
         WIN_LOG("[Win32::Error] Bad adjust");
     }
 
@@ -754,8 +770,8 @@ window_t Win32Driver::window_create(u8string_view title, int width, int height, 
 
 
     HWND hwnd = CreateWindowExW(
-        0,
-        BTK_WINDOW_CLASS,
+        exstyle,
+        wclass,
         wtitle,
         style,
         CW_USEDEFAULT, CW_USEDEFAULT,
@@ -775,8 +791,11 @@ window_t Win32Driver::window_create(u8string_view title, int width, int height, 
 
     auto win = new Win32Window(hwnd, this);
     win->win_dpi   = dpi;
-    win->flags     = flags;
 
+    // Update flags
+    // win->flags     = flags;
+    win->set_flags(flags);
+    
     // Check flags
     if ((flags & WindowFlags::Framebuffer) != WindowFlags::Framebuffer) {
         window_add(win);
@@ -896,7 +915,12 @@ Point Win32Window::position() const {
     );
 }
 void Win32Window::raise() {
+    // Let is almost top
+    SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE);;
+
     SetForegroundWindow(hwnd);
+    SetFocus(hwnd);
+    SetActiveWindow(hwnd);
 }
 void Win32Window::close() {
     PostMessageW(hwnd, WM_CLOSE, 0, 0);
@@ -1097,6 +1121,22 @@ bool     Win32Window::set_flags(WindowFlags new_flags) {
         // Resize
         resize(width, height);
     }
+#if defined(BTK_WIN32_DWM_DROPSHADOW)
+    if (bit_changed(WindowFlags::PopupMenu)) {
+        bool popup = bool(new_flags & WindowFlags::PopupMenu);
+        auto s = style();
+        // if (popup) {
+        //     s |= WS_EX_TOOLWINDOW;
+        // }
+        // else {
+        //     s &= ~WS_EX_TOOLWINDOW;
+        // }
+        // if (::SetWindowLongPtrW(hwnd, GWL_EXSTYLE, s) == 0) {
+        //     BTK_LOG("%d\n", int(::GetLastError()));
+        // }
+        driver->DwmSetDropShadow(hwnd, popup);
+    }
+#endif
     // if (bit_changed(WindowFlags::Transparent)) {
     //     DWORD new_ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
     //     if (bool(new_flags & WindowFlags::Transparent)) {
@@ -1242,10 +1282,10 @@ void     Win32Window::start_textinput(bool v) {
 }
 any_t     Win32Window::gc_create(const char_t *name) {
     if (_stricmp(name, "opengl") == 0) {
-        if (SetWindowLongPtrW(hwnd, GWL_STYLE, GetWindowLongPtrW(hwnd, GWL_STYLE) | CS_OWNDC) == 0) {
-            // Failed
-            return nullptr;
-        }
+        // if (SetWindowLongPtrW(hwnd, GWL_STYLE, GetWindowLongPtrW(hwnd, GWL_STYLE) | CS_OWNDC) == 0) {
+        //     // Failed
+        //     return nullptr;
+        // }
         return new Win32GLContext(hwnd);
     }
     return nullptr;

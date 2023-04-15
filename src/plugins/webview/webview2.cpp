@@ -8,6 +8,7 @@
 #include <wrl.h>
 #include <map>
 
+#include "webview2_loader.hpp"
 
 #undef interface
 
@@ -222,6 +223,7 @@ HRESULT MSWebView2::QueryInterface(REFIID id, void **pobj) {
     return E_NOINTERFACE;
 }
 HRESULT MSWebView2::Initialize(HWND h) {
+#if !defined(BTK_WEBVIEW2_STATIC_LINK)
     // Has env, Just enter create controler
     if (webview2_enviroment) {
         return Invoke(S_OK, webview2_enviroment);
@@ -233,7 +235,9 @@ HRESULT MSWebView2::Initialize(HWND h) {
             GetProcAddress(webview2_dll, "DllCanUnloadNow");
     }
     if (!webview2_dll) {
-        return E_FAIL;
+        // Use bultin
+        // return E_FAIL;
+        webview2_CreateCoreWebView2EnvironmentWithOptions = Btk_CreateCoreWebView2EnvironmentWithOptions;
     }
     if (!webview2_CreateCoreWebView2EnvironmentWithOptions) {
         webview2_CreateCoreWebView2EnvironmentWithOptions = (decltype(::CreateCoreWebView2EnvironmentWithOptions)*)
@@ -246,6 +250,10 @@ HRESULT MSWebView2::Initialize(HWND h) {
     }
     hwnd = h;
     return webview2_CreateCoreWebView2EnvironmentWithOptions(nullptr, nullptr, nullptr, this);
+#else
+    hwnd = h;
+    return CreateCoreWebView2EnvironmentWithOptions(nullptr, nullptr, nullptr, this);
+#endif
 }
 HRESULT MSWebView2::InitializeHeadless() {
     // Create headless window here

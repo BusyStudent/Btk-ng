@@ -263,6 +263,12 @@ bool TabBar::paint_event(PaintEvent &) {
 }
 bool TabBar::mouse_press(MouseEvent &event) {
     auto [x, y] = event.position();
+    if (_tabs.size() > 0) {
+        if (x > tab_rect(_tabs.size() - 1).top_right().x) {
+            // <Tab, Tab, Tab> Out of range
+            return true;
+        }
+    }
     auto new_current = tab_at(x, y);
     if (new_current != _current_tab) {
         set_current_index(new_current);
@@ -353,18 +359,33 @@ void TabWidget::set_current_index(int idx) {
     bar.set_current_index(idx);
     // Because bar's signal_current_changed was connected to StackedWidget, no need to set 
 }
+void TabWidget::put_internal() {
+    if (bar.visible()) {
+        // Not hided
+        bar.resize(width(), bar.size_hint().h);
+        bar.move(x(), y());
+
+        display.move(x(), y() + bar.height());
+        display.resize(width(), height() - bar.height());
+    }
+    else {
+        // Hided
+        display.move(x(), y());
+        display.resize(width(), height());
+    }
+}
 bool TabWidget::resize_event(ResizeEvent &event) {
-    bar.resize(event.width(), bar.size_hint().h);
-    bar.move(x(), y());
-
-    display.move(x(), y() + bar.height());
-    display.resize(event.width(), event.height() - bar.height());
-
+    put_internal();
     return true;
 }
 bool TabWidget::move_event(MoveEvent &event) {
-    bar.move(event.x(), event.y());
-    display.move(event.x(), event.y() + bar.height());
+    if (bar.visible()) {
+        bar.move(event.x(), event.y());
+        display.move(event.x(), event.y() + bar.height());
+    }
+    else {
+        display.move(event.x(), event.y());
+    }
     return true;
 }
 bool TabWidget::paint_event(PaintEvent &) {
@@ -374,8 +395,25 @@ bool TabWidget::paint_event(PaintEvent &) {
     auto &p = painter();
     p.set_brush(palette().input());
     p.fill_rect(display.rect());
+
     p.set_brush(palette().border());
-    p.draw_rect(display.rect());
+    // Check if has current
+    if (bar.current_index() >= 0 && bar.visible()) {
+        auto br = bar.tab_rect(bar.current_index());
+        auto dpy = display.rect();
+
+        // Draw Display border
+        p.draw_line(dpy.top_left(), dpy.bottom_left());
+        p.draw_line(dpy.bottom_left(), dpy.bottom_right());
+        p.draw_line(dpy.bottom_right(), dpy.top_right());
+
+        // Draw Line skip the bar
+        p.draw_line(dpy.top_left(), FPoint(br.x, dpy.y));
+        p.draw_line(FPoint(br.x + br.w, dpy.y), dpy.top_right());
+    }
+    else  {
+        p.draw_rect(display.rect());
+    }
     return true;
 }
 Margin  TabWidget::content_margin() const {

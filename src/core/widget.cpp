@@ -26,6 +26,9 @@ Widget::Widget(Widget *parent) {
         _font    = _context->font();
     }
 }
+Widget::Widget(Widget *parent, WindowFlags f) : Widget(parent) {
+    _flags = f;
+}
 Widget::~Widget() {
 
     // Auto detach from parent
@@ -576,6 +579,13 @@ bool Widget::handle(Event &event) {
             _focused = false;
             return focus_lost(event.as<FocusEvent>());
         }
+        case Event::DpiChanged : {
+            if (_win) {
+                auto [x, y] = window_dpi();
+                _painter.notify_dpi_changed(x, y);
+            }
+            [[fallthrough]];
+        }
         case Event::ChildRectangleChanged :
         case Event::PaletteChanged :
         case Event::StyleChanged :
@@ -873,6 +883,10 @@ bool Widget::set_window_flags(WindowFlags f) {
         }
         _flags = f;
         return _win->set_flags(_flags);
+    }
+    else {
+        // Just update flags
+        _flags = f;
     }
     return false;
 }

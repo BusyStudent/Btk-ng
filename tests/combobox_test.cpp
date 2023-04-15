@@ -8,6 +8,26 @@
 
 using namespace BTK_NAMESPACE;
 
+class MenuWindow : public Widget {
+	public:
+		using Widget::Widget;
+
+		MenuBar menu {this};
+		bool fullscreen = false;
+	protected:
+		bool resize_event(ResizeEvent &) override {
+			menu.resize(width(), menu.size_hint().h);
+			return true;
+		}
+		bool key_press(KeyEvent &event) {
+			if (event.key() == Key::F11) {
+				fullscreen = !fullscreen;
+				root()->set_fullscreen(fullscreen);
+			}
+			return true;
+		}
+};
+
 int main(int argc,char **argv) {
 	UIContext context;
 	Widget widget;
@@ -61,6 +81,40 @@ int main(int argc,char **argv) {
 			box2.remove_item(text_edit1.text());
 		}
 	});
+
+	MenuWindow menuwindow;
+	MenuBar &menu = menuwindow.menu;
+	Menu *file = menu.add_menu("File");
+	MenuItem *open_item = new MenuItem("Open");
+	open_item->set_image(PixBuffer::FromFile("icon.jpeg"));
+
+	file->add_item(open_item);
+	file->add_item("Close")->signal_triggered().connect(&MenuWindow::close, &menuwindow);
+
+	menu.add_item(new MenuItem("First"))->signal_triggered().connect([]() {
+		BTK_LOG("First triggered\n");
+	});
+	menu.add_item(new MenuItem("Next"));
+	menu.add_separator();
+	menu.add_item(new MenuItem("Third"));
+	menu.add_item(new MenuItem("SSSS"));
+	menu.add_separator();
+
+	auto imgitem = new MenuItem("Icon");
+	imgitem->set_image(PixBuffer::FromFile("icon.jpeg"));
+
+	auto submenu = new Menu("Sub");
+	menu.add_menu(submenu);
+
+	submenu->add_item(new MenuItem("SubItem 1"));
+	submenu->add_item(new MenuItem("SubItem 2"));
+	submenu->add_item(new MenuItem("SubItem 3"));
+	submenu->add_item(new MenuItem("SubItem 4"));
+
+	menu.add_item(imgitem);
+	menu.add_separator();
+
+	menuwindow.show();
 
 	context.run();
 	return 0;

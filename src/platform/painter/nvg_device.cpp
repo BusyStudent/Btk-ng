@@ -973,7 +973,7 @@ void NanoVGTextCache::draw(NVGcontext *nvgctxt, float x, float y) {
 
 // NanoVG Device
 NanoVGWindowDevice::NanoVGWindowDevice(AbstractWindow *wi) : window(wi) {
-    glctxt = static_cast<GLContext*>(window->gc_create("opengl"));
+    glctxt = window->gc_create("opengl")->unsafe_as<GLContext*>();
     if (!glctxt) {
         BTK_THROW(std::runtime_error("Could not create OpenGL context"));
     }

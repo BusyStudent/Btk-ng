@@ -15,6 +15,7 @@ TextEdit::TextEdit(Widget *parent,u8string_view s) : Widget(parent) {
     _text = s;
     _margin = 2.0f;
     _offset = {0.0f, 0.0f};
+    _last_press = {0, 0};
     // auto style = this->style();
     // resize(style->textedit_width, style->textedit_height);
     _lay.set_font(font());
@@ -72,12 +73,23 @@ bool TextEdit::mouse_press(MouseEvent &event) {
     size_t pos = get_pos_from(event.position());
     BTK_LOG("LineEdit::handle_mouse %d\n",int(pos));
 
-    move_cursor(pos);
-    // Reset empty selection
-    clear_sel();
+    if (_last_press == event.position() && event.clicks() & 2) {
+        // Select all
+        BTK_LOG("LineEdit select all\n");
+        _has_sel = true;
+        _sel_begin = 0;
+        _sel_end = _text.length();
+    }
+    else {
+        move_cursor(pos);
+        // Reset empty selection
+        clear_sel();
+    }
+
+
+    _last_press = event.position();
 
     repaint();
-
     return true;
 }
 bool TextEdit::key_press(KeyEvent &event) {
@@ -282,6 +294,10 @@ void TextEdit::set_text(u8string_view txt) {
 }
 void TextEdit::set_placeholder(u8string_view txt) {
     _placeholder = txt;
+    repaint();
+}
+void TextEdit::set_text_margin(const FMargin &margin) {
+    _margin = margin;
     repaint();
 }
 bool TextEdit::paint_event(PaintEvent &) {

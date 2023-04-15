@@ -15,6 +15,7 @@ class BTKAPI TextEdit : public Widget {
         void set_flat(bool flat);
         void set_text(u8string_view text);
         void set_placeholder(u8string_view text);
+        void set_text_margin(const FMargin &margin);
 
         bool has_selection() const;
 
@@ -40,6 +41,9 @@ class BTKAPI TextEdit : public Widget {
 
         u8string_view text() const {
             return _text;
+        }
+        FMargin       text_margin() const {
+            return _margin;
         }
         u8string      selection_text() const {
             auto [start, end] = sel_range();
@@ -67,6 +71,7 @@ class BTKAPI TextEdit : public Widget {
 
         FMargin _margin; //< Border margin
         FPoint  _offset; //< Text position offset
+        Point   _last_press; //< Last mouse pressed
 
         Alignment _align = Alignment::Left | Alignment::Middle; //< Text alignment
 

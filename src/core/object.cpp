@@ -28,8 +28,11 @@ struct ObjectImpl {
     std::set<timerid_t> timers;
     // Mark for Auto cancel call
     std::shared_ptr<bool> mark {std::make_shared<bool>(true)};
+
+    Signal<void()> destoryed;
     
     ~ObjectImpl() {
+        destoryed.emit();
         // Remove all userdata
         UserData *cur = chain;
         while (cur) {
@@ -202,6 +205,9 @@ bool  Object::run_event_filter(Event &event) {
         node = node->next;
     }
     return false;
+}
+Signal<void()> &Object::signal_destoryed() {
+    return implment()->destoryed;
 }
 
 

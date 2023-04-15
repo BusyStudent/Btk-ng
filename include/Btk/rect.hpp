@@ -23,6 +23,15 @@ class MarginImpl {
         MarginImpl(T l, T r, T t, T b) : left(l), right(r), top(t), bottom(b) {}
         MarginImpl(const MarginImpl &) = default;
 
+        bool compare(const MarginImpl &m) const {
+            return 	left == m.left && right == m.right && top == m.top && bottom == m.bottom;
+        }
+        bool operator ==(const MarginImpl &m) const {
+            return compare(m);
+        }
+        bool operator !=(const MarginImpl &m) const {
+            return !compare(m);
+        }
 };
 
 template <typename T>
@@ -390,6 +399,11 @@ class Matrix3x2Impl {
             T det = m[0][0] * m[1][1] - m[0][1] * m[1][0];
             return det != 0;
         }
+        Matrix3x2Impl   inverted() const {
+            Matrix3x2Impl copy = *this;
+            copy.invert();
+            return copy;
+        }
 
         template <typename Elem>
         PointImpl<Elem> transform_point(const PointImpl<Elem> &p) const {
@@ -517,6 +531,15 @@ constexpr PointImpl<T> lerp(const PointImpl<T> &a, const PointImpl<T> &b, float 
     return PointImpl(
         lerp(a.x, b.x, t),
         lerp(a.y, b.y, t)
+    );
+}
+template <typename T>
+constexpr MarginImpl<T> klerp(const MarginImpl<T> &a, const MarginImpl<T> &b, float t) noexcept {
+    return MarginImpl(
+        lerp(a.left,   b.left,   t),
+        lerp(a.right,  b.right,  t),
+        lerp(a.top,    b.top,    t),
+        lerp(a.bottom, b.bottom, t)
     );
 }
 

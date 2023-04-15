@@ -132,7 +132,7 @@ GLWidgetOffscreenFbImpl::GLWidgetOffscreenFbImpl(GLWidget *widget) {
         return;
     }
     // Try alloc glcontext
-    glctxt.reset(static_cast<GLContext*>(glwin->gc_create("opengl")));
+    glctxt.reset(glwin->gc_create("opengl")->unsafe_as<GLContext*>());
     if (!glctxt) {
         return;
     }

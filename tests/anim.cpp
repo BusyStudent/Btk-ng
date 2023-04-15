@@ -1,5 +1,6 @@
 #include <Btk/plugins/animation.hpp>
 #include <Btk/widgets/container.hpp>
+#include <Btk/widgets/textedit.hpp>
 #include <Btk/context.hpp>
 #include <Btk/comctl.hpp>
 #include <iostream>
@@ -84,7 +85,27 @@ int main() {
     });
     tb.add_tab(ctmslider, "Slider");
 
+    auto sw = new Button("Hide the bar");
+    sw->signal_clicked().connect([&, show = true]() mutable {
+        show = !show;
+        tb.set_bar_visible(show);
+    });
+
+    tb.add_tab(sw, "Hide / Show test");
+
+    // tb.set_attribute(WidgetAttrs::Debug, true);
     tb.show();
+
+    auto subtab = new TabWidget();
+    auto imageview = new ImageView();
+    auto tedit = new TextEdit();
+    tb.add_tab(subtab, "SubTabWidget");
+    subtab->add_tab(imageview,  "ImageView");
+    subtab->add_tab(tedit, "Input");
+
+    tedit->signal_enter_pressed().connect([&]() {
+        imageview->set_image(Image::FromFile(tedit->text()));
+    });
 
     ctxt.run();
 }

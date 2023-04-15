@@ -105,6 +105,7 @@ add_packages("btk")
 | ---           | ---             | ---                      |
 | Button        |                 |                          |
 | RadioButton   |                 |                          |
+| ComboBox      |                 |                          |
 | TextEdit      | Half            | Single line, need multi support |
 | Slider        |                 |                          |
 | ScrollBar     |                 |                          |
@@ -112,8 +113,10 @@ add_packages("btk")
 | Label         |                 |                          |
 | ImageView     |                 | Can play gif             |
 | PopupWidget   |                 |                          |
+| PopupMenu 	|                 |                          |
 | FileDialog    |                 |                          |
-| MenuBar       | Not yet         |                          |
+| Menu          |                 |                          |
+| MenuBar       |                 |                          |
 | GLWidget      |                 | For use OpenGL           |
 | ListBox       |                 | Display string items     |
 | VideoWidget   |                 | Video output for MediaPlayer (multimedia plugin) |

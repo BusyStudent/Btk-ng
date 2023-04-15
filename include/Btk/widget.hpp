@@ -59,6 +59,7 @@ enum class WindowFlags : uint32_t {
     AcceptDrop = 1 << 8,
     Transparent = 1 << 9,
     Framebuffer = 1 << 10, //< This window is used as a framebuffer
+    PopupMenu   = 1 << 11, //< Window is a pop-up (ie. a window manager) window (e.g. Cocoa)
 };
 // Enum for widget.
 enum class FocusPolicy : uint8_t {
@@ -152,6 +153,17 @@ class BTKAPI Widget : public Object {
          * @param parent The parent pointer (can be nullptr)
          */
         Widget(Widget *parent = nullptr);
+        /**
+         * @brief Construct a new Widget object
+         * 
+         * @param parent The parent pointer (can be nullptr)
+         * @param winflags The window flags
+         */
+        Widget(Widget *parent, WindowFlags winflags);
+        /**
+         * @brief Destroy the Widget object
+         * 
+         */
         ~Widget();
 
         // Configure

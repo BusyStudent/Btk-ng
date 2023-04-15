@@ -34,6 +34,30 @@ using varg_double_t = double;
  * 
  */
 class Any {
+    private:
+        template <typename T>
+        using result_t  = std::conditional_t<std::is_pointer_v<T>, T, T&>;  // if T a pointer
+        template <typename T>
+        using cresult_t = std::conditional_t<std::is_pointer_v<T>, const T, const T&>;  // if T a pointer
+
+        template <typename T>
+        auto cast_base() noexcept {
+            if constexpr(std::is_pointer_v<T>) {
+                return this;
+            }
+            else {
+                return static_cast<Any&>(*this);
+            }
+        }
+        template <typename T>
+        auto cast_base() const noexcept {
+            if constexpr(std::is_pointer_v<T>) {
+                return this;
+            }
+            else {
+                return static_cast<const Any&>(*this);
+            }
+        }
     public:
         /**
          * @brief Destroy the Any object
@@ -48,11 +72,11 @@ class Any {
          * @return T& 
          */
         template <typename T>
-        inline T       &as() BTK_NOEXCEPT {
+        inline result_t<T>  as() BTK_NOEXCEPT {
 #if        !defined(BTK_NO_RTTI)
-            return dynamic_cast<T&>(*this);
+            return dynamic_cast<result_t<T>>(cast_base<T>());
 #else
-            return static_cast<T&>(*this);
+            return static_cast<result_t<T>>(cast_base<T>());
 #endif
         }
         /**
@@ -62,11 +86,11 @@ class Any {
          * @return const T& 
          */
         template <typename T>
-        inline const T&as() const BTK_NOEXCEPT {
+        inline cresult_t<T> as() const BTK_NOEXCEPT {
 #if        !defined(BTK_NO_RTTI)
-            return dynamic_cast<const T&>(*this);
+            return dynamic_cast<cresult_t<T>>(cast_base<T>());
 #else
-            return static_cast<const T&>(*this);
+            return static_cast<cresult_t<T>>(cast_base<T>());
 #endif
         }
         /**
@@ -76,8 +100,8 @@ class Any {
          * @return T& 
          */
         template <typename T>
-        inline T       &unsafe_as() noexcept {
-            return static_cast<T&>(*this);
+        inline result_t<T> unsafe_as() noexcept {
+            return static_cast<result_t<T>>(cast_base<T>());
         }
         /**
          * @brief Static Cast to type T
@@ -86,11 +110,24 @@ class Any {
          * @return T& 
          */
         template <typename T>
-        inline const T&unsafe_as() const noexcept {
-            return static_cast<const T&>(*this);
+        inline cresult_t<T> unsafe_as() const noexcept {
+            return static_cast<cresult_t<T>>(cast_base<T>());
+        }
+
+        /**
+         * @brief Check is inherited a class
+         * 
+         * @tparam T 
+         * @return true 
+         * @return false 
+         */
+        template <typename T>
+        inline bool inherits() const noexcept {
+            return as<T*>();
         }
     protected:
-        inline Any() noexcept { }
+        inline Any()            = default;
+        inline Any(const Any &) = default;
 };
 
 // Basic enumerations

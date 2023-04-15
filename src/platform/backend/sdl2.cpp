@@ -267,7 +267,11 @@ bool SDLDispatcher::dispatch_sdl(SDL_Event *event) {
             break;
         }
         case SDL_MOUSEMOTION : {
-            SDLWindow *win = driver->windows[event->window.windowID];
+            auto iter = driver->windows.find(event->motion.windowID);
+            if (iter == driver->windows.end()) {
+                break;
+            }
+            SDLWindow *win = iter->second;
 
             MotionEvent tr_event(
                 win->sdl_to_btk(event->motion.x), 
@@ -286,11 +290,11 @@ bool SDLDispatcher::dispatch_sdl(SDL_Event *event) {
             [[fallthrough]];
         }
         case SDL_MOUSEBUTTONUP: {
-            SDLWindow *win = driver->windows[event->window.windowID];
-            if (win == nullptr) {
-                BTK_LOG("[SDL2] winid %d not found\n", event->window.windowID);
+            auto iter = driver->windows.find(event->button.windowID);
+            if (iter == driver->windows.end()) {
                 break;
             }
+            SDLWindow *win = iter->second;
 
             auto type = (event->type == SDL_MOUSEBUTTONDOWN) ? Event::MousePress : Event::MouseRelease;
 
@@ -328,7 +332,11 @@ bool SDLDispatcher::dispatch_sdl(SDL_Event *event) {
             [[fallthrough]];
         }
         case SDL_KEYUP: {
-            SDLWindow *win = driver->windows[event->window.windowID];
+            auto iter = driver->windows.find(event->key.windowID);
+            if (iter == driver->windows.end()) {
+                break;
+            }
+            SDLWindow *win = iter->second;
             auto type = (event->type == SDL_KEYDOWN) ? Event::KeyPress : Event::KeyRelease;
 
             auto keycode = SDLTranslateKey(event->key.keysym.sym);
@@ -343,7 +351,11 @@ bool SDLDispatcher::dispatch_sdl(SDL_Event *event) {
             break;
         }
         case SDL_MOUSEWHEEL : {
-            SDLWindow *win = driver->windows[event->text.windowID];
+            auto iter = driver->windows.find(event->wheel.windowID);
+            if (iter == driver->windows.end()) {
+                break;
+            }
+            SDLWindow *win = iter->second;
             auto x = event->wheel.x;
             auto y = event->wheel.y;
             if (event->wheel.direction == SDL_MOUSEWHEEL_FLIPPED) {
@@ -361,7 +373,11 @@ bool SDLDispatcher::dispatch_sdl(SDL_Event *event) {
             break;
         }
         case SDL_TEXTINPUT : {
-            SDLWindow *win = driver->windows[event->text.windowID];
+            auto iter = driver->windows.find(event->text.windowID);
+            if (iter == driver->windows.end()) {
+                break;
+            }
+            SDLWindow *win = iter->second;
             
             TextInputEvent tr_event(event->text.text);
             tr_event.set_widget(win->widget);
@@ -472,6 +488,12 @@ void SDLDispatcher::dispatch_sdl_window(SDL_Event *event) {
             auto [w, h] = win->size();
             win->load_dpi(event->window.data1);
             win->resize(w, h);
+
+            // Tell the widget
+            ChangeEvent event(Event::DpiChanged);
+            event.set_widget(win->widget);
+            event.set_timestamp(GetTicks());
+            win->widget->handle(event);
             break;
         }
 #endif
@@ -716,7 +738,7 @@ pointer_t SDLDriver::service_of(int what) {
 }
 
 // Window
-SDLWindow::SDLWindow(SDL_Window *w, SDLDriver *dr, WindowFlags f) : win(w), driver(dr), flags(f) {
+SDLWindow::SDLWindow(SDL_Window *w, SDLDriver *dr, WindowFlags f) : win(w), driver(dr) {
     SDL_GetVersion(&info.version);
 
     if (!SDL_GetWindowWMInfo(win, &info)) {
@@ -725,6 +747,8 @@ SDLWindow::SDLWindow(SDL_Window *w, SDLDriver *dr, WindowFlags f) : win(w), driv
 
     auto idx = SDL_GetWindowDisplayIndex(win);
     load_dpi(idx);
+
+    set_flags(f);
 
 #if defined(_WIN32)
     driver->dwmapi.DwmEnableAlphaBlend(info.info.win.window);
@@ -860,6 +884,31 @@ bool SDLWindow::set_flags(WindowFlags new_flags) {
             SDL_SetWindowBordered(win, SDL_TRUE);
         }
     }
+#if defined(_WIN32)
+    if (bit_changed(WindowFlags::PopupMenu)) {
+        // auto hwnd = info.info.win.window;
+        // bool popup = bool(new_flags & WindowFlags::PopupMenu);
+        // auto classstyle = ::GetClassLongPtrW(hwnd, GCL_STYLE);
+        // auto s = ::GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+        // if (popup) {
+        //     classstyle |= CS_DROPSHADOW;
+        //     s |= WS_EX_TOOLWINDOW;
+        // }
+        // else {
+        //     classstyle &= ~CS_DROPSHADOW;
+        //     s &= ~WS_EX_TOOLWINDOW;
+        // }
+        // if (::SetClassLongPtrW(hwnd, GCL_STYLE, classstyle) == 0) {
+        //     // Failed
+        //     BTK_LOG("%d\n", int(::GetLastError()));
+        // }
+        // if (::SetWindowLongPtrW(hwnd, GWL_EXSTYLE, s) == 0) {
+        //     BTK_LOG("%d\n", int(::GetLastError()));
+        // }
+        bool popup = bool(new_flags & WindowFlags::PopupMenu);
+        driver->dwmapi.DwmSetDropShadow(info.info.win.window, popup);
+    }
+#endif
 
     flags = new_flags;
     return err == 0;

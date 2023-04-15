@@ -151,6 +151,10 @@ class BTKAPI TabWidget : public Widget {
         void set_tab_icon(int idx, const PixBuffer &icon) {
             bar.set_tab_icon(idx, icon);
         }
+        void set_bar_visible(bool v) {
+            bar.set_visible(v);
+            put_internal();
+        }
 
         // Query
         Margin  content_margin() const;
@@ -165,6 +169,8 @@ class BTKAPI TabWidget : public Widget {
         bool move_event(MoveEvent &) override;
         bool paint_event(PaintEvent &) override;
     private:
+        void put_internal();
+
         TabBar        bar     {this};
         StackedWidget display {this};
 
