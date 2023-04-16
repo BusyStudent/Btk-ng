@@ -18,14 +18,14 @@ class BTKAPI StackedWidget : public Widget {
          * 
          * @param widget the widget pointer, nullptr on no-op
          */
-        void add_widget(Widget *widget);
+        int  add_widget(Widget *widget);
         /**
          * @brief Insert a widget at pos, The StackedWidget will take the widget's ownship
          * 
          * @param idx The position of the widget
          * @param widget The widget pointer, nullptr on no-op
          */
-        void insert_widget(int idx, Widget *widget);
+        int  insert_widget(int idx, Widget *widget);
         /**
          * @brief Remove the widget, it will return back the ownship of the widget
          * 
@@ -71,11 +71,11 @@ class BTKAPI TabBar    : public Widget {
         TabBar(Widget *parent = nullptr);
         ~TabBar();
 
-        void add_tab(const PixBuffer &icon, u8string_view name);
-        void add_tab(u8string_view name) { add_tab({ }, name); }
+        int  add_tab(const PixBuffer &icon, u8string_view name);
+        int  add_tab(u8string_view name) { return add_tab({ }, name); }
 
-        void insert_tab(int idx, const PixBuffer &icon, u8string_view name);
-        void insert_tab(int idx, u8string_view name) { insert_tab(idx, { }, name); }
+        int  insert_tab(int idx, const PixBuffer &icon, u8string_view name);
+        int  insert_tab(int idx, u8string_view name) { return insert_tab(idx, { }, name); }
 
         void remove_tab(int idx);
 
@@ -130,11 +130,11 @@ class BTKAPI TabWidget : public Widget {
         TabWidget(Widget  *parent = nullptr);
         ~TabWidget();
 
-        void add_tab(Widget *page, const PixBuffer &icon, u8string_view text);
-        void add_tab(Widget *page, u8string_view text) { add_tab(page, { }, text); }
+        int  add_tab(Widget *page, const PixBuffer &icon, u8string_view text);
+        int  add_tab(Widget *page, u8string_view text) { return add_tab(page, { }, text); }
 
-        void insert_tab(int idx, Widget *page, const PixBuffer &icon, u8string_view text);
-        void insert_tab(int idx, Widget *page, u8string_view text) { insert_tab(idx, page, { }, text); }
+        int  insert_tab(int idx, Widget *page, const PixBuffer &icon, u8string_view text);
+        int  insert_tab(int idx, Widget *page, u8string_view text) { return insert_tab(idx, page, { }, text); }
 
         void remove_tab(int idx);
         void delete_tab(int idx);

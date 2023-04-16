@@ -8,27 +8,31 @@ BTK_NS_BEGIN
 StackedWidget::StackedWidget(Widget *parent) : Widget(parent) { }
 StackedWidget::~StackedWidget() { }
 
-void StackedWidget::add_widget(Widget *w) {
+int  StackedWidget::add_widget(Widget *w) {
     if (!w) {
-        return;
+        return -1;
     }
     _widgets.push_back(w);
     add_child(w);
     w->hide();
+
+    return index_of(w);
 }
-void StackedWidget::insert_widget(int idx, Widget *w) {
+int  StackedWidget::insert_widget(int idx, Widget *w) {
     if (!w) {
-        return;
+        return -1;
     }
     if (idx < 0) {
-        return;
+        return -1;
     }
     if (idx >= _widgets.size()) {
         idx = _widgets.size();
     }
-    _widgets.insert(_widgets.begin() + idx, w);
+    auto iter = _widgets.insert(_widgets.begin() + idx, w);
     add_child(w);
     w->hide();
+
+    return index_of(w);
 }
 void StackedWidget::remove_widget(Widget *w) {
     auto iter = std::find(_widgets.begin(), _widgets.end(), w);
@@ -155,7 +159,7 @@ TabBar::~TabBar() {
 
 }
 
-void TabBar::add_tab(const PixBuffer &icon, u8string_view name) {
+int  TabBar::add_tab(const PixBuffer &icon, u8string_view name) {
     TabItem item;
     item.text.set_text(name);
     item.text.set_font(font());
@@ -164,10 +168,12 @@ void TabBar::add_tab(const PixBuffer &icon, u8string_view name) {
     _tabs.emplace_back(std::move(item));
 
     repaint();
+
+    return _tabs.size() - 1; //< Back
 }
-void TabBar::insert_tab(int idx, const PixBuffer &icon, u8string_view name) {
+int  TabBar::insert_tab(int idx, const PixBuffer &icon, u8string_view name) {
     if (idx < 0) {
-        return;
+        return -1;
     }
     if (idx >= _tabs.size()) {
         idx = _tabs.size();
@@ -178,9 +184,11 @@ void TabBar::insert_tab(int idx, const PixBuffer &icon, u8string_view name) {
     item.text.set_font(font());
     item.icon = icon;
 
-    _tabs.insert(_tabs.begin() + idx, std::move(item));
+    auto iter = _tabs.insert(_tabs.begin() + idx, std::move(item));
 
     repaint();
+
+    return iter - _tabs.begin();
 }
 void TabBar::remove_tab(int idx) {
     if (idx < 0) {
@@ -339,13 +347,13 @@ TabWidget::TabWidget(Widget *parent) : Widget(parent) {
 TabWidget::~TabWidget() {
 
 }
-void TabWidget::add_tab(Widget *page, const PixBuffer &icon, u8string_view text) {
+int  TabWidget::add_tab(Widget *page, const PixBuffer &icon, u8string_view text) {
     bar.add_tab(icon, text);
-    display.add_widget(page);
+    return display.add_widget(page);
 }
-void TabWidget::insert_tab(int idx, Widget *page, const PixBuffer &icon, u8string_view text) {
+int  TabWidget::insert_tab(int idx, Widget *page, const PixBuffer &icon, u8string_view text) {
     bar.insert_tab(idx, icon, text);
-    display.insert_widget(idx, page);
+    return display.insert_widget(idx, page);
 }
 void TabWidget::remove_tab(int idx) {
     bar.remove_tab(idx);
