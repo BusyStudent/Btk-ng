@@ -1,5 +1,6 @@
 #include <Btk/context.hpp>
 #include <Btk/widget.hpp>
+#include <Btk/widgets/mainwindow.hpp>
 #include <Btk/widgets/combobox.hpp>
 #include <Btk/comctl.hpp>
 #include <Btk/event.hpp>
@@ -8,17 +9,12 @@
 
 using namespace BTK_NAMESPACE;
 
-class MenuWindow : public Widget {
+class MenuWindow : public MainWindow {
 	public:
-		using Widget::Widget;
+		using MainWindow::MainWindow;
 
-		MenuBar menu {this};
 		bool fullscreen = false;
 	protected:
-		bool resize_event(ResizeEvent &) override {
-			menu.resize(width(), menu.size_hint().h);
-			return true;
-		}
 		bool key_press(KeyEvent &event) {
 			if (event.key() == Key::F11) {
 				fullscreen = !fullscreen;
@@ -30,7 +26,11 @@ class MenuWindow : public Widget {
 
 int main(int argc,char **argv) {
 	UIContext context;
+	MenuWindow menuwindow;
 	Widget widget;
+
+	menuwindow.set_widget(&widget);
+
 	ComboBox box1(&widget);
 	ComboBox box2(&widget);
 
@@ -43,9 +43,6 @@ int main(int argc,char **argv) {
 	Button delete_item_box2(&widget);
 
 	box1.add_item("defualt");
-
-    widget.show();
-    widget.resize(640, 480);
 
 	text_edit1.set_rect(0, 30, 600, 30);
 	
@@ -82,23 +79,21 @@ int main(int argc,char **argv) {
 		}
 	});
 
-	MenuWindow menuwindow;
-	MenuBar &menu = menuwindow.menu;
+	MenuBar &menu = menuwindow.menubar();
 	Menu *file = menu.add_menu("File");
 	MenuItem *open_item = new MenuItem("Open");
 	open_item->set_image(PixBuffer::FromFile("icon.jpeg"));
 
 	file->add_item(open_item);
+	file->add_separator();
 	file->add_item("Close")->signal_triggered().connect(&MenuWindow::close, &menuwindow);
 
 	menu.add_item(new MenuItem("First"))->signal_triggered().connect([]() {
 		BTK_LOG("First triggered\n");
 	});
 	menu.add_item(new MenuItem("Next"));
-	menu.add_separator();
 	menu.add_item(new MenuItem("Third"));
 	menu.add_item(new MenuItem("SSSS"));
-	menu.add_separator();
 
 	auto imgitem = new MenuItem("Icon");
 	imgitem->set_image(PixBuffer::FromFile("icon.jpeg"));
@@ -113,8 +108,12 @@ int main(int argc,char **argv) {
 
 	menu.add_item(imgitem);
 	menu.add_separator();
+	menu.add_item("Debug")->signal_triggered().connect([&]() {
+		menuwindow.set_attribute(WidgetAttrs::Debug, true);
+	});
 
-	menuwindow.show();
+    menuwindow.show();
+    menuwindow.resize(640, 480);
 
 	context.run();
 	return 0;

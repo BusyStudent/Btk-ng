@@ -130,7 +130,8 @@ class BTKAPI MenuBar : public Widget {
         Rect      item_rect(MenuItem *item) const;
         MenuItem *item_at(int x, int y) const;
 
-        Size size_hint() const override;
+        int       count_items() const;
+        Size      size_hint() const override;
     protected:
         bool mouse_press(MouseEvent &) override;
         bool mouse_release(MouseEvent &) override;

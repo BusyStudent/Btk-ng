@@ -115,6 +115,15 @@ class BTKAPI UIContext : public Trackable {
 
         // Service
         auto deskop_service() const -> DesktopService *;
+
+        // Signal
+        auto signal_clipboard_update() -> Signal<void()> & {
+            return _clipboard_update;
+        }
+
+        // Clipboard
+        auto set_clipboard_text(u8string_view text) -> void;
+        auto clipboard_text()                       -> u8string;
     private:
         void initialize(GraphicsDriver *driver);
 
@@ -124,6 +133,8 @@ class BTKAPI UIContext : public Trackable {
         std::thread::id thread_id;
         Palette  _palette;
         Ref<Style> _style;
+
+        Signal<void()> _clipboard_update;
     friend class Widget;
     friend class EventLoop;
 };

@@ -73,6 +73,7 @@ static constexpr auto MenuBarHeight = 20;
 static constexpr auto PopupMenuItemHeight = 25;
 static constexpr auto PopupMenuItemTextOffset = 30;
 static constexpr auto PopupMenuItemImageOffset = 5;
+static constexpr auto PopupMenuItemSeparatorHeight = 6; 
 
 
 MenuItem::MenuItem() {
@@ -133,6 +134,11 @@ MenuItem *Menu::add_item(MenuItem *item) {
     _items.push_back(item);
     item->prepare_at(this);
     return _items.back();
+}
+MenuItem *Menu::add_separator() {
+    auto item = new MenuItem;
+    item->_seperator = true;
+    return add_item(item);
 }
 Size Menu::size_hint() const {
     if (_textlay.text().empty()) {
@@ -204,6 +210,13 @@ MenuItem *MenuBar::add_item(MenuItem *item) {
     if (item->widget()) {
         _num_widget_item += 1;
         relayout();
+    }
+
+    // Ask parent to relayout
+    Event event(Event::LayoutRequest);
+    event.set_timestamp(GetTicks());
+    if (parent()) {
+        parent()->handle(event);
     }
 
     return _items.back();
@@ -366,6 +379,9 @@ Size      MenuBar::size_hint() const {
 
     return Size(last.top_right().x - first.x, max(first.h, last.h));
 }
+int        MenuBar::count_items() const {
+    return _items.size();
+}
 
 // PopupMenu
 PopupMenu::PopupMenu(Widget *parent) : Widget(parent, WindowFlags::Borderless | WindowFlags::PopupMenu) {
@@ -490,7 +506,7 @@ Rect PopupMenu::item_rect(MenuItem *item) {
             r.h = max<int>(cur->_textlay.size().h, PopupMenuItemHeight); // At least has a button height
         }
         else if (cur->is_seperator()) {
-            r.h = 16;
+            r.h = PopupMenuItemSeparatorHeight;
         }
         else {
             r.h = PopupMenuItemHeight;

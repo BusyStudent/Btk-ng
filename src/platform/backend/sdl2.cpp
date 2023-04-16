@@ -386,6 +386,12 @@ bool SDLDispatcher::dispatch_sdl(SDL_Event *event) {
             win->widget->handle(tr_event);
             break;
         }
+        case SDL_CLIPBOARDUPDATE : {
+            Event event(Event::ClipbordUpdate);
+            event.set_timestamp(time);
+            dispatch(&event);
+            break;
+        }
         default: {
             //BTK_LOG("unhandled event %d\n", event->type);
             return false;

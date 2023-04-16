@@ -70,6 +70,8 @@ class Event {
             Call      , //< EventLoop will call it
             Timer     , //< The timer timeout
 
+            ClipbordUpdate, //< The system clipboard was update
+
             User        = 10086, //< User defined event
             UserMax     = 65535, //< User defined event max
         };

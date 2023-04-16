@@ -2,6 +2,7 @@
 #include "common/win32/backtrace.hpp"
 #include "common/win32/dialog.hpp"
 #include "common/win32/dwmapi.hpp"
+#include "common/win32/win32.hpp"
 #include "common/dlloader.hpp"
 
 #include <Btk/service/desktop.hpp>
@@ -63,7 +64,9 @@
 #define MAP_KEY(vk, k) case vk : { keycode = k; break; }
 #endif
 
-#define WIN_LOG(...) BTK_LOG(__VA_ARGS__)
+#define WIN_LOG(...)        BTK_LOG(__VA_ARGS__)
+#define WIN_STRERROR(errc)  Win32::FormatedError(errc).u8_message().c_str()
+#define WIN_LASTERROR()     u8string::format("[%d, %s]", int(::GetLastError()), WIN_STRERROR(::GetLastError())).c_str()
 
 
 // HDPI API Support
@@ -466,6 +469,11 @@ Win32Dispatcher::Win32Dispatcher() {
 
     assert(helper_hwnd != nullptr);
 
+    // Listen clipboard
+    if (!AddClipboardFormatListener(helper_hwnd)) {
+        WIN_LOG("AddClipboardFormatListener failed\n");
+    }
+
     win32_dispatcher = this;
 }
 Win32Dispatcher::~Win32Dispatcher() {
@@ -503,7 +511,7 @@ timerid_t Win32Dispatcher::timer_add(Object *object, timertype_t t, uint32_t ms)
         );
 
         if (id == 0) {
-            WIN_LOG("SetTimer failed\n");
+            WIN_LOG("SetTimer failed %s\n", WIN_LASTERROR());
             return 0;
         }
     }
@@ -518,7 +526,7 @@ timerid_t Win32Dispatcher::timer_add(Object *object, timertype_t t, uint32_t ms)
         };
         if (!CreateTimerQueueTimer(&handle, nullptr, cb, reinterpret_cast<void*>(id), ms, ms, WT_EXECUTEDEFAULT)) {
             // Unsupported ?
-            WIN_LOG("CreateTimerQueueTimer failed");
+            WIN_LOG("CreateTimerQueueTimer failed %s\n", WIN_LASTERROR());
             // Back to coarse timer
             return timer_add(object, timertype_t::Coarse, ms);
         }
@@ -544,7 +552,9 @@ bool      Win32Dispatcher::timer_del(Object *object, timerid_t id) {
     else {
         // Timer from CreateTimerQueueTimer
         ret = DeleteTimerQueueTimer(nullptr, iter->second.handle, nullptr);
-        assert(ret);
+        if (!ret) {
+            WIN_LOG("DeleteTimerQueueTimer failed %s\n", WIN_LASTERROR());
+        }
     }
 
     timers.erase(iter);
@@ -567,9 +577,15 @@ LRESULT   Win32Dispatcher::helper_wnd_proc(HWND hwnd, UINT msg, WPARAM wparam, L
                 return 0;
             }
             else {
-                //??? 
+                // ??? 
                 WIN_LOG("Unregitered WM_TIMER id => %d\n", int(wparam));
             }
+            return 0;
+        }
+        case WM_CLIPBOARDUPDATE : {
+            Event event(Event::ClipbordUpdate);
+            event.set_timestamp(GetTicks());
+            dispatch(&event);
             return 0;
         }
         case BTK_CALL : {
@@ -760,14 +776,14 @@ window_t Win32Driver::window_create(u8string_view title, int width, int height, 
     rect.bottom = height;
     rect.right = width;
     if (!AdjustWindowRectExForDpi(&rect, style, FALSE, exstyle, dpi)) {
-        WIN_LOG("[Win32::Error] Bad adjust");
+        WIN_LOG("[Win32::Error] Bad adjust %s", WIN_LASTERROR());
     }
 
-    width = rect.right - rect.left;
-    height = rect.bottom - rect.top;
+    int rwidth = rect.right - rect.left;
+    int rheight = rect.bottom - rect.top;
 
-    WIN_LOG("[Win32] Creating window %d %d\n", width, height);
-
+    WIN_LOG("[Win32] Creating window (%d %d) => (%d %d)\n", width, height, rwidth, rheight);
+    // FIXME : May any calc bug here ?, The size are incorrect
 
     HWND hwnd = CreateWindowExW(
         exstyle,
@@ -775,7 +791,7 @@ window_t Win32Driver::window_create(u8string_view title, int width, int height, 
         wtitle,
         style,
         CW_USEDEFAULT, CW_USEDEFAULT,
-        width, height,
+        rwidth, rheight,
         nullptr,
         nullptr,
         GetModuleHandle(nullptr),
@@ -811,6 +827,7 @@ void  Win32Driver::window_del(Win32Window *win) {
 }
 void  Win32Driver::clipboard_set(u8string_view text) {
     if (!OpenClipboard(win32_dispatcher->helper_hwnd)) {
+        WIN_LOG("[Win32] failed to OpenClipboard %s\n", WIN_LASTERROR());
         return;
     }
     size_t len = text.size();
@@ -849,6 +866,20 @@ bool Win32Driver::query_value(int query, ...) {
             auto dpi = va_arg(varg, FPoint*);
             dpi->x = GetDpiForSystem();
             dpi->y = GetDpiForSystem();
+            break;
+        }
+        case NumOfScreen : {
+            auto n = va_arg(varg, int*);
+            auto cb = [](HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData) -> BOOL {
+                (*reinterpret_cast<int*>(dwData)) += 1;
+                return TRUE;
+            };
+            *n = 0;
+
+            if (!EnumDisplayMonitors(nullptr, nullptr, cb, reinterpret_cast<LPARAM>(n))) {
+                WIN_LOG("EnumDisplayMonitors failed %s\n", WIN_LASTERROR());
+                return false;
+            }
             break;
         }
         default : {
@@ -989,7 +1020,7 @@ void Win32Window::show(int v) {
         case Maximize : cmd = SW_MAXIMIZE; break;
         case Minimize : cmd = SW_MINIMIZE; break;
 
-        default : WIN_LOG("[Win32::Error] Bad Show flag") cmd = SW_SHOW; break;
+        default : WIN_LOG("[Win32::Error] Bad Show flag\n") cmd = SW_SHOW; break;
     }
 
     ShowWindow(hwnd, cmd);
@@ -1022,7 +1053,7 @@ void Win32Window::set_icon(const PixBuffer &pixbuf) {
         }
         else {
             WIN_LOG("[Win32::Error] CreateIconIndirect failed\n");
-            WIN_LOG("[Win32::Error] GetLastError: %d\n", GetLastError());
+            WIN_LOG("[Win32::Error] GetLastError: %s\n", WIN_LASTERROR());
         }
     }
 }
@@ -1089,7 +1120,7 @@ bool     Win32Window::set_flags(WindowFlags new_flags) {
             }
             else {
                 // Err
-                WIN_LOG("[Win32::Error] Failed to SetFullscreen\n");
+                WIN_LOG("[Win32::Error] Failed to SetFullscreen %s\n", WIN_LASTERROR());
                 err = 1;
             }
         }

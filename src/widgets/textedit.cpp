@@ -1,6 +1,5 @@
 #include "build.hpp"
 
-#include <Btk/detail/platform.hpp>
 #include <Btk/widgets/textedit.hpp>
 #include <Btk/context.hpp>
 #include <Btk/event.hpp>
@@ -135,7 +134,7 @@ bool TextEdit::key_press(KeyEvent &event) {
             // Ctrl + V
             if (int(event.modifiers() & Modifier::Ctrl)) {
                 BTK_LOG("Ctrl + V\n");
-                auto text = driver()->clipboard_get();
+                auto text = ui_context()->clipboard_text();
                 if (!text.empty()) {
                     do_paste(text);
                 }
@@ -147,10 +146,10 @@ bool TextEdit::key_press(KeyEvent &event) {
             if (int(event.modifiers() & Modifier::Ctrl)) {
                 BTK_LOG("Ctrl + C\n");
                 if (has_selection()) {
-                    driver()->clipboard_set(selection_text());
+                    ui_context()->set_clipboard_text(selection_text());
                 }
                 else{
-                    driver()->clipboard_set(_text);
+                    ui_context()->set_clipboard_text(_text);
                 }
             }
             break;
@@ -159,7 +158,7 @@ bool TextEdit::key_press(KeyEvent &event) {
             if (int(event.modifiers() & Modifier::Ctrl) && has_selection()) {
                 BTK_LOG("Ctrl + X\n");
                 // Set to clipbiard
-                driver()->clipboard_set(selection_text());
+                ui_context()->set_clipboard_text(selection_text());
                 // Remove it
                 auto [start,end] = sel_range();
                 do_delete(start,end);

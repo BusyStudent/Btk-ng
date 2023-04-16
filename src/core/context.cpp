@@ -80,6 +80,12 @@ void UIContext::initialize(GraphicsDriver *driv) {
 auto UIContext::deskop_service() const -> DesktopService * {
     return _driver->service_of<DesktopService>();
 }
+auto UIContext::set_clipboard_text(u8string_view txt) -> void {
+    return _driver->clipboard_set(txt);
+}
+auto UIContext::clipboard_text() -> u8string {
+    return _driver->clipboard_get();
+}
 
 // EventQueue::EventQueue() {
 
@@ -139,12 +145,17 @@ bool EventDispatcher::dispatch(Event *event) {
             c->call();
             break;
         }
+        case Event::ClipbordUpdate : {
+            BTK_LOG("[EventDispatcher] ClipbordUpdate\n")
+            GetUIContext()->signal_clipboard_update().emit();
+            break;
+        }
         default : {
             // Widget event
             if (event->is_widget_event()) {
                 auto w = static_cast<WidgetEvent*>(event)->widget();
                 if (w == nullptr) {
-                    BTK_LOG("EventLoop::dispatch: widget is null\n");
+                    BTK_LOG("[EventDispatcher::dispatch] widget is null\n");
                     break;
                 }
                 // auto iter = ctxt->widgets.find(w);
@@ -157,7 +168,7 @@ bool EventDispatcher::dispatch(Event *event) {
                 break;
             }
             ret = false;
-            BTK_LOG("EventDispatcher::dispatch: unknown event type\n");
+            BTK_LOG("[EventDispatcher::dispatch] unknown event type\n");
             break;
         }
     }
