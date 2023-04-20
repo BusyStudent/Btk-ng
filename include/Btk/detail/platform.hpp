@@ -38,6 +38,8 @@ class GraphicsDriver : public Any {
         enum Query {
             SystemDpi,   //< System dpi (*FPoint)
             NumOfScreen, //< Number of screen (*int)
+            KeyFocusWindow,   //< The widget has “keyboard” focus (*AbstractWindow*)
+            MouseFocusWindow, 	//< The widget has “mouse”  focus (*AbstractWindow*)
         };
 
 

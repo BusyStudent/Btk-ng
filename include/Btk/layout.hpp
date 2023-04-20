@@ -40,6 +40,12 @@ class WidgetItem final : public LayoutItem {
            wi->set_rect(r.x, r.y, r.w, r.h); 
         }
         Size size_hint() const override {
+            if (wi->size_policy().horizontal_policy() == SizePolicy::Fixed && 
+               wi->size_policy().vertical_policy() == SizePolicy::Fixed) 
+            {
+                // Currently only support fixed
+                return wi->size();
+            }
             return wi->size_hint();
         }
         Rect rect() const override {
@@ -114,16 +120,25 @@ class BTKAPI Layout     : public LayoutItem, public Trackable {
         virtual void        mark_dirty() = 0;
         virtual void        run_hook(Event &) = 0;
     private:
+        static 
+        bool EventHook(Object *, Event &event, void *self);
+        void on_attached_deleted(); //< Attached widget delete this
+
+
         Margin                 _margin = {0} ; //< Content margin
         Widget                *_widget = nullptr; //< Attached 
         Layout                *_parent = nullptr;
         int                    _spacing = 0;
 
-        bool _hooked = false; //< Hooked to widget ? (default = false)
+        bool                   _hooked = false; //< Hooked to widget ? (default = false)
+        Connection             _con;
 };
 class BTKAPI BoxLayout : public Layout {
     public:
         BoxLayout(Direction d = LeftToRight);
+        BoxLayout(Widget *where, Direction d = LeftToRight) : BoxLayout(d) {
+            attach(where);
+        }
         ~BoxLayout();
 
         void add_layout(Layout *lay, int stretch = 0);
@@ -146,6 +161,7 @@ class BTKAPI BoxLayout : public Layout {
         void        run_layout(const Rect *dst);
         bool        should_skip(LayoutItem *item) const;
         size_t      visible_items() const;
+        int         stretch_of(LayoutItem *item) const; //< Get stretch of this Item, it will apply Widget's sizepolicy stretch
 
         struct ItemExtra {
             int stretch = 0;
@@ -164,6 +180,18 @@ class BTKAPI BoxLayout : public Layout {
         bool _layouting = false;
         bool _dirty = true;
         int  n_spacing_item = 0;
+};
+
+// Easy to use class
+class HBoxLayout final : public BoxLayout {
+    public:
+        HBoxLayout() : BoxLayout(LeftToRight) { }
+        HBoxLayout(Widget *parent) : BoxLayout(parent, LeftToRight) { }
+};
+class VBoxLayout final : public BoxLayout {
+    public:
+        VBoxLayout() : BoxLayout(TopToBottom) { }
+        VBoxLayout(Widget *parent) : BoxLayout(parent, TopToBottom) { }
 };
 
 BTK_NS_END

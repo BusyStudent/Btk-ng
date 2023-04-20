@@ -42,8 +42,11 @@ UIContext::UIContext(GraphicsDriver *driv) {
     initialize(driv);
 }
 UIContext::UIContext() {
+
+#if !defined(BTK_DLL)
     BTK_ONCE(__BtkPlatform_Init());
     BTK_ONCE(__BtkWidgets_Init());
+#endif
 
     initialize(CreateDriver());
 }
@@ -71,7 +74,7 @@ void UIContext::initialize(GraphicsDriver *driv) {
     _driver     = driv;
     SetUIContext(this);
 
-    thread_id = std::this_thread::get_id(); 
+    _thread_id = std::this_thread::get_id(); 
 
     if (!_style) {
         abort();
@@ -199,7 +202,7 @@ EventType RegisterEvent() {
     return cur;
 }
 
-auto RegisterDriver(GraphicsDriverInfo &info) -> void{
+auto RegisterDriver(GraphicsDriverInfo &info) -> void {
     ui_driver = &info;
 }
 auto CreateDriver() -> GraphicsDriver * {

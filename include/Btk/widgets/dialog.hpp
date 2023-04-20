@@ -6,7 +6,20 @@ BTK_NS_BEGIN
 
 class AbstractFileDialog;
 
-class BTKAPI  FileDialog : public Widget {
+class BTKAPI Dialog : public Widget {
+    public:
+        Dialog();
+        ~Dialog();
+
+        virtual int  run();
+        virtual void open();
+    protected:
+        bool close_event(CloseEvent &) override;
+    private:
+        Signal<void()> _closed;
+};
+
+class BTKAPI FileDialog : public Dialog {
     public:
         enum Option : uint32_t {
             Open  = 0,
@@ -17,7 +30,8 @@ class BTKAPI  FileDialog : public Widget {
         FileDialog();
         ~FileDialog();
 
-        int        run();
+        int        run() override;
+        void       open() override;
         Option     option() const;
         StringList result() const;
 
@@ -25,6 +39,18 @@ class BTKAPI  FileDialog : public Widget {
     private:
         AbstractFileDialog *native;
         Option              opt = {};
+};
+
+class BTKAPI MessageBox : public Dialog {
+    public:
+        MessageBox();
+        ~MessageBox();
+
+        void set_title(u8string_view title);
+        void set_message(u8string_view message);
+    private:
+        u8string _title;
+        u8string _message;
 };
 
 class AbstractFileDialog : public Any {

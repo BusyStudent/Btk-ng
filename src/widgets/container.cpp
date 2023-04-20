@@ -271,14 +271,12 @@ bool TabBar::paint_event(PaintEvent &) {
 }
 bool TabBar::mouse_press(MouseEvent &event) {
     auto [x, y] = event.position();
-    if (_tabs.size() > 0) {
-        if (x > tab_rect(_tabs.size() - 1).top_right().x) {
-            // <Tab, Tab, Tab> Out of range
-            return true;
-        }
+    if (_tabs.size() == 0) {
+        return 0;
     }
     auto new_current = tab_at(x, y);
-    if (new_current != _current_tab) {
+    if (new_current != _current_tab && new_current != -1) {
+        // Can not be -1, means click on no tab is no-op
         set_current_index(new_current);
         repaint();
     }
@@ -348,12 +346,18 @@ TabWidget::~TabWidget() {
 
 }
 int  TabWidget::add_tab(Widget *page, const PixBuffer &icon, u8string_view text) {
-    bar.add_tab(icon, text);
-    return display.add_widget(page);
+    int bid = bar.add_tab(icon, text);
+    int did = display.add_widget(page);
+
+    BTK_ASSERT(bid == did);
+    return did;
 }
 int  TabWidget::insert_tab(int idx, Widget *page, const PixBuffer &icon, u8string_view text) {
-    bar.insert_tab(idx, icon, text);
-    return display.insert_widget(idx, page);
+    int bid = bar.insert_tab(idx, icon, text);
+    int did = display.insert_widget(idx, page);
+
+    BTK_ASSERT(bid == did);
+    return did;
 }
 void TabWidget::remove_tab(int idx) {
     bar.remove_tab(idx);

@@ -72,6 +72,8 @@ enum class WidgetAttrs : uint8_t {
     DeleteOnClose = 1 << 1, //< Widget Delete after closed
     ClipRectangle = 1 << 2, //< Clip rect, avoid draw out of there  
     BackgroundTransparent = 1 << 3, //< Make background transparent
+    PaintBackground = 1 << 4, //< Force widget paint it's background even is not on the top
+    PaintChildren   = 1 << 5, //< Paint children widget (default on)
 };
 enum class SizeHint    : uint8_t {
     Perfered = 0,
@@ -108,6 +110,18 @@ class SizePolicy {
         }
         int    horizontal_stretch() const noexcept {
             return h_stretch;
+        }
+        void   set_vertical_stretch(int stretch) noexcept { 
+            v_stretch = stretch;
+        }
+        void   set_horizontal_stretch(int stretch) noexcept { 
+            h_stretch = stretch; 
+        }
+        void   set_vertical_policy(Policy p) noexcept {
+            v_flag = p;
+        }
+        void   set_horizontal_policy(Policy p) noexcept {
+            h_flag = p;
         }
     private:
         Policy v_flag = Fixed;
@@ -398,6 +412,14 @@ class BTKAPI Widget : public Object {
             return rect().y;
         }
         /**
+         * @brief Get the position of the widget
+         * 
+         * @return Point 
+         */
+        Point   position() const {
+            return rect().position();
+        }
+        /**
          * @brief Get the size of the widget
          * 
          * @return Size 
@@ -461,7 +483,7 @@ class BTKAPI Widget : public Object {
          * @return true On processed
          * @return false On unprocessed
          */
-        virtual bool handle       (Event &event) override;
+        virtual bool handle(Event &event) override;
         /**
          * @brief Get window associated with widget
          * 
@@ -624,6 +646,9 @@ class BTKAPI Widget : public Object {
         void start_textinput(bool start = true);
         void stop_textinput();
 
+        // Layout
+        void request_layout();
+
         // Configure properties
         void set_focus_policy(FocusPolicy policy);
         void set_size_policy(SizePolicy policy);
@@ -631,10 +656,16 @@ class BTKAPI Widget : public Object {
         void set_minimum_size(int w, int h);
         void set_maximum_size(Size size);
         void set_minimum_size(Size size);
+        void set_fixed_size(int w, int h);
+        void set_fixed_size(Size size);
         void set_style(Style *style);
         void set_font(const Font &font);
         void set_cursor(const Cursor &cursor);
         void set_opacity(float opacity);
+
+        // Static Helper
+        static Widget *KeyboardFocusWidget();
+        static Widget *MouseFocusWidget();
     protected:
         virtual bool key_press    (KeyEvent &) { return false; }
         virtual bool key_release  (KeyEvent &) { return false; }
@@ -670,9 +701,9 @@ class BTKAPI Widget : public Object {
         Widget     *_parent     = nullptr; //< Parent widget
         Ref<Style>  _style      = nullptr; //< Pointer to style
         WindowFlags _flags      = WindowFlags::Resizable; //< Window flags
-        WidgetAttrs _attrs      = WidgetAttrs::None; //< Widget attributrs
+        WidgetAttrs _attrs      = WidgetAttrs::PaintChildren; //< Widget attributrs
         FocusPolicy _focus      = FocusPolicy::None; //< Focus policy
-        SizePolicy  _size       = SizePolicy::Fixed; //< Size policy
+        SizePolicy  _size       = SizePolicy::Expanding; //< Size policy
         Palette     _palette    = {}; //< Palette of widget     
         std::list<Widget *>           _children; //< Child widgets
         std::list<Widget *>::iterator _in_child_iter = {}; //< Child iterator
@@ -714,6 +745,9 @@ inline void Widget::set_maximum_size(Size s) {
 }
 inline void Widget::set_minimum_size(Size s) {
     set_minimum_size(s.w, s.h);
+}
+inline void Widget::set_fixed_size(Size s) {
+    set_fixed_size(s.w, s.h);
 }
 inline bool Widget::under_mouse() const {
     return _entered;

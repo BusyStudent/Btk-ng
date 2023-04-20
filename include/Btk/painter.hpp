@@ -104,6 +104,9 @@ class Gradient {
         void add_stop(float offset, const GLColor &color) {
             _stops.push_back(ColorStop{offset, color});
         }
+        void add_stop(const ColorStop &s) {
+            _stops.push_back(s);
+        }
         void clear() {
             _stops.clear();
         }
@@ -137,6 +140,11 @@ class Gradient {
 class LinearGradient : public Gradient {
     public:
         LinearGradient() = default;
+        LinearGradient(std::initializer_list<ColorStop> stop) {
+            for (auto value : stop) {
+                add_stop(value);
+            }
+        }
 
         void set_start_point(float x, float y) {
             _start_point = {x, y};
@@ -180,7 +188,12 @@ class RadialGradient : public Gradient {
     public:
         // Has Start and End points
         RadialGradient() = default;
-        
+        RadialGradient(std::initializer_list<ColorStop> stop) {
+            for (auto value : stop) {
+                add_stop(value);
+            }
+        }
+
         void set_center_point(float x, float y) {
             _center_point = {x, y};
         }

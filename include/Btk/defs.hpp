@@ -40,23 +40,13 @@ class Any {
         template <typename T>
         using cresult_t = std::conditional_t<std::is_pointer_v<T>, const T, const T&>;  // if T a pointer
 
-        template <typename T>
-        auto cast_base() noexcept {
-            if constexpr(std::is_pointer_v<T>) {
-                return this;
-            }
-            else {
-                return static_cast<Any&>(*this);
-            }
-        }
-        template <typename T>
-        auto cast_base() const noexcept {
-            if constexpr(std::is_pointer_v<T>) {
-                return this;
-            }
-            else {
-                return static_cast<const Any&>(*this);
-            }
+        template <typename T, typename In>
+        decltype(auto) _dynamic_cast(In &&what) {
+#if        !defined(BTK_NO_RTTI)
+            return dynamic_cast<T>(std::forward<In>(what));
+#else
+            return static_cast<T>(std::forward<In>(what));
+#endif
         }
     public:
         /**
@@ -73,11 +63,13 @@ class Any {
          */
         template <typename T>
         inline result_t<T>  as() BTK_NOEXCEPT {
-#if        !defined(BTK_NO_RTTI)
-            return dynamic_cast<result_t<T>>(cast_base<T>());
-#else
-            return static_cast<result_t<T>>(cast_base<T>());
-#endif
+            using Ret = result_t<T>;
+            if constexpr(std::is_pointer_v<Ret>) {
+                return _dynamic_cast<Ret>(this);
+            }
+            else {
+                return _dynamic_cast<Ret>(*this);
+            }
         }
         /**
          * @brief Dynmaic Cast to type T, a excpetion will be thrown if invalid.
@@ -87,11 +79,13 @@ class Any {
          */
         template <typename T>
         inline cresult_t<T> as() const BTK_NOEXCEPT {
-#if        !defined(BTK_NO_RTTI)
-            return dynamic_cast<cresult_t<T>>(cast_base<T>());
-#else
-            return static_cast<cresult_t<T>>(cast_base<T>());
-#endif
+            using Ret = cresult_t<T>;
+            if constexpr(std::is_pointer_v<Ret>) {
+                return _dynamic_cast<Ret>(this);
+            }
+            else {
+                return _dynamic_cast<Ret>(*this);
+            }
         }
         /**
          * @brief Static Cast to type T
@@ -101,7 +95,13 @@ class Any {
          */
         template <typename T>
         inline result_t<T> unsafe_as() noexcept {
-            return static_cast<result_t<T>>(cast_base<T>());
+            using Ret = result_t<T>;
+            if constexpr(std::is_pointer_v<Ret>) {
+                return static_cast<Ret>(this);
+            }
+            else {
+                return static_cast<Ret>(*this);
+            }
         }
         /**
          * @brief Static Cast to type T
@@ -111,7 +111,13 @@ class Any {
          */
         template <typename T>
         inline cresult_t<T> unsafe_as() const noexcept {
-            return static_cast<cresult_t<T>>(cast_base<T>());
+            using Ret = cresult_t<T>;
+            if constexpr(std::is_pointer_v<Ret>) {
+                return static_cast<Ret>(this);
+            }
+            else {
+                return static_cast<Ret>(*this);
+            }
         }
 
         /**

@@ -75,10 +75,7 @@ void Widget::set_visible(bool v) {
 
         _parent->focused_widget = nullptr;
     }
-    if (_parent) {
-        event.set_type(Event::LayoutRequest);
-        _parent->handle(event);
-    }
+    request_layout();
 }
 void Widget::show() {
     set_visible(true);
@@ -212,6 +209,13 @@ void Widget::set_palette(const Palette &palette) {
 void Widget::set_name(u8string_view name) {
     _name = name;
 }
+void Widget::request_layout() {
+    if (_parent) {
+        Event event(Event::LayoutRequest);
+        event.set_timestamp(GetTicks());
+        _parent->handle(event);
+    }
+}
 bool Widget::handle(Event &event) {
     // printf("Widget::handle(%d)\n", event.type());
     // Do event filters
@@ -238,8 +242,8 @@ bool Widget::handle(Event &event) {
                 _painter.clear();
             }
             if (parent()) {
-                // Not same background, draw it
-                if (parent()->_palette.window() != _palette.window()) {
+                // Force to draw the background it
+                if (uint8_t(_attrs & WidgetAttrs::PaintBackground)) {
                     auto &p = painter();
                     p.set_brush(_palette.window());
                     p.fill_rect(_rect);
@@ -265,7 +269,9 @@ bool Widget::handle(Event &event) {
             ret = paint_event(event.as<PaintEvent>());
 
             // Paint children second (foreground)
-            paint_children(event.as<PaintEvent>());
+            if (uint8_t(_attrs & WidgetAttrs::PaintChildren)) {
+                paint_children(event.as<PaintEvent>());
+            }
 
             // Restore state if
             if (restore_state) {
@@ -505,8 +511,9 @@ bool Widget::handle(Event &event) {
         }
         case Event::Close : {
             ret = close_event(event.as<CloseEvent>());
-            if (!ret && bittest(_attrs, WidgetAttrs::DeleteOnClose)) {
+            if (event.is_accepted() && bittest(_attrs, WidgetAttrs::DeleteOnClose)) {
                 // Ready to close & has attribute delete on close
+                BTK_LOG("[Widget] " BTK_RED("Defer Delete %s %p\n"), Btk_typename(this), this);
                 defer_delete();
             }
             return ret;
@@ -772,6 +779,11 @@ void Widget::paint_children(PaintEvent &event) {
     for(auto iter = _children.rbegin(); iter != _children.rend(); ++iter) {
         auto w = *iter;
         if (!w->_visible || w->_rect.empty()) {
+            // Invisible
+            continue;
+        }
+        if (!w->_rect.is_intersected(_rect)) {
+            // Out of parent 
             continue;
         }
         w->handle(event);
@@ -997,6 +1009,7 @@ void Widget::set_focus_policy(FocusPolicy policy) {
 }
 void Widget::set_size_policy(SizePolicy policy) {
     _size = policy;
+    request_layout();
 }
 void Widget::set_maximum_size(int w, int h) {
     Size s(w, h);
@@ -1013,6 +1026,10 @@ void Widget::set_minimum_size(int w, int h) {
     if (_win) {
         _win->set_value(AbstractWindow::MinimumSize, &s);
     }
+}
+void Widget::set_fixed_size(int w, int h) {
+    resize(w, h);
+    set_size_policy(SizePolicy::Fixed);
 }
 void Widget::set_cursor(const Cursor &cursor) {
     _cursor = cursor;

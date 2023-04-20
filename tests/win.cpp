@@ -634,10 +634,11 @@ int main () {
 
     // Test layout
     Widget lay_root;
-    Button lay_btn1("Button 1");
+    Button lay_btn1("Fixed size Button 1");
     Button lay_btn2("Button 2");
     Button lay_btn3("Button 3");
     BoxLayout layout(LeftToRight);
+    lay_btn1.set_fixed_size(500, 500);
 
     layout.attach(&lay_root);
     layout.add_widget(&lay_btn1, 1, Alignment::Middle | Alignment::Center);

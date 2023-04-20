@@ -110,7 +110,7 @@ class BTKAPI UIContext : public Trackable {
 
         // Query
         auto ui_thread_id() const -> std::thread::id {
-            return thread_id;
+            return _thread_id;
         }
 
         // Service
@@ -124,13 +124,16 @@ class BTKAPI UIContext : public Trackable {
         // Clipboard
         auto set_clipboard_text(u8string_view text) -> void;
         auto clipboard_text()                       -> u8string;
+
+        // Screen
+        auto num_of_screen()                        -> int;
     private:
         void initialize(GraphicsDriver *driver);
 
         PainterInitializer painter_init;
         EventDispatcher *_dispatcher = nullptr;
         GraphicsDriver  *_driver = nullptr;
-        std::thread::id thread_id;
+        std::thread::id _thread_id;
         Palette  _palette;
         Ref<Style> _style;
 

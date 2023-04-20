@@ -17,19 +17,18 @@ Layout::~Layout() {
     }
 }
 void Layout::attach(Widget *w) {
-    auto hook = [](Object *, Event &event, void *self) -> bool {
-        static_cast<Layout *>(self)->run_hook(event);
-        return false; //< nodiscard
-    };
     if (_hooked) {
         // Detach the hook from the previous widget
-        _widget->del_event_filter(hook, this);
+        _widget->del_event_filter(EventHook, this);
+        _con.disconnect(); //< Disconnect the signal 
     }
     _widget = w;
 
     if (_widget != nullptr) {
-        _widget->add_event_filter(hook, this);
+        _widget->add_event_filter(EventHook, this);
         _hooked = true;
+
+        _con = _widget->signal_destoryed().connect(&Layout::on_attached_deleted, this);
     }
 }
 void Layout::set_margin(Margin ma) {
@@ -50,6 +49,16 @@ Layout *Layout::layout() {
 Widget *Layout::widget() const {
     return _widget;
 }
+void Layout::on_attached_deleted() {
+    _hooked = false;
+    _widget = nullptr;
+}
+bool Layout::EventHook(Object *, Event &event, void *self) {
+    static_cast<Layout*>(self)->run_hook(event);
+    return false; //< DIdnot Drop this item
+}
+
+
 // BoxLayout
 BoxLayout::BoxLayout(Direction d) {
     _direction = d;

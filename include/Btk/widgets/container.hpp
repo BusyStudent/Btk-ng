@@ -127,6 +127,7 @@ class BTKAPI TabBar    : public Widget {
  */
 class BTKAPI TabWidget : public Widget {
     public:
+        // TODO : Add Delete
         TabWidget(Widget  *parent = nullptr);
         ~TabWidget();
 
@@ -182,6 +183,12 @@ class BTKAPI ListWidget : public Widget {
         ~ListWidget();
     private:
         std::vector<Widget*> widgets;
+};
+class BTKAPI AlignBox : public Widget {
+    
+};
+class BTKAPI MarginBox : public Widget {
+    
 };
 
 inline void TabWidget::set_paint_background(bool v) {
