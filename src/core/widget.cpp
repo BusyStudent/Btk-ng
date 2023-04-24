@@ -483,7 +483,8 @@ bool Widget::handle(Event &event) {
                 }
 
                 // Check if leave
-                if (!mouse_current_widget->rect().contains(motion.position())) {
+                auto w = child_at(motion.x(), motion.y());
+                if (!mouse_current_widget->rect().contains(motion.position()) || w != mouse_current_widget) {
                     // Leave
                     WidgetEvent event(Event::MouseLeave);
                     event.set_timestamp(motion.timestamp());

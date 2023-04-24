@@ -152,6 +152,12 @@ class ListBox : public Widget {
         ListBox(Widget *parent = nullptr);
         ~ListBox();
         /**
+         * @brief Set the current item object
+         * 
+         * @param item 
+         */
+        void set_current_item(ListItem *item);
+        /**
          * @brief Insert item to index
          * 
          * @param idx 
@@ -248,7 +254,6 @@ class ListBox : public Widget {
         bool focus_gained(FocusEvent &event) override;
         bool focus_lost(FocusEvent &event) override;
     private:        
-        void set_current_item(ListItem *item);
         /**
          * @brief Set the mouse hover object by position we gived
          * 

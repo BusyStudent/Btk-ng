@@ -19,7 +19,7 @@ int  Dialog::run() {
     show();
 
     EventLoop loop(GetUIDisplatcher());
-    _closed.connect(&EventLoop::stop);
+    _closed.connect(&EventLoop::stop, &loop);
     return loop.run();
 }
 void Dialog::open() {

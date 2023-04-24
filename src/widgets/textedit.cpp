@@ -284,10 +284,17 @@ void TextEdit::set_flat(bool flat) {
     repaint();
 }
 void TextEdit::set_text(u8string_view txt) {
+    auto prev_len  = _text_len;
     _text = txt;
     _lay.set_text(_text);
     _text_len = _text.length();
-    move_cursor(0);
+    // Prev cursor is at end of the text, keep the new cursor at the end of the text
+    if (_cursor_pos == prev_len) {
+        move_cursor(_text_len);
+    }
+    else {
+        move_cursor(0); // move cursor to beginning of text
+    }
     repaint();
     _text_changed.emit();
 }
