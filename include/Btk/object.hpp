@@ -15,6 +15,15 @@ BTK_NS_BEGIN
 class ObjectImpl;
 class TimerEvent;
 
+// Maybe we use FilterResult to replace EventFilter return value (bool)
+class FilterResult {
+    public:
+        static constexpr bool Discard = true;
+        static constexpr bool Keep    = false;
+    private:
+        FilterResult() = default;
+};
+
 // Event filter, return true to discard event
 using EventFilter   = bool (*)(Object *, Event &, void *);
 using DeferRoutinue = void (*)(void *);

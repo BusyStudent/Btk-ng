@@ -183,6 +183,8 @@ class BTKAPI PopupWidget : public Widget {
     protected:
         bool mouse_press(MouseEvent &) override;
         bool mouse_release(MouseEvent &) override;
+        bool mouse_wheel(WheelEvent &) override;
+        bool mouse_motion(MotionEvent &) override;
         bool paint_event(PaintEvent &) override;
         bool focus_lost(FocusEvent &) override;
     private:

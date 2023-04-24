@@ -65,6 +65,14 @@ bool PopupWidget::mouse_release(MouseEvent &) {
     // Accept it prevent the mouse event processed by lower
     return true;
 }
+bool PopupWidget::mouse_motion(MotionEvent &) {
+    // Accept it prevent the mouse event processed by lower
+    return true;
+}
+bool PopupWidget::mouse_wheel(WheelEvent &) {
+    // Accept it prevent the mouse event processed by lower
+    return true;
+}
 
 // MenuItem
 // Some const, may be mobe into style in future ?

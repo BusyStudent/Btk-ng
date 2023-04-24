@@ -32,6 +32,8 @@ extern "C" void __BtkPlatform_Init() {
     inited = true;
 }
 
-BTK_INITCALL(__BtkPlatform_Init);
+#if defined(BTL_DLL)
+    BTK_INITCALL(__BtkPlatform_Init);
+#endif
 
 BTK_NS_END

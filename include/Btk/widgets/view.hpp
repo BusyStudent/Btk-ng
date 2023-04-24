@@ -158,6 +158,12 @@ class ListBox : public Widget {
          */
         void set_current_item(ListItem *item);
         /**
+         * @brief Set the current index object
+         * 
+         * @param index 
+         */
+        void set_current_index(int index);
+        /**
          * @brief Insert item to index
          * 
          * @param idx 
@@ -240,8 +246,23 @@ class ListBox : public Widget {
          * @return Size 
          */
         Size      size_hint() const override;
-
+    public: // SIGNALS
+        /**
+         * @brief emited when infiite scroll, need more item to scroll
+         * 
+         */
+        BTK_EXPOSE_SIGNAL(_more_item_required);
+        /**
+         * @brief emited when _current_item_changed
+         * 
+         */
         BTK_EXPOSE_SIGNAL(_current_item_changed);
+        /**
+         * @brief emited when _item_double_clicked
+         * 
+         * @param item The item of it
+         * 
+         */
         BTK_EXPOSE_SIGNAL(_item_double_clicked);
         BTK_EXPOSE_SIGNAL(_item_clicked);
         BTK_EXPOSE_SIGNAL(_item_enter);
@@ -287,6 +308,7 @@ class ListBox : public Widget {
 
         bool                  _flat = false;
 
+        Signal<void()>           _more_item_required; //< On infiite scroll, need more items to show
         Signal<void()>           _current_item_changed;
         Signal<void(ListItem *)> _item_double_clicked;
         Signal<void(ListItem *)> _item_clicked;

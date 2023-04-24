@@ -6,6 +6,33 @@
 #include <Btk/opengl/opengl.hpp>
 #include <Btk/event.hpp>
 
+#if defined(_WIN32)
+    #include <Windows.h>
+
+    // From https://registry.khronos.org/OpenGL/api/GL/wglext.h
+    // TODO WGL_NV_DX_interop
+    #ifndef WGL_NV_DX_interop
+    #define WGL_NV_DX_interop 1
+    #define WGL_ACCESS_READ_ONLY_NV           0x00000000
+    #define WGL_ACCESS_READ_WRITE_NV          0x00000001
+    #define WGL_ACCESS_WRITE_DISCARD_NV       0x00000002
+
+    BOOL WINAPI wglDXSetResourceShareHandleNV (void *dxObject, HANDLE shareHandle);
+    HANDLE WINAPI wglDXOpenDeviceNV (void *dxDevice);
+    BOOL WINAPI wglDXCloseDeviceNV (HANDLE hDevice);
+    HANDLE WINAPI wglDXRegisterObjectNV (HANDLE hDevice, void *dxObject, GLuint name, GLenum type, GLenum access);
+    BOOL WINAPI wglDXUnregisterObjectNV (HANDLE hDevice, HANDLE hObject);
+    BOOL WINAPI wglDXObjectAccessNV (HANDLE hObject, GLenum access);
+    BOOL WINAPI wglDXLockObjectsNV (HANDLE hDevice, GLint count, HANDLE *hObjects);
+    BOOL WINAPI wglDXUnlockObjectsNV (HANDLE hDevice, GLint count, HANDLE *hObjects);
+    #endif /* WGL_NV_DX_interop */
+
+    #ifndef WGL_NV_DX_interop2
+    #define WGL_NV_DX_interop2 1
+    #endif /* WGL_NV_DX_interop2 */
+
+#endif
+
 BTK_NS_BEGIN
 
 // TODO : Need a better way to draw OpenGL framebuffer by painter
@@ -21,7 +48,7 @@ class GLWidgetImpl : public OpenGLES3Function {
         virtual void gl_paint(GLWidget *) = 0;
 };
 // Slowest way, but portable
-class GLWidgetOffscreenFbImpl : public GLWidgetImpl {
+class GLWidgetOffscreenFbImpl final : public GLWidgetImpl {
     public:
         GLWidgetOffscreenFbImpl(GLWidget *w);
         ~GLWidgetOffscreenFbImpl();
@@ -33,13 +60,16 @@ class GLWidgetOffscreenFbImpl : public GLWidgetImpl {
         size_t membuffer_size = 0;
         Texture texture;
 };
-class GLWidgetShareFbImpl : public GLWidgetImpl {
+class GLWidgetShareFbImpl final : public GLWidgetImpl {
 
 };
-class GLWidgetWin32GLImpl : public GLWidgetImpl {
+
+#if defined(_WIN32)
+class GLWidgetWin32GLImpl final : public GLWidgetImpl {
     public:
 
 };
+#endif
 
 GLWidget::GLWidget() {
     priv = nullptr;

@@ -520,6 +520,10 @@ int main () {
 
     c.resize(800, 600);
 
+    // auto dialog = new Dialog(&c);
+    // dialog->resize(500, 500);
+    // dialog->open();
+
     // Test image view
     ImageView view;
     view.set_image(test_image());

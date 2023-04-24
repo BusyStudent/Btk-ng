@@ -501,6 +501,11 @@ bool ListBox::mouse_wheel(WheelEvent &event) {
         set_mouse_hover(mouse_position());
         return v;
     }
+    else {
+        // Items is not encough
+        BTK_LOG("[ListBox] more item required\n")
+        signal_more_item_required().emit();
+    }
     return false;
 }
 bool ListBox::mouse_motion(MotionEvent &event) {
@@ -611,6 +616,17 @@ void ListBox::set_current_item(ListItem *item) {
     repaint();
     _current_item_changed.emit();
 }
+void ListBox::set_current_index(int idx) {
+    if (idx < 0) {
+        idx = -1;
+    }
+    else if (idx >= _items.size()) {
+        idx = -1;
+    }
+    _current = idx;
+    repaint();
+    _current_item_changed.emit();
+}
 void ListBox::set_mouse_hover(Point where) {
     auto item = item_at(where.x, where.y);
     auto new_hovered = index_of(item);
@@ -703,6 +719,12 @@ void ListBox::vslider_value_changed() {
     if (_vslider->visible()) {
         _ytranslate = -_vslider->value();
         repaint();
+
+        // Check here
+        if (_vslider->value() == _vslider->max()) {
+            BTK_LOG("[ListBox] more item required\n")
+            signal_more_item_required().emit();
+        }
     }
 }
 void ListBox::hslider_value_changed() {

@@ -8,6 +8,9 @@ extern "C" void __BtkWidgets_Init() {
         __BtkWidgets_STYLE_Init();
     }());
 }
-BTK_INITCALL(__BtkWidgets_Init);
+
+#if defined(BTK_DLL)
+    BTK_INITCALL(__BtkWidgets_Init);
+#endif
 
 BTK_NS_END
