@@ -154,6 +154,7 @@ class RectImpl {
         RectImpl(T x, T y, T w, T h) : x(x), y(y), w(w), h(h) {}
         RectImpl(T x, T y, const SizeImpl<T> &s) : x(x), y(y), w(s.w), h(s.h) {}
         RectImpl(const PointImpl<T> &p, const SizeImpl<T> &s) : x(p.x), y(p.y), w(s.w), h(s.h) {}
+        RectImpl(const PointImpl<T> &p1, const PointImpl<T> &p2) : x(min(p1.x, p2.x)), y(min(p1.y, p2.y)), w(max(p1.x, p2.x) - x), h(max(p1.y, p2.y) - y) {}
         RectImpl(const RectImpl &r) : x(r.x), y(r.y), w(r.w), h(r.h) {}
 
         // Calculate
@@ -534,7 +535,7 @@ constexpr PointImpl<T> lerp(const PointImpl<T> &a, const PointImpl<T> &b, float 
     );
 }
 template <typename T>
-constexpr MarginImpl<T> klerp(const MarginImpl<T> &a, const MarginImpl<T> &b, float t) noexcept {
+constexpr MarginImpl<T> lerp(const MarginImpl<T> &a, const MarginImpl<T> &b, float t) noexcept {
     return MarginImpl(
         lerp(a.left,   b.left,   t),
         lerp(a.right,  b.right,  t),

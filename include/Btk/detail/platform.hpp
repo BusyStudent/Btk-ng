@@ -37,6 +37,7 @@ class GraphicsDriver : public Any {
         };
         enum Query {
             SystemDpi,   //< System dpi (*FPoint)
+            HasFeature,  //< Support for feature (*Feature)
             NumOfScreen, //< Number of screen (*int)
             KeyFocusWindow,   //< The widget has “keyboard” focus (*AbstractWindow*)
             MouseFocusWindow, 	//< The widget has “mouse”  focus (*AbstractWindow*)
@@ -73,7 +74,7 @@ class GraphicsDriver : public Any {
 
         // Template helper
         template <typename T>
-        inline T *service_of();
+        inline T        *service_of();
 };
 /**
  * @brief Window abstraction
@@ -107,6 +108,7 @@ class AbstractWindow : public Any {
             MaximumSize, //< args (*Size)
             MinimumSize, //< args (*Size)
             Opacity,     //< args (*float)
+            Parent,      //< args (*AbstractWindow*)
         };
 
         /**
@@ -237,6 +239,29 @@ class AbstractWindow : public Any {
          * @return any_t 
          */
         virtual any_t      gc_create(const char_t *type) = 0;
+    public: //< Helpers for set valie
+        /**
+         * @brief Set the parent object
+         * 
+         * @param parent 
+         * @return true 
+         * @return false 
+         */
+        inline  bool       set_parent(AbstractWindow *parent);
+        /**
+         * @brief Set the opacity object
+         * 
+         * @param opacity 
+         * @return true 
+         * @return false 
+         */
+        inline  bool       set_opacity(float opacity);
+    public: //< SIGNALS
+        BTK_EXPOSE_SIGNAL(_resized);
+        BTK_EXPOSE_SIGNAL(_dpi_changed);
+    private:
+        Signal<void()>     _resized;
+        Signal<void()>     _dpi_changed;
 };
 
 class AbstractCursor : public DynRefable {
@@ -308,6 +333,13 @@ BTKAPI auto CreateDriver()                       -> GraphicsDriver *;
 template <>
 inline DesktopService *GraphicsDriver::service_of<DesktopService>() {
     return static_cast<DesktopService*>(service_of(Desktop));
+}
+
+inline bool            AbstractWindow::set_parent(AbstractWindow *parent) {
+    return set_value(AbstractWindow::Parent, parent);
+}
+inline bool            AbstractWindow::set_opacity(float op) {
+    return set_value(AbstractWindow::Opacity, op);
 }
 
 BTK_NS_END

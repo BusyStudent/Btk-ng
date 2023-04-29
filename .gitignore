@@ -27,4 +27,9 @@
 *.dll
 a.out
 
+# WebView2 systen headers
+/src/plugins/webview/WebView2.h
+/src/plugins/webview/WebView2EnvironmentOptions.h
+
+
 /vsxmake*

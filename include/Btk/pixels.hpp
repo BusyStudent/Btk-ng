@@ -77,6 +77,8 @@ class GLColor {
         float b; //< Blue component (0.0f - 1.0f)
         float a; //< Alpha component (0.0f - 1.0f)
 
+        BTKAPI    GLColor(u8string_view view);
+
         constexpr GLColor() : r(0.0f), g(0.0f), b(0.0f), a(0.0f) {}
         constexpr GLColor(float r, float g, float b, float a = 1.0f) : r(r), g(g), b(b), a(a) {}
         constexpr GLColor(Color::Enum e) : GLColor(Color(e)) {}

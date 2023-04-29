@@ -34,6 +34,10 @@ namespace {
 
 BTK_NS_BEGIN
 
+GLColor::GLColor(u8string_view str) : GLColor(Color(str)) {
+    
+}
+
 Color::Color(u8string_view str) {
     *this = Black;
     int ir, ig, ib, ia = 255;
