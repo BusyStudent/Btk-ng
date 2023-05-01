@@ -151,7 +151,7 @@ bool ComboBox::set_item_icon(int index, const PixBuffer& icon) {
 
 bool ComboBox::paint_event(PaintEvent &event)  {
 	// comboBox border
-	auto border = rect().cast<float>().apply_margin(style()->margin);
+	auto border = FRect(0, 0, size()).cast<float>().apply_margin(style()->margin);
 	// text view border
 	FRect text_border{border.x + blank, border.y, border.w - border.h / 2, border.h};
 	// drop down symbol view border
@@ -220,8 +220,8 @@ bool ComboBox::mouse_press(MouseEvent &event) {
 		if (count() == 0) {
 			return true;
 		}
-		auto rect = this->rect();
-		Point pos = map_to_screen(rect.position());
+		auto rect = Rect(0, 0, size());
+		Point pos = map_from_self_to_screen(rect.position());
 		Size  size = map_to_pixels(rect.size());
 
 		Size  lbox_size = _listbox_view->size_hint();
@@ -233,7 +233,8 @@ bool ComboBox::mouse_press(MouseEvent &event) {
 
 		_popup_widget = new PopupWidget;
 		_popup_widget->popup();
-		_popup_widget->set_window_position(pos.x, pos.y + size.h);
+		// _popup_widget->set_window_position(pos.x, pos.y + size.h);
+		_popup_widget->move(pos.x, pos.y + size.h);
 		_popup_widget->resize({rect.w, lbox_size.h});
 		_listbox_view->set_rect({0, 0, rect.w, lbox_size.h});
 		_popup_widget->set_window_borderless(true);

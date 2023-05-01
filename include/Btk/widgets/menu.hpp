@@ -227,6 +227,7 @@ class BTKAPI PopupMenu : public Widget {
 
         std::vector<MenuItem *> _items;
         bool                    _items_owned = true;
+        bool                    _ready_close = false;
 
         MenuItem               *_current_item = nullptr;
         PopupMenu              *_current_poping = nullptr;

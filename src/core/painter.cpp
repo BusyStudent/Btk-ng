@@ -517,23 +517,15 @@ void Painter::scissor(float x, float y, float w, float h) {
 
     // TODO : We need to transform prev into target space
     auto scissor_mat = state.scissor_mat;
-    auto invmatrix = state.matrix;
-    invmatrix.invert();
+    scissor_mat.invert();
+    auto mat = state.matrix * scissor_mat; //< Transform to target
 
-    scissor_mat *= invmatrix;
+    auto top_left = mat.transform_point(state.scissor.top_left());
+    auto bottom_right = mat.transform_point(state.scissor.bottom_right());
 
-    // Get transformed rect
-    auto start = FPoint(state.scissor.x, state.scissor.y) * scissor_mat;
-    auto end = FPoint(state.scissor.x + state.scissor.w, state.scissor.y + state.scissor.h) * scissor_mat;
-
-    FRect rect(
-        start.x, start.y,
-        end.x - start.x, end.y - start.y
-    );
-    rect = rect.intersected(FRect(x, y, w, h));
-
-    state.scissor = rect;
+    state.scissor = FRect(top_left, bottom_right).intersected(FRect(x, y, w, h));
     state.scissor_mat = state.matrix;
+
 
     // state.scissor = state.scissor.intersected(FRect(x, y, w, h));
     // state.scissor_mat = state.matrix;

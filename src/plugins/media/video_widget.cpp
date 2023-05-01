@@ -17,7 +17,7 @@ void VideoWidget::set_background_color(Color c) {
 bool VideoWidget::paint_event(PaintEvent &) {
     auto &p = painter();
     p.set_color(background);
-    p.fill_rect(rect());
+    p.fill_rect(Rect(0, 0, size()));
 
     if (!texture.empty()) {
         // Keep aspect ratio
@@ -33,8 +33,8 @@ bool VideoWidget::paint_event(PaintEvent &) {
             dst.h = size.h;
             dst.w = img_size.w * size.h / img_size.h;
         }
-        dst.x = rect().x + (size.w - dst.w) / 2;
-        dst.y = rect().y + (size.h - dst.h) / 2;
+        dst.x = (size.w - dst.w) / 2;
+        dst.y = (size.h - dst.h) / 2;
         p.draw_image(texture, &dst, nullptr);
     }
     return true;

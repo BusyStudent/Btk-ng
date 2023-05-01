@@ -42,9 +42,7 @@ void Dialog::internal_show() {
     }
 
     // Move to current place
-    auto rect = parent()->rect().align_object(size(), AlignMiddle | AlignCenter);
-    move(rect.position());
-
+    move(Rect(0, 0, parent()->size()).align_object(size(), AlignMiddle | AlignCenter).position());
     // Inject filter
     parent()->add_event_filter(Filter, this);
 }
@@ -93,7 +91,7 @@ bool Dialog::mouse_wheel(WheelEvent &) {
 bool Dialog::resize_event(ResizeEvent &) {
     // Replace
     if (parent()) {
-        move(parent()->rect().align_object(size(), AlignMiddle | AlignCenter).position());
+        move(Rect(0, 0, parent()->size()).align_object(size(), AlignMiddle | AlignCenter).position());
     }
     return true;
 }
@@ -101,38 +99,40 @@ bool Dialog::resize_event(ResizeEvent &) {
 bool Dialog::Filter(Object *object, Event &event, void *_self) {
     Dialog *self = static_cast<Dialog*>(_self);
     switch (event.type()) {
-        case Event::MouseMotion : {
-            if (!self->rect().contains(event.as<MotionEvent>().position())) {
-                // Out of range, Drop
-                return FilterResult::Discard;
-            }
-            break;
-        }
-        case Event::MouseRelease : {
-            [[fallthrough]];
-        }
-        case Event::MousePress : {
-            if 	(!self->rect().contains(event.as<MouseEvent>().position())) {
-                return FilterResult::Discard;
-            }
-            break;
-        }
+        // case Event::MouseMotion : {
+        //     if (!self->rect().contains(event.as<MotionEvent>().position())) {
+        //         // Out of range, Drop
+        //         return FilterResult::Discard;
+        //     }
+        //     break;
+        // }
+        // case Event::MouseRelease : {
+        //     [[fallthrough]];
+        // }
+        // case Event::MousePress : {
+        //     if 	(!self->rect().contains(event.as<MouseEvent>().position())) {
+        //         return FilterResult::Discard;
+        //     }
+        //     break;
+        // }
         case Event::Resized : {
-            auto rect = object->as<Widget*>()->rect();
+            Rect rect;
+            rect.x = 0;
+            rect.y = 0;
             rect.w = event.as<ResizeEvent>().width();
             rect.h = event.as<ResizeEvent>().height();
 
             self->move(rect.align_object(self->size(), AlignMiddle | AlignCenter).position());
             break;
         }
-        case Event::Moved : {
-            auto rect = object->as<Widget*>()->rect();
-            rect.x = event.as<MoveEvent>().x();
-            rect.y = event.as<MoveEvent>().y();
+        // case Event::Moved : {
+        //     auto rect = object->as<Widget*>()->rect();
+        //     rect.x = event.as<MoveEvent>().x();
+        //     rect.y = event.as<MoveEvent>().y();
 
-            self->move(rect.align_object(self->size(), AlignMiddle | AlignCenter).position());
-            break;
-        }
+        //     self->move(rect.align_object(self->size(), AlignMiddle | AlignCenter).position());
+        //     break;
+        // }
     }
     return FilterResult::Keep;
 }

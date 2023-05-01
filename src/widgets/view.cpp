@@ -28,7 +28,7 @@ void Label::set_text_align(Alignment alig) {
     repaint();
 }
 bool Label::paint_event(PaintEvent &) {
-    auto border = this->rect().cast<float>();
+    auto border = FRect(0, 0, size());
     auto &painter = this->painter();
 
     // Get textbox
@@ -147,11 +147,11 @@ bool ImageView::paint_event(PaintEvent &event) {
                 dst.h = size.h;
                 dst.w = img_size.w * size.h / img_size.h;
             }
-            dst.x = rect().x + (size.w - dst.w) / 2;
-            dst.y = rect().y + (size.h - dst.h) / 2;
+            dst.x = (size.w - dst.w) / 2;
+            dst.y = (size.h - dst.h) / 2;
         }
         else{
-            dst = this->rect().cast<float>();
+            dst = FRect(0, 0, size());
         }
 
         painter().draw_image(texture, &dst, nullptr);
@@ -252,7 +252,7 @@ void ProgressBar::reset() {
     // TODO : reset animation
 }
 bool ProgressBar::paint_event(PaintEvent &) {
-    auto rect = this->rect().cast<float>();
+    auto rect = FRect(0, 0, size());
     auto style = this->style();
     auto &gc  = this->painter();
 
@@ -367,7 +367,7 @@ void ListBox::add_item(const ListItem &item) {
 }
 bool ListBox::paint_event(PaintEvent &event) {
     auto &p = painter();
-    auto r  = rect().apply_margin(style()->margin);
+    auto r  = FRect(0, 0, size()).apply_margin(style()->margin);
 
     p.save();
     p.set_antialias(true);
@@ -529,7 +529,7 @@ ListItem *ListBox::item_at(float x, float y) {
     x -= _xtranslate;
 
     auto s = style();
-    auto item_viewport = rect().apply_margin(s->margin).apply_margin(s->margin);
+    auto item_viewport = FRect(0, 0, size()).apply_margin(s->margin).apply_margin(s->margin);
 
     float cur_x = item_viewport.x;
     float cur_y = item_viewport.y;
@@ -657,7 +657,7 @@ void ListBox::items_changed() {
 void ListBox::calc_slider() {
     // Calc the Height of the string list
     auto s = style();
-    auto item_viewport = rect().apply_margin(s->margin).apply_margin(s->margin);
+    auto item_viewport = FRect(0, 0, size()).apply_margin(s->margin).apply_margin(s->margin);
 
     auto [width, height] = calc_items_size();
     BTK_LOG("ListBox::calc_slider: width: %f, height: %f\n", width, height);

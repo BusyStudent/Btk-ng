@@ -22,7 +22,7 @@ bool Frame::paint_event(PaintEvent &) {
             else {
                 painter.set_brush(palette().hightlight());
             }
-            painter.draw_rect(rect());
+            painter.draw_rect(FRect(0, 0, size()));
             break;
         }
     }

@@ -117,6 +117,10 @@ add_packages("btk")
 | FileDialog    |                 |                          |
 | Menu          |                 |                          |
 | MenuBar       |                 |                          |
+| MainWindow    |                 |                          |
+| TabWidget     |                 |                          |
+| TabBar        |                 |                          |
+| StackedWidget |                 |                          |
 | GLWidget      |                 | For use OpenGL           |
 | ListBox       |                 | Display string items     |
 | VideoWidget   |                 | Video output for MediaPlayer (multimedia plugin) |
@@ -126,6 +130,7 @@ add_packages("btk")
 
 - [ ] IME disappearence when has Win32 child window (SDL backend)
 - [ ] Focus does gained for once mouse click when has Win32 child window (SDL backend)
+- [ ] Render Wrong on clip, maybe matrix or paint backend has bug?
 
 ## Todo List
 

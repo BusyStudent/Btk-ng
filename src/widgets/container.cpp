@@ -66,7 +66,7 @@ bool StackedWidget::resize_event(ResizeEvent &event) {
     auto w = current_widget();
     if (w) {
         // w->resize(event.width(), event.height());
-        w->set_rect(rect().apply_margin(_margin));
+        w->set_rect(FRect(0, 0, size()).apply_margin(_margin));
     }
     return true;
 }
@@ -74,7 +74,7 @@ bool StackedWidget::move_event(MoveEvent &event) {
     auto w = current_widget();
     if (w) {
         // w->move(event.x(), event.y());
-        w->set_rect(rect().apply_margin(_margin));
+        w->set_rect(FRect(0, 0, size()).apply_margin(_margin));
     }
     return true;
 }
@@ -132,7 +132,7 @@ void   StackedWidget::set_current_index(int idx) {
     _current = idx;
     cur = current_widget();
     if (cur) {
-        auto r = rect().apply_margin(_margin);
+        auto r = FRect(0, 0, size()).apply_margin(_margin);
         cur->show();
         cur->set_rect(r);
     }
@@ -147,7 +147,7 @@ void  StackedWidget::apply_margin() {
     auto w = current_widget();
     if (w) {
         // w->move(event.x(), event.y());
-        w->set_rect(rect().apply_margin(_margin));
+        w->set_rect(FRect(0, 0, size()).apply_margin(_margin));
     }
 }
 
@@ -233,7 +233,7 @@ bool TabBar::resize_event(ResizeEvent &) {
 bool TabBar::paint_event(PaintEvent &) {
     auto &p = painter();
     p.save();
-    p.scissor(rect());
+    p.scissor(FRect(0, 0, size()));
     for (auto &tab : _tabs) {
         int n = &tab - _tabs.data();
         auto r = tab_rect(n).cast<float>();
@@ -306,7 +306,7 @@ Rect TabBar::tab_rect(int idx) const {
     }
     auto margin = style()->margin;
 
-    auto [x, y, bw, bh] = rect();
+    auto [x, y, bw, bh] = FRect(0, 0, size());
     int cur_x = x + margin;
     for (int cur = 0; cur < idx; cur++) {
         // Add margin for it
@@ -375,14 +375,14 @@ void TabWidget::put_internal() {
     if (bar.visible()) {
         // Not hided
         bar.resize(width(), bar.size_hint().h);
-        bar.move(x(), y());
+        bar.move(0, 0);
 
-        display.move(x(), y() + bar.height());
+        display.move(0, bar.height());
         display.resize(width(), height() - bar.height());
     }
     else {
         // Hided
-        display.move(x(), y());
+        display.move(0, 0);
         display.resize(width(), height());
     }
 }
@@ -391,13 +391,13 @@ bool TabWidget::resize_event(ResizeEvent &event) {
     return true;
 }
 bool TabWidget::move_event(MoveEvent &event) {
-    if (bar.visible()) {
-        bar.move(event.x(), event.y());
-        display.move(event.x(), event.y() + bar.height());
-    }
-    else {
-        display.move(event.x(), event.y());
-    }
+    // if (bar.visible()) {
+    //     bar.move(event.x(), event.y());
+    //     display.move(event.x(), event.y() + bar.height());
+    // }
+    // else {
+    //     display.move(event.x(), event.y());
+    // }
     return true;
 }
 bool TabWidget::paint_event(PaintEvent &) {

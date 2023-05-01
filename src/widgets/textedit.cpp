@@ -310,7 +310,7 @@ bool TextEdit::paint_event(PaintEvent &) {
     auto &p = painter();
     auto style = this->style();
 
-    auto border = rect().cast<float>().apply_margin(2.0f);
+    auto border = FRect(0, 0, size()).cast<float>().apply_margin(2.0f);
     
     // In low dpi screens, we didnot need to antialiasing the rectangle
     p.set_antialias(window_dpi().x > 96.0f);
@@ -458,7 +458,7 @@ FPoint TextEdit::text_position() const {
 }
 FRect  TextEdit::text_rectangle() const {
     // Widget bounds => Text Rectangle
-    return rect().apply_margin(style()->margin).apply_margin(_margin);
+    return FRect(0, 0, size()).apply_margin(style()->margin).apply_margin(_margin);
 }
 void   TextEdit::move_cursor(size_t where) {
     repaint();

@@ -70,7 +70,10 @@ class Event {
             Call      , //< EventLoop will call it
             Timer     , //< The timer timeout
 
+            Native    , //< Event Directly from Graphics Device
+
             ClipbordUpdate, //< The system clipboard was update
+
 
             User        = 10086, //< User defined event
             UserMax     = 65535, //< User defined event max
@@ -80,13 +83,13 @@ class Event {
          * @brief Construct a new empty Event object
          * 
          */
-        Event()          : Event(None) {}
+        Event()          : Event(None) { }
         /**
          * @brief Construct a new Event object with type
          * 
          * @param type 
          */
-        Event(Type type) : _type(type) {}
+        Event(Type type) : _type(type) { }
         Event(const Event &e) = default;
         Event(Event &&e)      = default;
         ~Event()              = default;
@@ -106,6 +109,9 @@ class Event {
          */
         void set_type(Type t) noexcept {
             _type = t;
+        }
+        void set_accepted(bool v) noexcept {
+            _accepted = v;
         }
 
         /**
@@ -208,8 +214,9 @@ class WidgetEvent : public Event {
  */
 class ResizeEvent : public WidgetEvent {
     public:
-        ResizeEvent() : WidgetEvent(Resized) {}
-        ResizeEvent(int width, int height) : WidgetEvent(Resized), _width(width), _height(height) {}
+        ResizeEvent() : WidgetEvent(Resized) { }
+        ResizeEvent(int width, int height) : WidgetEvent(Resized), _width(width), _height(height) { }
+        ResizeEvent(const Size &s) : WidgetEvent(Resized), _width(s.w), _height(s.h) { }
 
         int width() const {
             return _width;
@@ -223,6 +230,13 @@ class ResizeEvent : public WidgetEvent {
         }
         int old_height() const {
             return _old_height;
+        }
+
+        Size size() const {
+            return Size(_width, _height);
+        }
+        Size old_size() const {
+            return Size(_old_width, _old_height);
         }
 
         void set_old_size(int width, int height) {
@@ -246,7 +260,8 @@ class ResizeEvent : public WidgetEvent {
  */
 class MoveEvent : public WidgetEvent {
     public:
-        MoveEvent(int x, int y) : WidgetEvent(Moved), _x(x), _y(y) {}
+        MoveEvent(int x, int y) : WidgetEvent(Moved), _x(x), _y(y) { }
+        MoveEvent(const Point &p) : WidgetEvent(Moved), _x(p.x), _y(p.y) { }
 
         int x() const {
             return _x;
@@ -267,7 +282,8 @@ class MoveEvent : public WidgetEvent {
  */
 class MotionEvent : public WidgetEvent {
     public:
-        MotionEvent(int x, int y) : WidgetEvent(MouseMotion), _x(x), _y(y) {}
+        MotionEvent(int x, int y) : WidgetEvent(MouseMotion), _x(x), _y(y) { }
+        MotionEvent(const Point &p) : WidgetEvent(MouseMotion), _x(p.x), _y(p.y) { }
 
         int x() const {
             return _x;
@@ -290,6 +306,14 @@ class MotionEvent : public WidgetEvent {
             _xrel = x;
             _yrel = y;
         }
+        void set_position(int x, int y) {
+            _x = x;
+            _y = y;
+        }
+        void set_position(const Point &p) {
+            _x = p.x;
+            _y = p.y;
+        }
     private:
         int _x = -1;
         int _y = -1;
@@ -305,7 +329,9 @@ class MotionEvent : public WidgetEvent {
 class MouseEvent : public WidgetEvent {
     public:
         MouseEvent(Type t, int x, int y, uint8_t clicks) : 
-            WidgetEvent(t), _x(x), _y(y), _clicks(clicks) {}
+            WidgetEvent(t), _x(x), _y(y), _clicks(clicks) { }
+        MouseEvent(Type t, const Point &p, uint8_t clicks) :
+            WidgetEvent(t), _x(p.x), _y(p.y), _clicks(clicks) { }
         
         int x() const {
             return _x;
@@ -330,6 +356,10 @@ class MouseEvent : public WidgetEvent {
             _x = x;
             _y = y;
         }
+        void set_position(const Point &p) {
+            _x = p.x;
+            _y = p.y;
+        }
     private:
         int _x; //< Mouse x position
         int _y; //< Mouse y position
@@ -343,7 +373,7 @@ class MouseEvent : public WidgetEvent {
 class WheelEvent : public WidgetEvent {
     public:
         WheelEvent(int x, int y) 
-            : WidgetEvent(MouseWheel), _x(x), _y(y) {}
+            : WidgetEvent(MouseWheel), _x(x), _y(y) { }
 
         int x() const {
             return _x;
@@ -361,7 +391,7 @@ class WheelEvent : public WidgetEvent {
  */
 class PaintEvent : public WidgetEvent {
     public:
-        PaintEvent() : WidgetEvent(Paint) {}
+        PaintEvent() : WidgetEvent(Paint) { }
 };
 /**
  * @brief Close Event
@@ -369,7 +399,7 @@ class PaintEvent : public WidgetEvent {
  */
 class CloseEvent : public WidgetEvent {
     public:
-        CloseEvent() : WidgetEvent(Close) {}
+        CloseEvent() : WidgetEvent(Close) { }
 };
 /**
  * @brief Mouse Begin Drag or Dragging or End Drag
@@ -377,7 +407,8 @@ class CloseEvent : public WidgetEvent {
  */
 class DragEvent  : public WidgetEvent {
     public:
-        DragEvent(Type t, int x, int y) : WidgetEvent(t), _x(x), _y(y) {}
+        DragEvent(Type t, int x, int y) : WidgetEvent(t), _x(x), _y(y) { }
+        DragEvent(Type t, const Point& p) : WidgetEvent(t), _x(p.x), _y(p.y) { }
 
         int x() const {
             return _x;
@@ -412,7 +443,8 @@ class DragEvent  : public WidgetEvent {
  */
 class KeyEvent : public WidgetEvent {
     public:
-        KeyEvent(Type t, Key key, Modifier modifiers) : WidgetEvent(t), _key(key), _modifiers(modifiers) {}
+        KeyEvent(Type t, Key key, Modifier modifiers) : WidgetEvent(t), _key(key), _modifiers(modifiers) { }
+
         Key      key() const {
             return _key;
         }
@@ -427,9 +459,9 @@ class KeyEvent : public WidgetEvent {
             _repeat = repeat;
         }
     private:
-        Key      _key;
-        Modifier _modifiers;
-        uint8_t  _repeat = 0;
+        Key      _key       = Key::Unknown;
+        Modifier _modifiers = Modifier::None;
+        uint8_t  _repeat    = 0;
 };
 /**
  * @brief IME Text 
@@ -437,7 +469,7 @@ class KeyEvent : public WidgetEvent {
  */
 class TextInputEvent : public WidgetEvent {
     public:
-        TextInputEvent(u8string_view t) : WidgetEvent(TextInput), _text(t) {}
+        TextInputEvent(u8string_view t) : WidgetEvent(TextInput), _text(t) { }
 
         u8string_view text() const {
             return _text;
@@ -451,7 +483,7 @@ class TextInputEvent : public WidgetEvent {
  */
 class FocusEvent : public WidgetEvent {
     public:
-        FocusEvent(Type type) : WidgetEvent(type) {}
+        FocusEvent(Type type) : WidgetEvent(type) { }
 };
 /**
  * @brief DropEvent
@@ -460,7 +492,7 @@ class FocusEvent : public WidgetEvent {
 class DropEvent : public WidgetEvent {
     public:
         DropEvent() = default;
-        DropEvent(Event::Type t) : WidgetEvent(t) {}
+        DropEvent(Event::Type t) : WidgetEvent(t) { }
 
         // Set the drop data
         void set_text(u8string_view us) {
@@ -500,7 +532,7 @@ class ChangeEvent   : public WidgetEvent {
 // Event In child changed, removed or added
 class ChildEvent    : public ChangeEvent {
     public:
-        ChildEvent(EventType type, Widget *child) : ChangeEvent(type), _child(child) {}
+        ChildEvent(EventType type, Widget *child) : ChangeEvent(type), _child(child) { }
 
         bool is_added() const {
             return type() == ChildAdded;
@@ -517,7 +549,7 @@ class ChildEvent    : public ChangeEvent {
 
 class TimerEvent : public Event {
     public:
-        TimerEvent(Object *obj, timerid_t id) : Event(Timer), _object(obj), _timerid(id) {}
+        TimerEvent(Object *obj, timerid_t id) : Event(Timer), _object(obj), _timerid(id) { }
         TimerEvent(const TimerEvent &e) = default;
 
         Object   *object() const {
@@ -535,8 +567,8 @@ class TimerEvent : public Event {
 // Another Event
 class QuitEvent : public Event {
     public:
-        QuitEvent()      : Event(Quit) {}
-        QuitEvent(int c) : Event(Quit), _code(c) {}
+        QuitEvent()      : Event(Quit) { }
+        QuitEvent(int c) : Event(Quit), _code(c) { }
 
         int code() const {
             return _code;
@@ -547,7 +579,7 @@ class QuitEvent : public Event {
 
 class CallEvent : public Event {
     public:
-        CallEvent() : Event(Call) {}
+        CallEvent() : Event(Call) { }
 
         void call() {
             _func(_user);
@@ -562,6 +594,43 @@ class CallEvent : public Event {
     private:
         void (*_func)(void *user) = nullptr;
         void  *_user              = nullptr;
+};
+
+class NativeEvent : public Event {
+    public:
+        NativeEvent() : Event(Native) { }
+
+        // Win32
+        uint32_t message() const {
+            return _msg;
+        }
+        intptr_t lparam() const  {
+            return _lparam;
+        }
+        intptr_t wparam() const {
+            return _wparam;
+        }
+        intptr_t *lresult() const {
+            return _lresult;
+        }
+
+        // SDL 
+        void *sdlevent() const {
+            return _sdlevent;
+        }
+    private:
+        union {
+            struct { //< Win32
+                uint32_t _msg;
+                intptr_t _lparam;
+                intptr_t _wparam;
+                intptr_t *_lresult;
+            };
+
+            struct {
+                void *_sdlevent;
+            };
+        };
 };
 
 /**

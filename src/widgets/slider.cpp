@@ -157,7 +157,7 @@ bool Slider::drag_end(DragEvent &event) {
 }
 
 FRect Slider::content_rect() const {
-    auto r = rect().apply_margin(style()->margin);
+    auto r = FRect(0, 0, size()).apply_margin(style()->margin);
 
     FPoint center;
     center.x = r.x + r.w / 2;
@@ -346,11 +346,11 @@ bool ScrollBar::drag_end(DragEvent &event) {
 }
 
 FRect ScrollBar::content_rect() const {
-    FRect border = rect().apply_margin(style()->margin);
+    FRect border = FRect(0, 0, size()).apply_margin(style()->margin);
     return border;
 }
 FRect ScrollBar::bar_rect() const {
-    FRect border = rect().apply_margin(style()->margin);
+    FRect border = FRect(0, 0, size()).apply_margin(style()->margin);
     FRect bar;
     double rng = _max - _min;
 
@@ -398,7 +398,7 @@ ScrollArea::ScrollArea(Widget *w) : Widget(w) {
 ScrollArea::~ScrollArea() {}
 
 bool ScrollArea::resize_event(ResizeEvent &event) {
-    auto r = rect();
+    auto r = FRect(0, 0, size());
 
     // _hscroll.hide();
     if (_viewport) {
@@ -424,7 +424,7 @@ bool ScrollArea::resize_event(ResizeEvent &event) {
     return true;
 }
 bool ScrollArea::move_event(MoveEvent &event) {
-    auto r = rect();
+    auto r = FRect(0, 0, size());
 
     _vscroll.move(r.x + r.w - _vscroll.width(), r.y);
     _hscroll.move(r.x, r.y + r.h - _hscroll.height());

@@ -86,7 +86,7 @@ bool GLWidget::paint_event(PaintEvent &event) {
     }
     if (init_failed) {
         painter().set_color(Color::Black);
-        painter().fill_rect(rect());
+        painter().fill_rect(FRect(0, 0, size()));
         return true;
     }
     priv->gl_paint(this);
@@ -231,7 +231,7 @@ void GLWidgetOffscreenFbImpl::gl_paint(GLWidget *widget) {
     }
 
     auto &painter = widget->painter();
-    FRect dst = widget->rect();
+    FRect dst = FRect(0, 0, widget->size());
     // Make texture
     if (texture.empty()) {
         texture = painter.create_texture(PixFormat::RGBA32, dw, dh);

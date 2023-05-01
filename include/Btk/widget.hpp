@@ -74,6 +74,7 @@ enum class WidgetAttrs : uint8_t {
     BackgroundTransparent = 1 << 3, //< Make background transparent
     PaintBackground = 1 << 4, //< Force widget paint it's background even is not on the top
     PaintChildren   = 1 << 5, //< Paint children widget (default on)
+    MouseTransparent = 1 << 7, //< Mouse event will through it
 };
 enum class SizeHint    : uint8_t {
     Perfered = 0,
@@ -622,10 +623,37 @@ class BTKAPI Widget : public Object {
             return Size(x, y);
         }
 
+        /**
+         * @brief Map a position from parent to self coord
+         * 
+         * @param parent_p The position in parent coord system
+         * @return Point 
+         */
+        Point      map_from_parent_to_self(const Point &parent_p) const {
+            Point result = parent_p;
+            result -= position();
+            return result;
+        }
+        /**
+         * @brief Map a posiition from self to parent coord
+         * 
+         * @param self_p The position in self coord system
+         * @return Point 
+         */
+        Point      map_from_self_to_parent(const Point &self_p) const {
+            Point result = self_p;
+            result += position();
+            return result;
+        }
+        Point      map_from_self_to_root(const Point &) const;
+        Point      map_from_root_to_self(const Point &) const;
+
+        Point      map_from_self_to_screen(const Point &p) const {
+            return map_to_screen(map_from_self_to_root(p));
+        }
+
         // Configure window
         void set_window_title(u8string_view title);
-        void set_window_size(int width, int height);
-        void set_window_position(int x, int y);
         void set_window_icon(const PixBuffer &icon);
         bool set_window_flags(WindowFlags flags);
         bool set_window_borderless(bool v);
@@ -670,12 +698,13 @@ class BTKAPI Widget : public Object {
         virtual bool key_press    (KeyEvent &) { return false; }
         virtual bool key_release  (KeyEvent &) { return false; }
 
-        virtual bool mouse_press  (MouseEvent &) { return false; }
-        virtual bool mouse_release(MouseEvent &) { return false; }
-        virtual bool mouse_wheel  (WheelEvent &)  { return false; }
-        virtual bool mouse_enter  (MotionEvent &) { return false; }
-        virtual bool mouse_leave  (MotionEvent &) { return false; }
-        virtual bool mouse_motion (MotionEvent &) { return false; }
+        //< Default, all mouse event will not through it
+        virtual bool mouse_press  (MouseEvent &) { return true; } 
+        virtual bool mouse_release(MouseEvent &) { return true; }
+        virtual bool mouse_wheel  (WheelEvent &)  { return true; }
+        virtual bool mouse_enter  (MotionEvent &) { return true; }
+        virtual bool mouse_leave  (MotionEvent &) { return true; }
+        virtual bool mouse_motion (MotionEvent &) { return true; }
 
         virtual bool drag_begin   (DragEvent &) { return false; }
         virtual bool drag_end     (DragEvent &) { return false; }
@@ -699,6 +728,7 @@ class BTKAPI Widget : public Object {
 
         UIContext  *_context    = nullptr; //< Pointer to UIContext
         Widget     *_parent     = nullptr; //< Parent widget
+        Widget     *_root       = nullptr; //< Cache of root
         Ref<Style>  _style      = nullptr; //< Pointer to style
         WindowFlags _flags      = WindowFlags::Resizable; //< Window flags
         WidgetAttrs _attrs      = WidgetAttrs::PaintChildren; //< Widget attributrs

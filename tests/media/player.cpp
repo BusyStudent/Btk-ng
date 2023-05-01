@@ -1,3 +1,4 @@
+#include <Btk/widgets/mainwindow.hpp>
 #include <Btk/widgets/textedit.hpp>
 #include <Btk/widgets/button.hpp>
 #include <Btk/widgets/dialog.hpp>
@@ -26,18 +27,7 @@ class Player : public Widget {
             sub->add_widget(&stop);
 
             play.set_text("OpenFile");
-            play.signal_clicked().connect([this]() {
-                FileDialog dialog;
-                dialog.set_option(FileDialog::Open);
-                dialog.run();
-
-                auto result = dialog.result();
-                if (!result.empty()) {
-                    edit.set_text(dialog.result()[0]);
-                    player.set_url(dialog.result()[0]);
-                    player.play();
-                }
-            });
+            play.signal_clicked().connect(&Player::on_open, this);
             pause.set_text("Pause");
             pause.signal_clicked().connect(&Player::on_pause_clicked, this);
             stop.set_text("Stop");
@@ -50,14 +40,14 @@ class Player : public Widget {
                 player.play();
             });
             player.signal_error().connect([&]() {
-                set_window_title(player.error_string());
+                root()->set_window_title(player.error_string());
             });
             player.signal_position_changed().connect([&](double pos) {
-                set_window_title(u8string::format("Player position %lf : %lf volume %f", pos, player.duration(), audio.volume()));
+                root()->set_window_title(u8string::format("Player position %lf : %lf volume %f", pos, player.duration(), audio.volume()));
                 slider.set_value(pos);
             });
             player.signal_buffer_status_changed().connect([&](int percent) {
-                set_window_title(u8string::format("Buffer %d%%", percent));
+                root()->set_window_title(u8string::format("Buffer %d%%", percent));
             });
             player.signal_duration_changed().connect([&](double dur) {
                 slider.set_range(0, dur);
@@ -70,8 +60,6 @@ class Player : public Widget {
                 player.set_position(slider.value());
             });
 
-            show();
-
             auto pal = palette();
             pal.set_color(Palette::Window, Color::Black);
 
@@ -82,7 +70,7 @@ class Player : public Widget {
 
             if (event.key() == Key::F11) {
                 fullscreen = !fullscreen;
-                set_fullscreen(fullscreen);
+                root()->set_fullscreen(fullscreen);
 
                 edit.set_visible(!fullscreen);
                 play.set_visible(!fullscreen);
@@ -138,6 +126,20 @@ class Player : public Widget {
                 pause.set_text("Pause");
             }
         }
+        void on_open() {
+            defer_call([this]() {
+                FileDialog dialog;
+                dialog.set_option(FileDialog::Open);
+                dialog.run();
+
+                auto result = dialog.result();
+                if (!result.empty()) {
+                    edit.set_text(dialog.result()[0]);
+                    player.set_url(dialog.result()[0]);
+                    player.play();
+                }
+            });
+        }
 
         BoxLayout lay{TopToBottom};
         MediaPlayer player;
@@ -150,12 +152,27 @@ class Player : public Widget {
         VideoWidget video;
 
         bool fullscreen = false;
+    friend class PlayerMain;
+};
+
+class PlayerMain : public MainWindow {
+    public:
+        PlayerMain() {
+            auto player = new Player;
+            set_widget(player);
+
+            auto file = menubar().add_menu("File");
+            file->add_item("Open")->signal_triggered().connect(&Player::on_open, player);
+            file->add_item("Close")->signal_triggered().connect(&PlayerMain::close, this);
+        }
+    private:
+
 };
 
 int main() {
     UIContext ctxt;
 
-    Player p;
+    PlayerMain p;
     p.show();
 
     return ctxt.run();

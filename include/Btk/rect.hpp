@@ -392,8 +392,14 @@ class Matrix3x2Impl {
             T m12 = -m[0][1] * inv_det;
             T m21 = -m[1][0] * inv_det;
             T m22 = m[0][0] * inv_det;
+
+            T dx  = double(m[1][0] * m[2][1] - m[1][1] * m[2][0]) * inv_det;
+            T dy  = double(m[0][1] * m[2][0] - m[0][0] * m[2][1]) * inv_det;
+            
             m[0][0] = m11; m[0][1] = m12;
             m[1][0] = m21; m[1][1] = m22;
+
+            m[2][0] = dx; m[2][1] = dy;
             return true;
         }
         bool invertible() const {

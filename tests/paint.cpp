@@ -45,12 +45,16 @@ bool PaintBox::drag_motion(DragEvent &event) {
 }
 bool PaintBox::drag_begin(DragEvent &event) {
     points.emplace_back();
+
+    BTK_LOG("PaintBox drag begin\n")
     return true;
 }
 bool PaintBox::drag_end(DragEvent &event) {
     if (points.back().size() < 2) {
         points.pop_back();
     }
+
+    BTK_LOG("PaintBox drag end\n")
     return true;
 }
 bool PaintBox::paint_event(PaintEvent &event) {

@@ -37,13 +37,13 @@ bool PopupWidget::paint_event(PaintEvent &) {
     p.save();
     p.translate(2, 2);
     p.set_color(Color::Gray);
-    p.fill_rect(rect());
+    p.fill_rect(FRect(0, 0, size()));
     p.restore();
 
     p.set_brush(palette().window());
-    p.fill_rect(rect());
+    p.fill_rect(FRect(0, 0, size()));
     p.set_brush(palette().border());
-    p.draw_rect(rect());
+    p.draw_rect(FRect(0, 0, size()));
 
     return true;
 }
@@ -161,11 +161,11 @@ bool Menu::paint_event(PaintEvent &event) {
         return true;
     }
     auto &p = painter();
-    auto [x, y] = rect().cast<float>().center();
+    auto [x, y] = FRect(0, 0, size()).cast<float>().center();
 
     if (under_mouse()) {
         p.set_color(Color::LightGray);
-        p.fill_rect(rect());
+        p.fill_rect(FRect(0, 0, size()));
     }
 
     p.set_brush(palette().text());
@@ -181,8 +181,9 @@ bool Menu::mouse_press(MouseEvent &event) {
         popup->set_attribute(WidgetAttrs::DeleteOnClose, true);
         popup->popup();
 
-        auto [sx, sy] = map_to_screen(rect().bottom_left());
-        popup->set_window_position(sx, sy);
+        auto [sx, sy] = map_from_self_to_screen(Rect(0, 0, size()).bottom_left());
+        // popup->set_window_position(sx, sy);
+        popup->move(sx, sy);
     }
 
     return false; //< For pass throught to the lower widget, call triggered
@@ -315,7 +316,7 @@ bool MenuBar::paint_event(PaintEvent &) {
 
     // Draw basic
     p.set_brush(palette().input());
-    p.fill_rect(rect());
+    p.fill_rect(FRect(0, 0, size()));
     // p.set_brush(palette().border());
     // p.draw_line(rect().bottom_left(), rect().bottom_right());
 
@@ -349,7 +350,7 @@ bool MenuBar::paint_event(PaintEvent &) {
     return true;
 }
 Rect MenuBar::item_rect(MenuItem *item) const {
-    Rect host = rect();
+    Rect host = FRect(0, 0, size());
     Rect r = host;
     r.w = 0;
 
@@ -420,6 +421,7 @@ bool PopupMenu::mouse_motion(MotionEvent &event) {
 bool PopupMenu::mouse_press(MouseEvent &event) {
     auto n = item_at(event.position());
     if (n && !n->is_seperator()) {
+        _ready_close = true;
         n->signal_triggered().emit();
         close();
     }
@@ -452,7 +454,9 @@ bool PopupMenu::timer_event(TimerEvent &event) {
     return true;
 }
 bool PopupMenu::focus_lost(FocusEvent &event) {
-    close();
+    if (!_ready_close) {
+        close();
+    }
     return true;
 }
 bool PopupMenu::close_event(CloseEvent &) {
@@ -467,7 +471,7 @@ bool PopupMenu::paint_event(PaintEvent &) {
     auto &p = painter();
     // Fill background
     p.set_brush(palette().input());
-    p.fill_rect(rect());
+    p.fill_rect(FRect(0, 0, size()));
 
     // Draw Items 
     p.set_text_align(AlignLeft | AlignTop);

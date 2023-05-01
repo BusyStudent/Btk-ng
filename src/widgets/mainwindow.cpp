@@ -33,11 +33,11 @@ void MainWindow::relayout() {
     if (_menubar.count_items() == 0) {
         _menubar.hide();
         if (_widget) {
-            _widget->set_rect(rect());
+            _widget->set_rect(FRect(0, 0, size()));
         }
     }
     else {
-        _menubar.move(x(), y());
+        _menubar.move(0, 0);
         _menubar.resize(width(), _menubar.size_hint().h);
         _menubar.show();
 

@@ -130,9 +130,11 @@ void Widget::resize(int w, int h) {
     int old_h = _rect.h;
     _rect.w = w;
     _rect.h = h;
+    
     if (_win != nullptr) {
         _win->resize(w, h);
     }
+
     ResizeEvent event;
     event.set_new_size(w, h);
     event.set_old_size(old_w, old_h);
@@ -149,6 +151,10 @@ void Widget::move(int x, int y) {
     int old_y = _rect.y;
     _rect.x = x;
     _rect.y = y;
+
+    if (_win != nullptr) {
+        _win->move(x, y);
+    }
 
     MoveEvent event(x, y);
     handle(event);
@@ -230,6 +236,7 @@ bool Widget::handle(Event &event) {
     switch (event.type()) {
         case Event::Paint : {
             bool restore_state = false;
+            auto &p = painter();
 
             if (_win) {
                 if (uint8_t(_attrs & WidgetAttrs::BackgroundTransparent)) {
@@ -241,28 +248,36 @@ bool Widget::handle(Event &event) {
                 _painter.begin();
                 _painter.clear();
             }
+            else {
+                // Not window, save status
+                // Translate coord to self
+                p.save();
+                p.translate(_rect.x, _rect.y);
+                restore_state = true;
+            }
+
+
             if (parent()) {
                 // Force to draw the background it
                 if (uint8_t(_attrs & WidgetAttrs::PaintBackground)) {
-                    auto &p = painter();
                     p.set_brush(_palette.window());
                     p.fill_rect(_rect);
                 }
                 // Apply opacity not on the root, beacuse the window system should handle it
                 if (_opacity != 1.0f) {
-                    auto &p = painter();
-                    p.save();
+                    if (!restore_state) {
+                        restore_state = true;
+                        p.save();
+                    }
                     p.set_alpha(_opacity * p.alpha());
-                    restore_state = true;
                 }
             }
             if (uint8_t(_attrs & WidgetAttrs::ClipRectangle)) {
-                auto &p = painter();
                 if (!restore_state) {
                     p.save();
                     restore_state = true;
                 }
-                p.scissor(rect());
+                p.scissor(Rect(0, 0, size()));
             }
 
             // Paint current widget first (background)
@@ -273,18 +288,18 @@ bool Widget::handle(Event &event) {
                 paint_children(event.as<PaintEvent>());
             }
 
+#if            !defined(NDEBUG)
+            if ((root()->_attrs & WidgetAttrs::Debug) == WidgetAttrs::Debug) {
+                debug_draw();
+            }
+#endif
+
             // Restore state if
             if (restore_state) {
                 painter().restore();
             }
 
             if (_win) {
-
-#if            !defined(NDEBUG)
-                if ((_attrs & WidgetAttrs::Debug) == WidgetAttrs::Debug) {
-                    debug_draw();
-                }
-#endif
                 _painter.end();
             }
             break;
@@ -301,8 +316,6 @@ bool Widget::handle(Event &event) {
             auto &e = static_cast<ResizeEvent &>(event);
             if (is_window()) {
                 // Size w, h
-                _rect.x = 0;
-                _rect.y = 0;
                 _rect.w = e.width();
                 _rect.h = e.height();
 
@@ -314,6 +327,11 @@ bool Widget::handle(Event &event) {
             return resize_event(e);
         }
         case Event::Moved : {
+            auto &e = static_cast<MoveEvent &>(event);
+            if (is_window()) {
+                _rect.x = e.x();
+                _rect.y = e.y();
+            }
             return move_event(event.as<MoveEvent>());
         }
         case Event::KeyPress : {
@@ -370,7 +388,12 @@ bool Widget::handle(Event &event) {
                         focused_widget->handle(event);
                     }
                 }
-                if (mouse_current_widget->handle(event)) {
+
+                // Map to child coord
+                MouseEvent childevent = event.as<MouseEvent>();
+                childevent.set_position(mouse_current_widget->map_from_parent_to_self(childevent.position()));
+
+                if (mouse_current_widget->handle(childevent)) {
                     return true;
                 }
             }
@@ -388,13 +411,17 @@ bool Widget::handle(Event &event) {
                 // Send this event to drag widget
                 auto mouse = event.as<MouseEvent>();
                 DragEvent event(Event::DragEnd, mouse.x(), mouse.y());
-                dragging_widget->handle(event);
+                // dragging_widget->handle(event);
+                handle(event);
                 dragging_widget = nullptr;
                 // Uncapture mouse
                 capture_mouse(false);
             }
             if (mouse_current_widget) {
-                if (mouse_current_widget->handle(event)) {
+                // Map coord to child
+                MouseEvent mevent = event.as<MouseEvent>();
+                mevent.set_position(mouse_current_widget->map_from_parent_to_self(mevent.position()));
+                if (mouse_current_widget->handle(mevent)) {
                     return true;
                 }
             }
@@ -424,6 +451,12 @@ bool Widget::handle(Event &event) {
                 _cursor.set();
             }
 
+#if        !defined(NDEBUG)
+            if ((_attrs & WidgetAttrs::Debug) == WidgetAttrs::Debug) {
+                repaint();
+            }
+#endif
+
             // Get current mouse widget
             auto &motion = event.as<MotionEvent>();
 
@@ -452,10 +485,13 @@ bool Widget::handle(Event &event) {
                 }
                 DragEvent event(DragEvent::DragMotion, motion.x(), motion.y());
                 event.set_rel(motion.xrel(), motion.yrel());
-                if (dragging_widget) {
-                    dragging_widget->handle(event);
+                if (dragging_widget && dragging_widget != this) {
+                    // Map to child coord
+                    DragEvent cdrag(DragEvent::DragMotion, dragging_widget->map_from_parent_to_self(motion.position()));
+
+                    dragging_widget->handle(cdrag);
                 }
-                else if(!_drag_reject) {
+                else if (dragging_widget) {
                     // Top level self accept drag
                     handle(event);
                 }
@@ -477,7 +513,11 @@ bool Widget::handle(Event &event) {
             else {
                 // Notify mouse motion
                 bool ret = false;
-                if (mouse_current_widget->handle(motion)) {
+
+                // Translate to child
+                MotionEvent childmotin = motion;
+                childmotin.set_position(mouse_current_widget->map_from_parent_to_self(motion.position()));
+                if (mouse_current_widget->handle(childmotin)) {
                     // It already handled, no need to notify parent
                     ret = true;
                 }
@@ -529,7 +569,10 @@ bool Widget::handle(Event &event) {
             if (child) {
                 // Got a child, notify it
                 dragging_widget = child;
-                if (child->handle(event)) {
+
+                // Translate to child coord
+                DragEvent cdrag(Event::DragBegin, child->map_from_parent_to_self(drag.position()));
+                if (child->handle(cdrag)) {
                     return true;
                 }
             }
@@ -537,6 +580,7 @@ bool Widget::handle(Event &event) {
             if (drag_begin(drag)) {
                 // Self accept it
                 dragging_widget = this;
+                return true;
             }
             return false;
         }
@@ -544,15 +588,23 @@ bool Widget::handle(Event &event) {
             auto drag = event.as<DragEvent>();
             if (dragging_widget && dragging_widget != this) {
                 // Notify drag end
-                dragging_widget->handle(event);
+                DragEvent cdrag(Event::DragEnd, dragging_widget->map_from_parent_to_self(drag.position()));
+                if (dragging_widget->handle(cdrag)) {
+                    dragging_widget = nullptr;
+                    return true;
+                }
+                dragging_widget = nullptr;
             }
-            dragging_widget = nullptr;
             return drag_end(drag);
         }
         case Event::DragMotion : {
             // It may is self accepted this drag
+            auto drag = event.as<DragEvent>();
             if (dragging_widget && dragging_widget != this) {
-                if (dragging_widget->handle(event)) {
+
+                // Map to child coord
+                DragEvent cdrag(Event::DragMotion, dragging_widget->map_from_parent_to_self(drag.position()));
+                if (dragging_widget->handle(cdrag)) {
                     return true;
                 }
             }
@@ -855,7 +907,35 @@ Point  Widget::map_to_dips(int x, int y) const {
     }
     return p;
 }
+Point  Widget::map_from_self_to_root(const Point &p) const {
+    Point result = p;
+    auto current = this;
+    while (current != nullptr) {
+        result = current->map_from_self_to_parent(result);
+        current = current->parent();
+    }
+    return result;
+}
+Point  Widget::map_from_root_to_self(const Point &p) const {
+    std::list<Widget *> paths;
+    auto current = const_cast<Widget*>(this);
 
+    // Get paths to the root
+    while (current->parent() != nullptr) {
+        paths.push_front(current);
+        current = current->parent();
+    }
+
+    Point result = p;
+    while (!paths.empty()) {
+        current = paths.front();
+        result  = current->map_from_parent_to_self(result);
+
+        paths.pop_front();
+    }
+
+    return result;
+}
 // Window configure
 void Widget::set_window_title(u8string_view title) {
     if (is_window()) {
@@ -863,22 +943,6 @@ void Widget::set_window_title(u8string_view title) {
             window_init();
         }
         _win->set_title(title);
-    }
-}
-void Widget::set_window_size(int w, int h) {
-    if (is_window()) {
-        if (!_win) {
-            window_init();
-        }
-        _win->resize(w, h);
-    }
-}
-void Widget::set_window_position(int x, int y) {
-    if (is_window()) {
-        if (!_win) {
-            window_init();
-        }
-        _win->move(x, y);
     }
 }
 void Widget::set_window_icon(const PixBuffer &icon) {
@@ -956,6 +1020,10 @@ bool Widget::warp_mouse(int x, int y) {
     auto win = root()->_win;
     if (win) {
         Point p(x, y);
+
+        // Map it to root
+        map_from_self_to_root(p);
+
         return win->set_value(AbstractWindow::MousePosition, &p);
     }
     return false;
@@ -964,7 +1032,10 @@ Point Widget::mouse_position() const {
     auto win = root()->_win;
     Point p(0, 0);
     if (win) {
-        win->query_value(AbstractWindow::MousePosition, &p);
+        if (win->query_value(AbstractWindow::MousePosition, &p)) {
+            // Succeed, map to self
+            p = map_from_root_to_self(p);
+        }
     }
     return p;
 }
@@ -1107,15 +1178,18 @@ void Widget::rectangle_update() {
     Point mouse;
     if (_parent) {
         // We need a way to get the mouse position
-        auto w = window();
-        if (w && w->_win) {
-            if (w->_win->query_value(AbstractWindow::MousePosition, &mouse)) {
-                has_mouse = true;
-            }
-        }
+        // auto w = window();
+        // if (w && w->_win) {
+        //     if (w->_win->query_value(AbstractWindow::MousePosition, &mouse)) {
+        //         has_mouse = true;
+        //     }
+        // }
+        mouse = mouse_position();
+        has_mouse = true;
     }
 
     auto check_mouse = [&, this]() {
+        mouse = map_from_self_to_parent(mouse); //< To parent coord
         MotionEvent event(mouse.x, mouse.y);
         auto &mouse_current = _parent->mouse_current_widget;
 
@@ -1156,12 +1230,18 @@ void Widget::rectangle_update() {
     }
 }
 void Widget::debug_draw() {
-    for (auto child : _children) {
-        child->debug_draw();
-    }
     auto &p = painter();
     p.set_color(Color::Red);
-    p.draw_rect(_rect);
+    p.draw_rect(Rect(0, 0, size()));
+
+    if (under_mouse() && !mouse_current_widget) {
+        // Under last mouse widget
+        auto [x, y] = mouse_position();
+        p.set_text_align(AlignLeft | AlignBottom);
+        p.set_font(font());
+        p.set_color(Color::Blue);
+        p.draw_text(u8string::format("Widget '%s', At (%d, %d)", Btk_typename(this), x, y), x, y);
+    }
 }
 
 // Cursor

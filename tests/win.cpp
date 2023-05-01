@@ -1,3 +1,4 @@
+#include <Btk/widgets/container.hpp>
 #include <Btk/widgets/dialog.hpp>
 #include <Btk/widgets/menu.hpp>
 #include <Btk/context.hpp>
@@ -45,7 +46,7 @@ class Canvas : public Widget {
             printf("%d %d\n", w, h);
 
             // Set its icon
-            set_window_icon(pixbuf);
+            // set_window_icon(pixbuf);
 
             // Make the path
             path.open();
@@ -404,6 +405,8 @@ int main () {
     // painter.end();
     
     // Make a widget and put a button on it
+    TabWidget container;
+
     Widget widget;
     Button w(&widget);
     Button v(&widget);
@@ -419,8 +422,8 @@ int main () {
     Timer            timer;
     w.set_text("Increment😅");
 
-    widget.show();
-    widget.resize(640, 480);
+    // widget.show();
+    // widget.resize(640, 480);
 
     v.move(100,0 );
     v.set_text("Text Visible");
@@ -515,8 +518,6 @@ int main () {
     rb.resize(200, 32);
 
     Canvas c;
-    c.show();
-    c.set_window_title("Canvas");
 
     c.resize(800, 600);
 
@@ -661,6 +662,9 @@ int main () {
 
     lay_root.show();
 
+    container.add_tab(&widget, "Main");
+    container.add_tab(&c, "Canvas");
+    container.show();
 
     context.run();
 }

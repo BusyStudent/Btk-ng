@@ -1729,6 +1729,11 @@ LRESULT Win32Window::wnd_proc(UINT msg, WPARAM wparam, LPARAM lparam) {
         //     auto x = LOWORD(lparam);
         //     auto y = HIWORD(lparam);
         //     WIN_LOG("[Win32] Window move to %d, %d\n", int(x), int(y));
+
+        //     MoveEvent event(x, y);
+        //     event.set_widget(widget);
+        //     event.set_timestamp(GetTicks());
+        //     widget->handle(event);
         //     break;
         // }
 

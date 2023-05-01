@@ -125,7 +125,7 @@ Button::~Button() {
 bool Button::paint_event(PaintEvent &event) {
     BTK_UNUSED(event);
 
-    auto rect = this->rect().cast<float>();
+    auto rect = FRect(0, 0, size());
     auto style = this->style();
     auto &gc  = this->painter();
 
@@ -246,7 +246,7 @@ bool RadioButton::paint_event(PaintEvent &) {
     auto style = this->style();
     auto &gc  = this->painter();
 
-    auto border = rect().apply_margin(style->margin);
+    auto border = Rect(0, 0, size()).apply_margin(style->margin);
 
     // Clac the center circle (Left, Middle)
     float cx = border.x + style->radio_button_circle_pad + style->radio_button_circle_r / 2;

@@ -225,6 +225,8 @@ void BoxLayout::run_layout(const Rect *dst) {
         Size size;
         size = size_hint();
         r    = rect();
+        r.x  = 0;
+        r.y  = 0;
         if (r.w < size.w || r.h < size.h) {
             // We need bigger size
             BTK_LOG("BoxLayout resize to bigger size (%d, %d)\n", size.w, size.h);

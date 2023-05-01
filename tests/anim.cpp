@@ -40,7 +40,7 @@ int main() {
 
     // s.bind(&Widget::resize, &btn);
     s.bind([&](Size p) {
-        btn.set_window_position(p.w, p.h);
+        // btn.set_window_position(p.w, p.h);
         btn.resize(p.w, p.h);
     });
     s.set_duration(2000);
@@ -93,7 +93,7 @@ int main() {
 
     tb.add_tab(sw, "Hide / Show test");
 
-    // tb.set_attribute(WidgetAttrs::Debug, true);
+    tb.set_attribute(WidgetAttrs::Debug, true);
     tb.show();
 
     auto subtab = new TabWidget();
@@ -106,6 +106,8 @@ int main() {
     tedit->signal_enter_pressed().connect([&]() {
         imageview->set_image(Image::FromFile(tedit->text()));
     });
+
+    
 
     ctxt.run();
 }

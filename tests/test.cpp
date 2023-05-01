@@ -109,6 +109,17 @@ TEST(MathTest, MatrixTransform) {
     auto newp3 = p3 * mat3;
     ASSERT_EQ(newp3, FPoint(20, 20));
     ASSERT_EQ(mat3, mat2 * mat);
+
+    // Invert
+    FMatrix mymat;
+    mymat.translate(1, 1);
+    FPoint result = mymat.transform_point(Point(1, 1));
+
+    ASSERT_EQ(result, FPoint(2, 2));
+
+    mymat.invert();
+    result = mymat.transform_point(Point(1, 1));
+    ASSERT_EQ(result, FPoint(0, 0));
 }
 TEST(MathTest, Lerp) {
     constexpr Color c(Color::Red);
