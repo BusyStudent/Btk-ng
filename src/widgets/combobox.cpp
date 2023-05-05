@@ -14,6 +14,8 @@ ComboBox::ComboBox(Widget *parent) : Widget(parent) {
 	_text_layout.set_font(font());
 	_text_layout.set_text(" ");
 	blank = _text_layout.size().w;
+
+	resize(size_hint());
 }
 
 ComboBox::~ComboBox() {
@@ -232,6 +234,8 @@ bool ComboBox::mouse_press(MouseEvent &event) {
 		}
 
 		_popup_widget = new PopupWidget;
+		_listbox_view->set_parent(_popup_widget);
+
 		_popup_widget->popup();
 		// _popup_widget->set_window_position(pos.x, pos.y + size.h);
 		_popup_widget->move(pos.x, pos.y + size.h);
@@ -242,12 +246,12 @@ bool ComboBox::mouse_press(MouseEvent &event) {
 		_popup_widget->set_attribute(WidgetAttrs::BackgroundTransparent, true);
 		_popup_widget->signal_focus_lost().connect([this]() {
 			// Detach it
+			BTK_LOG("_popup_widget Focus lost\n");
 			_listbox_view->set_parent(nullptr);
 			_popup_widget = nullptr;
 
 			repaint();
 		});
-		_listbox_view->set_parent(_popup_widget);
 	}
 	return true;
 }
@@ -290,22 +294,24 @@ bool ComboBox::mouse_wheel(WheelEvent &event) {
 }
 
 Size ComboBox::size_hint() const {
-	float height = style()->button_height / 2;
-	TextLayout layout;
-	float width = blank;
-	for (int i = 0;i < _count; ++ i) {
-		const auto& item = _listbox_view->item_at(i);
-		if (item->font.empty()) {
-			layout.set_font(font());
-		} else {
-			layout.set_font(item->font);
-		}
-		layout.set_text(item->text);
-		width = max(width, layout.size().w + blank);
-	}
-	width += height / 2;
-	BTK_LOG("win size (%f,%f)\n", width, height);
-	return Size(width, height);
+	// float height = style()->button_height / 2;
+	// TextLayout layout;
+	// float width = blank;
+	// for (int i = 0;i < _count; ++ i) {
+	// 	const auto& item = _listbox_view->item_at(i);
+	// 	if (item->font.empty()) {
+	// 		layout.set_font(font());
+	// 	} else {
+	// 		layout.set_font(item->font);
+	// 	}
+	// 	layout.set_text(item->text);
+	// 	width = max(width, layout.size().w + blank);
+	// }
+	// width += height / 2;
+	// BTK_LOG("win size (%f,%f)\n", width, height);
+	// return Size(width, height);
+	auto s = style();
+	return Size(s->button_width, s->button_height);
 }
 
 BTK_NS_END

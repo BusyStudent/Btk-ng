@@ -249,7 +249,7 @@ bool Widget::handle(Event &event) {
                 _painter.clear();
             }
             else {
-                // Not window, save status
+                // Not painter by self, use parent's one
                 // Translate coord to self
                 p.save();
                 p.translate(_rect.x, _rect.y);
@@ -272,13 +272,11 @@ bool Widget::handle(Event &event) {
                     p.set_alpha(_opacity * p.alpha());
                 }
             }
-            if (uint8_t(_attrs & WidgetAttrs::ClipRectangle)) {
-                if (!restore_state) {
-                    p.save();
-                    restore_state = true;
-                }
-                p.scissor(Rect(0, 0, size()));
-            }
+            // if (uint8_t(_attrs & WidgetAttrs::ClipRectangle)) {
+            //     p.save();
+            //     restore_clip = true;
+            //     p.scissor(Rect(0, 0, size()));
+            // }
 
             // Paint current widget first (background)
             ret = paint_event(event.as<PaintEvent>());
@@ -288,7 +286,7 @@ bool Widget::handle(Event &event) {
                 paint_children(event.as<PaintEvent>());
             }
 
-#if            !defined(NDEBUG)
+#if         !defined(NDEBUG)
             if ((root()->_attrs & WidgetAttrs::Debug) == WidgetAttrs::Debug) {
                 debug_draw();
             }
@@ -296,7 +294,7 @@ bool Widget::handle(Event &event) {
 
             // Restore state if
             if (restore_state) {
-                painter().restore();
+                p.restore();
             }
 
             if (_win) {
@@ -835,10 +833,10 @@ void Widget::paint_children(PaintEvent &event) {
             // Invisible
             continue;
         }
-        if (!w->_rect.is_intersected(_rect)) {
-            // Out of parent 
-            continue;
-        }
+        // if (!w->_rect.is_intersected(_rect)) {
+        //     // Out of parent 
+        //     continue;
+        // }
         w->handle(event);
     }
 }
@@ -1062,7 +1060,8 @@ void Widget::set_textinput_rect(const Rect &r) {
         _win->set_textinput_rect(r);
     }
     if (!is_root()) {
-        return root()->set_textinput_rect(r);
+        auto pos = map_from_self_to_root(r.position());
+        return root()->set_textinput_rect(Rect(pos, r.size()));
     }
 }
 

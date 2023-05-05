@@ -1,3 +1,5 @@
+#include <Btk/widgets/mainwindow.hpp>
+#include <Btk/widgets/combobox.hpp>
 #include <Btk/widgets/container.hpp>
 #include <Btk/widgets/dialog.hpp>
 #include <Btk/widgets/menu.hpp>
@@ -70,6 +72,7 @@ class Canvas : public Widget {
         bool paint_event(PaintEvent &e) override {
             auto &gc = this->painter();
             // gc.set_brush(brush);
+            gc.push_scissor(Rect(0, 0, size()));
             ytranslate = height() * (scroll.value() / 100.0f);
 
             gc.push_transform();
@@ -132,6 +135,7 @@ class Canvas : public Widget {
 
             // Reset pen
             gc.pop_transform();
+            gc.pop_scissor();
 
             return true;
         }
@@ -229,8 +233,8 @@ class Canvas : public Widget {
 class Editer : public Widget {
     public:
         Editer() : Widget() {
-            set_window_title("Editor");
-            start_textinput();
+            // set_window_title("Editor");
+            // start_textinput();
 
             auto f = font();
             f.set_size(20);
@@ -289,6 +293,14 @@ class Editer : public Widget {
                     p.draw_rect(r);
                 }
             }
+            return true;
+        }
+        bool focus_gained(FocusEvent &) override {
+            start_textinput();
+            return true;
+        }
+        bool focus_lost(FocusEvent &) override {
+            stop_textinput();
             return true;
         }
         bool textinput_event(TextInputEvent &e) override {
@@ -405,6 +417,7 @@ int main () {
     // painter.end();
     
     // Make a widget and put a button on it
+    MainWindow mwin;
     TabWidget container;
 
     Widget widget;
@@ -412,6 +425,7 @@ int main () {
     Button v(&widget);
     Button u(&widget);
     Button dbg(&widget);
+    ComboBox cbb(&widget);
     ProgressBar p(&widget);
     ProgressBar q(&widget);
     Slider      s(&widget);
@@ -529,9 +543,7 @@ int main () {
     ImageView view;
     view.set_image(test_image());
     view.set_keep_aspect_ratio(true);
-    view.set_window_title("ImageView");
     view.set_attribute(WidgetAttrs::BackgroundTransparent, true);
-    view.show();
     view.add_event_filter([](Object *w, Event &event, void *data) {
         if (event.type() == Event::KeyRelease) {
             if (event.as<KeyEvent>().key() == Key::Return) {
@@ -615,16 +627,22 @@ int main () {
 
     dbg.move(tedit.x() + tedit.width(), tedit.y());
     dbg.signal_clicked().connect([&, enabled = true]() mutable {
-        widget.set_attribute(WidgetAttrs::Debug, enabled);  
+        dbg.root()->set_attribute(WidgetAttrs::Debug, enabled);  
         enabled = !enabled;
     });
     dbg.set_text("Debug");
     dbg.set_icon(test_image());
 
+    cbb.move(dbg.x() + dbg.width(), dbg.y());
+    cbb.add_item("CBItem 1");
+    cbb.add_item("CBItem 2");
+    cbb.add_item("CBItem 3");
+    cbb.add_item("CBItem 4");
+
     // // Test Hit test
     Editer   editer;
-    editer.set_window_title("Test TextLayout hit test");
-    editer.show();
+    // editer.set_window_title("Test TextLayout hit test");
+    // editer.show();
 
     tedit.set_placeholder("Please enter text");
 
@@ -660,11 +678,21 @@ int main () {
 
     layout.add_stretch(1);
 
-    lay_root.show();
 
-    container.add_tab(&widget, "Main");
+    container.add_tab(&widget, "Widget test");
     container.add_tab(&c, "Canvas");
-    container.show();
+    container.add_tab(&editer, "TextLayout hit test");
+    container.add_tab(&lay_root, "Test layout root");
+    container.add_tab(&view, "ImageView");
+    container.set_current_index(0);
+    container.set_content_margin(Margin(0, 0, 2, 0));
+
+    mwin.set_widget(&container);
+    mwin.resize(800, 600);
+    mwin.show();
+
+    mwin.menubar().add_menu("File")->add_item("Close")->signal_triggered().connect(&MainWindow::close, &mwin);
+    mwin.menubar().add_item("Help");
 
     context.run();
 }

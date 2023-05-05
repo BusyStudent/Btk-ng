@@ -27,7 +27,7 @@ TextEdit::~TextEdit() {}
 
 bool TextEdit::focus_gained(FocusEvent &) {
     start_textinput();
-    set_textinput_rect(rect());
+    set_textinput_rect(Rect(0, 0, size()));
 
     _has_focus = true;
     _show_cursor = true;

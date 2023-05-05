@@ -732,7 +732,7 @@ class BTKAPI Widget : public Object {
         Ref<Style>  _style      = nullptr; //< Pointer to style
         WindowFlags _flags      = WindowFlags::Resizable; //< Window flags
         WidgetAttrs _attrs      = WidgetAttrs::PaintChildren; //< Widget attributrs
-        FocusPolicy _focus      = FocusPolicy::None; //< Focus policy
+        FocusPolicy _focus      = FocusPolicy::Mouse; //< Focus policy
         SizePolicy  _size       = SizePolicy::Expanding; //< Size policy
         Palette     _palette    = {}; //< Palette of widget     
         std::list<Widget *>           _children; //< Child widgets
