@@ -1,5 +1,7 @@
 # Btk
 
+![Logo](./logo/logo.svg)
+
 Fast, lightweight and easy to use UIToolkit for building user interfaces. 
 
 Written in C++17
@@ -8,7 +10,13 @@ Its goal is less dependency and mini
 
 ## CI
 
-[![C/C++ CI on Windows](https://github.com/BusyStudent/Btk-ng/actions/workflows/window_build_test.yml/badge.svg)](https://github.com/BusyStudent/Btk-ng/actions/workflows/window_build_test.yml)
+|Platform| CI Status|
+| ---    | ---      |
+|Linux   | CI TODO  |
+|Windows |[![C/C++ CI on Windows](https://github.com/BusyStudent/Btk-ng/actions/workflows/window_build_test.yml/badge.svg)](https://github.com/BusyStudent/Btk-ng/actions/workflows/window_build_test.yml)
+|
+
+
 
 ### ScreenShoot
 
